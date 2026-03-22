@@ -1,0 +1,38 @@
+/*
+    config.h - contains nnimage system configuration
+    Copyright 2026 Jedidiah Thompson
+
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+
+         http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+*/
+
+// clang-format off
+
+#ifndef NNIMAGE_CONFIG_H
+#define NNIMAGE_CONFIG_H
+
+#cmakedefine HAVE_CHARDET
+#cmakedefine HAVE_UTF8PROC
+
+#define NNIMAGE_VERSION "@NNIMAGE_VERSION@"
+
+#define DEFAULT_LOGLEVEL LogLevel::@NNIMAGE_LOGLEVEL@
+
+// ANSI color code
+#define ANSI_CODE_ERROR "\x1b[31m"
+#define ANSI_CODE_WARN  "\x1b[33m"
+#define ANSI_CODE_INFO  "\x1b[94m"
+#define ANSI_CODE_RESET "\x1b[39m"
+
+#define LOG_FOLDER "@NNIMAGE_LOG_FOLDER@"
+
+#endif
