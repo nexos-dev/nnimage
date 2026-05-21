@@ -21,57 +21,68 @@
 // Returns an action object given a name
 std::unique_ptr<Action> Action::MakeAction (const std::string& name)
 {
-    if (name == "create")
-        return std::make_unique<CreateAction> (CreateAction());
-    else if (name == "partition")
-        return std::make_unique<PartitionAction> (PartitionAction());
-    else if (name == "format")
-        return std::make_unique<FormatAction> (FormatAction());
-    else if (name == "update")
-        return std::make_unique<UpdateAction> (UpdateAction());
-    return nullptr;
+    auto it = actionTable.find (name);
+    if (it == actionTable.end())
+        return nullptr;
+    return it->second();
 }
 
-bool Action::SetGlobalOption (const std::string& opt, const std::string& val)
+bool Action::SetGlobalOption (OptionId id, const std::string& val)
 {
-    if (opt == "image_file")
+    switch (id)
     {
-        assert (!val.empty());
-        this->outputFile = val;
+        case OptionId::ConfFile:
+            this->confFile = val;
+            break;
+        case OptionId::ImageFile:
+            this->outputFile = val;
+            break;
+        case OptionId::Backend:
+            // Resolve the backend
+            this->defaultBackend = Backend::ResolveBackend (val);
+            if (this->defaultBackend == BackendType::None)
+            {
+                _log->Error ("invalid backend \"" + val + "\"");
+                return false;
+            }
+            break;
+        case OptionId::ConfEnc:
+            this->opts[id] = val;
+            break;
     }
-    else if (opt == "default_backend")
-    {
-        // FIXME: probably gonna make this a little cleaner
-        if (val != "libkrun" && val != "libisofs")
-        {
-            _log->Error ("invalid backend \"" + val + "\" specified");
-            return false;
-        }
-        this->opts[opt] = val;
-    }
-    else if (opt == "conf_file")
-    {
-        assert (!val.empty());
-        this->confFile = val;
-    }
-    else if (opt == "conf_enc")
-    {
-        assert (!val.empty());
-        this->opts[opt] = val;
-    }
-    else
-        assert (!"Invalid option passed to Action::SetGlobalOption()");
     return true;
 }
 
 bool Action::ValidateGlobalOptions()
 {
-    // Set defaults
-    if (this->confFile.empty())
-        this->confFile = "nnimage.conf";
-    if (GetOption ("default_backend").empty())
-        this->opts["default_backend"] = "libkrun";
-    // NOTE: we set default output file later on, as it can be a few different things
+    return true;
+}
+
+void Action::AddPartition (std::unique_ptr<Partition> part)
+{
+    this->parts[part->GetName()] = std::move (part);
+}
+
+Image* Action::FindImage (const std::string& name)
+{
+    auto it = std::find_if (
+        this->images.begin(),
+        this->images.end(),
+        [&name] (const std::unique_ptr<Image>& img) { return img->GetName() == name; });
+    if (it == this->images.end())
+        return nullptr;
+    return it.base()->get();
+}
+
+bool Action::ResolvePartitions (ConfError& e)
+{
+    for (int i = 0; i < images.size(); ++i)
+    {
+        Image* img = images[i].get();
+        // Resolve it
+        if (!img->ResolvePartitions (e))
+            return false;
+    }
     return true;
 }
 
@@ -81,12 +92,22 @@ bool CreateAction::ValidateOptions()
     return true;
 }
 
-bool CreateAction::SetOption (const std::string& opt, const std::string& val)
+bool CreateAction::SetOption (OptionId opt, const std::string& val)
 {
-    if (opt == "overwrite")
+    if (opt == OptionId::Overwrite)
         this->overwrite = true;
-    else
-        assert (!"Invalid option passed to CreateAction::SetOption");
+    return true;
+}
+
+bool CreateAction::Execute()
+{
+    TaskGraph graph;
+    for (auto& img : this->images)
+    {
+        // Validate it
+        if (!img->Validate())
+            return false;
+    }
     return true;
 }
 
@@ -96,7 +117,12 @@ bool PartitionAction::ValidateOptions()
     return true;
 }
 
-bool PartitionAction::SetOption (const std::string& opt, const std::string& val)
+bool PartitionAction::SetOption (OptionId opt, const std::string& val)
+{
+    return true;
+}
+
+bool PartitionAction::Execute()
 {
     return true;
 }
@@ -107,7 +133,12 @@ bool FormatAction::ValidateOptions()
     return true;
 }
 
-bool FormatAction::SetOption (const std::string& opt, const std::string& val)
+bool FormatAction::SetOption (OptionId opt, const std::string& val)
+{
+    return true;
+}
+
+bool FormatAction::Execute()
 {
     return true;
 }
@@ -124,11 +155,14 @@ bool UpdateAction::ValidateOptions()
     return true;
 }
 
-bool UpdateAction::SetOption (const std::string& opt, const std::string& val)
+bool UpdateAction::SetOption (OptionId opt, const std::string& val)
 {
-    if (opt == "src_directory")
+    if (opt == OptionId::SrcDir)
         this->srcDir = val;
-    else
-        assert (!"Invalid source directory passed to UpdateAction::SetOption");
+    return true;
+}
+
+bool UpdateAction::Execute()
+{
     return true;
 }

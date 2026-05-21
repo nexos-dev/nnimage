@@ -26,22 +26,22 @@
 // Lexer
 ConfLexer::ConfLexer (const std::string& file, std::string_view& data) : fileData{data}, file{file}
 {
-    this->curLine = 1;
-    this->curTok = nullptr;
-    this->idx = 0;
-    this->isAccepted = false;
-    this->nextChar = 0;
-    this->isEof = false;
-    this->isError = false;
+    curLine = 1;
+    curTok = nullptr;
+    idx = 0;
+    isAccepted = false;
+    nextChar = 0;
+    isEof = false;
+    isError = false;
 }
 
 void ConfLexer::lexError (LexError err, const std::string& extra)
 {
     std::string msg;
-    msg = this->file;
+    msg = file;
     msg += ":";
     // Add the line
-    msg += std::to_string (this->curLine);
+    msg += std::to_string (curLine);
     msg += ": ";
     // Now add the code
     switch (err)
@@ -61,59 +61,59 @@ void ConfLexer::lexError (LexError err, const std::string& extra)
     }
     _log->Error (msg);
     // Set token to error
-    this->curTok->type = TokenType::Error;
-    this->isAccepted = true;
-    this->isError = true;
+    curTok->type = TokenType::Error;
+    isAccepted = true;
+    isError = true;
 }
 
 char ConfLexer::readChar()
 {
     // Check if we have a buffered character
-    if (this->nextChar)
+    if (nextChar)
     {
-        char c = this->nextChar;
-        this->nextChar = 0;
+        char c = nextChar;
+        nextChar = 0;
         return c;
     }
     // Check for EOF
-    if (this->idx == this->fileData.size())
+    if (idx == fileData.size())
     {
-        this->isEof = true;
+        isEof = true;
         return '\0';
     }
     // Get from buffer
-    char c = this->fileData[this->idx];
-    this->idx++;
+    char c = fileData[idx];
+    idx++;
     return c;
 }
 
 char ConfLexer::peekChar()
 {
     // Check if we have a buffered character
-    if (this->nextChar)
-        return this->nextChar;
+    if (nextChar)
+        return nextChar;
     // Check for EOF
-    if (this->idx == this->fileData.size())
+    if (idx == fileData.size())
     {
-        this->isEof = true;
+        isEof = true;
         return '\0';
     }
     // Get from buffer
-    char c = this->fileData[this->idx];
-    this->idx++;
-    this->nextChar = c;
+    char c = fileData[idx];
+    idx++;
+    nextChar = c;
     return c;
 }
 
 void ConfLexer::skipChar()
 {
-    assert (this->nextChar);
-    this->nextChar = 0;
+    assert (nextChar);
+    nextChar = 0;
 }
 
 void ConfLexer::returnChar (char c)
 {
-    this->nextChar = c;
+    nextChar = c;
 }
 
 bool ConfLexer::isCharId (char c)
@@ -260,7 +260,7 @@ const std::string ConfLexer::NameFromToken (TokenType type)
         case TokenType::String:
             return "string";
         case TokenType::Comma:
-            return "comma";
+            return ",";
         case TokenType::Eof:
             return "EOF";
         case TokenType::Error:
@@ -273,8 +273,8 @@ const std::string ConfLexer::NameFromToken (TokenType type)
 
 void ConfLexer::prepareEof (ConfToken* tok)
 {
-    this->isAccepted = true;
-    this->isEof = true;
+    isAccepted = true;
+    isEof = true;
     tok->type = TokenType::Eof;
 }
 
@@ -283,24 +283,24 @@ std::unique_ptr<ConfToken> ConfLexer::NextToken()
     // Make a new token
     std::unique_ptr<ConfToken> tok = std::make_unique<ConfToken>();
     int base = 0;
-    this->curTok = tok.get();
-    tok->line = this->curLine;
+    curTok = tok.get();
+    tok->line = curLine;
     tok->type = TokenType::None;
     // Check for EOF
-    if (this->isEof)
+    if (isEof)
     {
         tok->type = TokenType::Eof;
         return tok;
     }
     // Check for error
-    else if (this->isError)
+    else if (isError)
     {
         tok->type = TokenType::Error;
         return tok;
     }
     // Now keep looping until it's accepted
-    this->isAccepted = false;
-    while (!this->isAccepted)
+    isAccepted = false;
+    while (!isAccepted)
     {
         char c = readChar();
         // Decide what to do with this character
@@ -308,8 +308,8 @@ std::unique_ptr<ConfToken> ConfLexer::NextToken()
         {
             case '\0':
                 // Always accept EOF
-                this->isEof = true;
-                this->isAccepted = true;
+                isEof = true;
+                isAccepted = true;
                 tok->type = TokenType::Eof;
                 break;
             // Whitespace
@@ -323,7 +323,7 @@ std::unique_ptr<ConfToken> ConfLexer::NextToken()
                     skipChar();    // Skip new line too
             // fallthrough
             case '\n':
-                ++this->curLine;
+                ++curLine;
                 break;
             case '#':
                 // This is a comment. Keep reading until we hit a newline
@@ -333,14 +333,14 @@ std::unique_ptr<ConfToken> ConfLexer::NextToken()
                     c = readChar();
                     if (c == '\n')
                     {
-                        ++this->curLine;
+                        ++curLine;
                         break;
                     }
                     else if (c == '\r')
                     {
                         if (peekChar() == '\n')
                             skipChar();
-                        ++this->curLine;
+                        ++curLine;
                         break;
                     }
                     // Check for EOF
@@ -365,11 +365,11 @@ std::unique_ptr<ConfToken> ConfLexer::NextToken()
                 tok->type = TokenType::Semicolon;
                 goto scharCommon;
             case ',':
-                tok->type = TokenType::Colon;
+                tok->type = TokenType::Comma;
                 goto scharCommon;
             scharCommon:
-                this->isAccepted = true;
-                tok->line = this->curLine;
+                isAccepted = true;
+                tok->line = curLine;
                 break;
             // ID
             case 'a':
@@ -427,7 +427,7 @@ std::unique_ptr<ConfToken> ConfLexer::NextToken()
             case '_': {
                 // This is an identifier
                 tok->type = TokenType::Identifier;
-                tok->line = this->curLine;
+                tok->line = curLine;
                 std::string id;    // Prepare a string
                 while (isCharId (c))
                 {
@@ -437,7 +437,7 @@ std::unique_ptr<ConfToken> ConfLexer::NextToken()
                 // Return last character to buffer
                 returnChar (c);
                 tok->val = id;
-                this->isAccepted = true;
+                isAccepted = true;
                 break;
             }
             case '0':
@@ -480,7 +480,7 @@ std::unique_ptr<ConfToken> ConfLexer::NextToken()
             // fallthrough
             lexNum:
                 tok->type = TokenType::Number;    // Tentative
-                tok->line = this->curLine;
+                tok->line = curLine;
                 std::string numStr;
                 // Go through every character
                 while (isCharNum (c, base))
@@ -520,7 +520,7 @@ std::unique_ptr<ConfToken> ConfLexer::NextToken()
                     returnChar (c);
                     tok->val = val;
                 }
-                this->isAccepted = true;
+                isAccepted = true;
                 break;
             }
             case '\'':
@@ -528,7 +528,7 @@ std::unique_ptr<ConfToken> ConfLexer::NextToken()
                 // This is a string
                 char oc = c;        // Needed later
                 std::string str;    // String we are holding
-                tok->line = this->curLine;
+                tok->line = curLine;
                 tok->type = TokenType::String;
                 // Now loop through the characters until we find matching quote
                 c = readChar();
@@ -572,12 +572,12 @@ std::unique_ptr<ConfToken> ConfLexer::NextToken()
                         {
                             if (next == '\n')
                             {
-                                ++this->curLine;
+                                ++curLine;
                                 skipChar();
                             }
                             else if (next == '\r')
                             {
-                                ++this->curLine;
+                                ++curLine;
                                 skipChar();
                                 if (peekChar() == '\n')
                                     skipChar();
@@ -594,7 +594,7 @@ std::unique_ptr<ConfToken> ConfLexer::NextToken()
                     c = readChar();
                 }
                 tok->val = str;
-                this->isAccepted = true;
+                isAccepted = true;
                 break;
             }
             default: {
@@ -614,25 +614,25 @@ std::unique_ptr<ConfToken> ConfLexer::NextToken()
 ConfParser::ConfParser (const std::string& file, std::string_view& fileData)
     : lexer{file, fileData}, file{file}
 {
-    this->lastToken = nullptr;
+    lastToken = nullptr;
 }
 
 std::unique_ptr<ConfToken> ConfParser::getToken (std::unique_ptr<ConfToken> oldToken)
 {
     // Set the last token
-    this->lastToken = std::move (oldToken);
-    auto token = this->lexer.NextToken();
-    if (token->type == TokenType::Error)
+    lastToken = std::move (oldToken);
+    auto tok = lexer.NextToken();
+    if (tok->type == TokenType::Error)
         return nullptr;
-    return token;
+    return tok;
 }
 
 std::unique_ptr<ConfToken> ConfParser::expectToken (TokenType type,
                                                     std::unique_ptr<ConfToken> oldToken)
 {
     // Set last token
-    this->lastToken = std::move (oldToken);
-    auto token = this->lexer.NextToken();
+    lastToken = std::move (oldToken);
+    auto token = lexer.NextToken();
     if (token->type == TokenType::Error)
         return nullptr;
     else if (token->type != type)
@@ -645,15 +645,13 @@ std::unique_ptr<ConfToken> ConfParser::expectToken (TokenType type,
 
 void ConfParser::tokenError (TokenType expected, TokenType got, int line)
 {
-    std::string msg = this->file + ":" + std::to_string (line) +
+    std::string msg = file + ":" + std::to_string (line) +
                       ": "
                       "unexpected token \"" +
-                      this->lexer.NameFromToken (got) + "\"";
-    msg += " after token \"" + this->lexer.NameFromToken (this->lastToken->type) + "\"";
+                      lexer.NameFromToken (got) + "\"";
+    msg += " after token \"" + lexer.NameFromToken (lastToken->type) + "\"";
     if (expected != TokenType::None)
-    {
-        msg += ", expected token \"" + this->lexer.NameFromToken (expected) + "\"";
-    }
+        msg += ", expected token \"" + lexer.NameFromToken (expected) + "\"";
     _log->Error (msg);
 }
 
@@ -667,7 +665,7 @@ bool ConfParser::NextBlock (ParseBlock& block, bool& isEof)
     block.type = "";
     block.props.clear();
     // Start parsing
-    auto token = getToken (std::move (this->lastToken));
+    auto token = getToken (std::move (lastToken));
     if (!token)
         return false;
     // Make sure it's an ID
@@ -725,26 +723,26 @@ bool ConfParser::NextBlock (ParseBlock& block, bool& isEof)
                 token = getToken (std::move (token));
                 if (!token)
                     return false;
-                ParseVal val;
+                ConfVal val;
                 val.line = token->line;
                 if (token->type == TokenType::Identifier)
                 {
-                    val.type = PropType::Id;
+                    val.type = ConfType::Id;
                     val.val = token->val;
                 }
                 else if (token->type == TokenType::String)
                 {
-                    val.type = PropType::String;
+                    val.type = ConfType::String;
                     val.val = token->val;
                 }
                 else if (token->type == TokenType::Number)
                 {
-                    val.type = PropType::Num;
+                    val.type = ConfType::Num;
                     val.val = token->val;
                 }
                 else if (token->type == TokenType::NumId)
                 {
-                    val.type = PropType::NumId;
+                    val.type = ConfType::NumId;
                     val.val = token->val;
                 }
                 else
@@ -756,13 +754,16 @@ bool ConfParser::NextBlock (ParseBlock& block, bool& isEof)
                 prop.values.push_back (val);
                 // Now move to next
                 token = getToken (std::move (token));
-                if (token->type == TokenType::Semicolon)
+                if (!token)
+                    return false;
+                else if (token->type == TokenType::Semicolon)
                     break;
                 else if (token->type == TokenType::Comma)
                     continue;
                 else
                 {
                     tokenError (TokenType::None, token->type, token->line);
+                    return false;
                 }
             }
             block.props[prop.name] = prop;
@@ -776,6 +777,7 @@ bool ConfParser::NextBlock (ParseBlock& block, bool& isEof)
     else
     {
         tokenError (TokenType::Identifier, token->type, token->line);
+        return false;
     }
     return true;
 }

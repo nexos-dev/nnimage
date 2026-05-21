@@ -18,33 +18,44 @@
 #ifndef OPTION_H
 #define OPTION_H
 
+// All valid options
+enum class OptionId
+{
+    ConfFile,
+    ImageFile,
+    ConfEnc,
+    Backend,
+    Overwrite,
+    SrcDir
+};
+
 // General options
 static Option GlobalOpt[] = {
     {"-f",
      "-conf",
-     "conf_file",
+     OptionId::ConfFile,
      "Specifies configuration file to read from.\nDefaults to \"nnimage.conf\"",
      true,
      "FILE"},
     {"-i",
      "-image",
-     "image_file",
+     OptionId::ImageFile,
      "Specifies file name prefix for output.\nOutput image will have image name and an appropriate extension added.\n\
 If an extension is specified, then argument will be whole image name",
      true,
      "IMAGE"},
     {"-e",
      "-confenc",
-     "conf_enc",
+     OptionId::ConfEnc,
      "Specifies character encoding for configuration file.\nMust be passable to iconv(3)",
      true,
      "ENC"},
-    {"-b", "-backend", "default_backend", nullptr, true, nullptr},
+    {"-b", "-backend", OptionId::Backend, nullptr, true, nullptr},
     {.shortOpt = nullptr, .longOpt = nullptr}};
 
 // Create image options
 static Option CreateOpt[] = {
-    {"-w", "-overwrite", "overwrite", "Specifies to overwrite pre-existing image", false},
+    {"-w", "-overwrite", OptionId::Overwrite, "Specifies to overwrite pre-existing image", false},
     {nullptr}};
 // Partition options
 static Option PartitionOpt[] = {{nullptr}};
@@ -53,7 +64,7 @@ static Option FormatOpt[] = {{nullptr}};
 // Update options
 static Option UpdateOpt[] = {{"-d",
                               "-directory",
-                              "src_directory",
+                              OptionId::SrcDir,
                               "Specifies directory to use as input for updating",
                               true,
                               "DIR"},

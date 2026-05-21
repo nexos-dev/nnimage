@@ -1,5 +1,5 @@
 /*
-    Log.cxx - contains command line parser
+    Log.cxx - contains log implementation
     Copyright 2026 Jedidiah Thompson
 
     Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,8 +17,10 @@
 
 #include "nnimage.h"
 #include <errno.h>
+#include <filesystem>
 #include <iomanip>
 #include <iostream>
+#include <libgen.h>
 #include <sstream>
 #include <string.h>
 #include <time.h>
@@ -39,14 +41,10 @@ Log::Log (const char* progName, LogLevel defaultLevel)
     // Set default log level
     if (defaultLevel <= LogLevel::Verbose)
         this->logLevel = defaultLevel;
-    // Create a default log file
-    // We create it in the log folder, with a name based on the time of day
-    time (&logStartTime);
-    tm* timeSt = localtime (&logStartTime);
-    std::ostringstream fileTime;
-    fileTime << std::put_time (timeSt, "%m_%d-%H_%M_%S");
+    // Set start time
+    logStartTime = time (NULL);
     // Make the name
-    std::string logFile = LOG_FOLDER "/" + fileTime.str();
+    std::string logFile = getLogPath (LOG_FILE);
     std::ofstream log (logFile);
     if (!log.is_open())
         Warn ("unable to open log file");    // Error, but not fatal
@@ -134,6 +132,23 @@ bool Log::AddFile (const std::string& fileName)
     }
     logs.push_back (std::move (output));
     return true;
+}
+
+const std::string Log::getLogPath (const std::string& logName)
+{
+    // Get user's home
+    const char* userHome = getenv ("HOME");
+    assert (userHome);
+    std::string log = userHome;
+    log += "/.local/share/";
+    log += logName;
+    // Now create log directories
+    std::error_code ec;
+    std::filesystem::path logPath = log;
+    std::filesystem::create_directories (logPath.parent_path(), ec);
+    if (ec)
+        return {};
+    return log;
 }
 
 void Log::addLine (const std::string& line, LogLevel level)

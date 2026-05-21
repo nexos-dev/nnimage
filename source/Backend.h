@@ -1,5 +1,5 @@
 /*
-    config.h - contains nnimage system configuration
+    Backend.h - contains backend classes
     Copyright 2026 Jedidiah Thompson
 
     Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,26 +15,28 @@
     limitations under the License.
 */
 
-// clang-format off
+#ifndef BACKEND_H
+#define BACKEND_H
 
-#ifndef NNIMAGE_CONFIG_H
-#define NNIMAGE_CONFIG_H
+#include <unordered_map>
+#include <string>
 
-#cmakedefine HAVE_CHARDET
-#cmakedefine HAVE_UTF8PROC
+enum class BackendType
+{
+    None,
+    Krun,
+    Isofs,
+    Guestfs,
+    Loopback
+};
 
-#define NNIMAGE_VERSION "@NNIMAGE_VERSION@"
+class Backend
+{
+  public:
+    static BackendType ResolveBackend (const std::string& name);
 
-#define DEFAULT_LOGLEVEL LogLevel::@NNIMAGE_LOGLEVEL@
-
-// ANSI color code
-#define ANSI_CODE_ERROR "\x1b[31m"
-#define ANSI_CODE_WARN  "\x1b[33m"
-#define ANSI_CODE_INFO  "\x1b[94m"
-#define ANSI_CODE_RESET "\x1b[39m"
-
-#define LOG_FILE "@NNIMAGE_LOG_FILE@"
-
-#define BACKEND_DEFAULT BackendType::Krun
+  private:
+    const static std::unordered_map<std::string, BackendType> registry;
+};
 
 #endif

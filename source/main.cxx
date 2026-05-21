@@ -21,15 +21,8 @@
 #include "Option.h"
 
 // Global log instance
-Log* _log;
-// Global command line
-CmdLine* _cmdLine;
-
-static inline void cleanup()
-{
-    delete _log;
-    delete _cmdLine;
-}
+std::unique_ptr<Log> _log;
+std::unique_ptr<CmdLine> _cmdLine;
 
 // Initialize command line
 CmdLine::CmdLine (int argc, char** argv)
@@ -122,9 +115,9 @@ bool CmdLine::ParseArguments (HelpCb helpCallback, VersionCb versionCallback)
         }
         bool res = false;
         if (isOptGlobal)
-            res = action->SetGlobalOption (opt->optName, value);
+            res = action->SetGlobalOption (opt->id, value);
         else
-            res = action->SetOption (opt->optName, value);
+            res = action->SetOption (opt->id, value);
         if (!res)
             return false;
     }
@@ -222,15 +215,12 @@ static void Version()
 int main (int argc, char** argv)
 {
     // Initialize command line
-    _cmdLine = new CmdLine (argc, argv);
+    _cmdLine = std::make_unique<CmdLine> (argc, argv);
     // Start up log
-    _log = new Log (argv[0], DEFAULT_LOGLEVEL);
+    _log = std::make_unique<Log> (argv[0], DEFAULT_LOGLEVEL);
     // Parse command line
     if (!_cmdLine->ParseArguments (Help, Version))
-    {
-        cleanup();
         return 1;
-    }
     // OK so we now have the arguments. Now it's time to parse the configuration file
     // First get the action
     Action* act = _cmdLine->GetAction();
@@ -238,20 +228,9 @@ int main (int argc, char** argv)
     ImageConf conf = ImageConf (act->GetConf());
     if (!conf.ParseFile())
     {
-        cleanup();
         // Configuration parsing failed
         return 1;
     }
-    // Now grab the images
-    auto& images = conf.GetImages();
-    // OK so now we have our images, first make sure we have something to do
-    if (images.empty())
-    {
-        _log->Info ("nothing to do");
-        cleanup();
-        return 0;
-    }
-    // Cleanup before exit
-    cleanup();
-    return 0;
+    // Now execute the action and return
+    return !act->Execute();
 }

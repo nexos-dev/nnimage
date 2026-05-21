@@ -1,5 +1,5 @@
 /*
-    config.h - contains nnimage system configuration
+    Backend.cxx - contains global backend interface
     Copyright 2026 Jedidiah Thompson
 
     Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,26 +15,22 @@
     limitations under the License.
 */
 
+#include "nnimage.h"
+
+// Backend list
 // clang-format off
+const std::unordered_map<std::string, BackendType> Backend::registry = {
+    {"krun", BackendType::Krun},
+    {"isofs", BackendType::Isofs},
+    {"loopback", BackendType::Loopback},
+    {"guestfs", BackendType::Guestfs}  
+};
+// clang-format on
 
-#ifndef NNIMAGE_CONFIG_H
-#define NNIMAGE_CONFIG_H
-
-#cmakedefine HAVE_CHARDET
-#cmakedefine HAVE_UTF8PROC
-
-#define NNIMAGE_VERSION "@NNIMAGE_VERSION@"
-
-#define DEFAULT_LOGLEVEL LogLevel::@NNIMAGE_LOGLEVEL@
-
-// ANSI color code
-#define ANSI_CODE_ERROR "\x1b[31m"
-#define ANSI_CODE_WARN  "\x1b[33m"
-#define ANSI_CODE_INFO  "\x1b[94m"
-#define ANSI_CODE_RESET "\x1b[39m"
-
-#define LOG_FILE "@NNIMAGE_LOG_FILE@"
-
-#define BACKEND_DEFAULT BackendType::Krun
-
-#endif
+BackendType Backend::ResolveBackend (const std::string& name)
+{
+    auto it = Backend::registry.find (name);
+    if (it == Backend::registry.end())
+        return BackendType::None;
+    return it->second;
+}

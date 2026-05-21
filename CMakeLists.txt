@@ -17,7 +17,7 @@
 
 cmake_minimum_required(VERSION 3.22)
 project(nnimage LANGUAGES CXX)
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(NNIMAGE_VERSION "0.1.0-dev")      # Set with every version change
 
 # Default to debug build
@@ -29,7 +29,7 @@ include(GNUInstallDirs)
 
 # Compile options
 set(NNIMAGE_LOGLEVEL Error CACHE STRING "Specified verbosity of nnimage (can be Error, Warning, Info, or Verbose)")
-set(NNIMAGE_LOG_FOLDER "/${CMAKE_INSTALL_LOCALSTATEDIR}/log/nnimage-log" CACHE PATH "Specifies where default nnimage log goes")
+set(NNIMAGE_LOG_FILE "nnimage/nnimage-log" CACHE PATH "Specifies where default nnimage log goes in users .config")
 
 # Validate options
 if(NOT NNIMAGE_LOGLEVEL STREQUAL "Error" AND NOT NNIMAGE_LOGLEVEL STREQUAL "Warning"
@@ -64,6 +64,7 @@ pkg_check_modules(KRUN REQUIRED libkrun)
 # Configure the header
 configure_file(source/config.h.in config.h)
 include_directories(build)
+include_directories(source)
 
 # Create the program
 add_executable(nnimage source/main.cxx 
@@ -72,6 +73,8 @@ add_executable(nnimage source/main.cxx
                        source/Conf.cxx
                        source/ConfParser.cxx
                        source/Image.cxx
+                       source/Task.cxx
+                       source/backend/Backend.cxx
                        source/external/MemoryMapped.cpp)
 
 # Add all libraries
@@ -87,4 +90,3 @@ endif()
 
 # Install it
 install(TARGETS nnimage)
-install(DIRECTORY DESTINATION ${NNIMAGE_LOG_FOLDER})

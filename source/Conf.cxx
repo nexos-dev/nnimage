@@ -62,6 +62,7 @@ bool ImageConf::convertFileEnc (std::string_view data,
     return true;
 }
 
+// Opens up configuration gile
 bool ImageConf::openConfFile (MemoryMapped& file, std::string_view& contents)
 {
     // First open the file up
@@ -92,7 +93,7 @@ bool ImageConf::openConfFile (MemoryMapped& file, std::string_view& contents)
     const char* enc = "ASCII";
     float confidence = 1.0f;    // This might be foolish
 #endif
-    const std::string& fileEnc = GetAction()->GetOption ("conf_enc");
+    const std::string& fileEnc = GetAction()->GetOption (OptionId::ConfEnc);
     // First check if user passed an encoding
     if (!fileEnc.empty())
     {
@@ -184,6 +185,9 @@ void ImageConf::parseError (ConfErrorType error, int line, const std::string& ex
         case ConfErrorType::UnrecognizedId:
             out += "Unrecognized identifier \"" + extra + "\"";
             break;
+        case ConfErrorType::UnrecognizedVal:
+            out += "Unrecognized value \"" + extra + "\"";
+            break;
         case ConfErrorType::SysError:
             out += extra;
             break;
@@ -198,7 +202,7 @@ void ImageConf::parseError (ConfErrorType error, int line, const std::string& ex
 }
 
 bool ImageConf::ValidateProp (const ParseProp& prop,
-                              PropType expectedType,
+                              ConfType expectedType,
                               int maxVal,
                               ConfError& result)
 {
@@ -217,7 +221,7 @@ bool ImageConf::ValidateProp (const ParseProp& prop,
 
 ParseProp& ImageConf::GetProp (ParseBlock& block,
                                const std::string& name,
-                               PropType expectedType,
+                               ConfType expectedType,
                                int maxVals,
                                ConfError& result)
 {
@@ -232,12 +236,12 @@ ParseProp& ImageConf::GetProp (ParseBlock& block,
         return empty;
     }
     auto& prop = it->second;
-    if (!ValidateProp (prop, PropType::Id, 1, result))
+    if (!ValidateProp (prop, ConfType::Id, 1, result))
         return empty;
     return prop;
 }
 
-bool ImageConf::GetVal (const ParseProp& prop, ParseVal& out, int idx)
+bool ImageConf::GetVal (const ParseProp& prop, ConfVal& out, int idx)
 {
     if (idx >= prop.values.size())
         return false;
@@ -255,8 +259,20 @@ void ImageConf::RemoveProp (ParseBlock& block, ParseProp& prop)
     block.props.erase (prop.name);
 }
 
-bool ImageConf::addPartitions (const ParseProp& prop)
+bool ImageConf::addPartitions (Image* img, const ParseProp& prop)
 {
+    // Start looping through values
+    for (const ConfVal& val : prop.values)
+    {
+        // Check the type
+        if (val.type != ConfType::Id)
+        {
+            parseError (ConfErrorType::WrongType, val.line, prop.name);
+            return false;
+        }
+        PartRef ref = PartRef (val.GetString(), val.line);
+        img->AddPartition (ref);
+    }
     return true;
 }
 
@@ -273,13 +289,13 @@ bool ImageConf::processImageBlock (ParseBlock& block)
     auto& conf = block.props;
     // First we need to find a type
     // All other values are dependent on the type
-    ParseProp& typeProp = GetProp (block, "type", PropType::Id, 1, result);
+    ParseProp& typeProp = GetProp (block, "type", ConfType::Id, 1, result);
     if (result.code != ConfErrorType::Ok)
         return false;
     // Can't fail. I think
-    ParseVal val;
+    ConfVal val;
     GetVal (typeProp, val, 0);
-    assert (val.type == PropType::Id);
+    assert (val.type == ConfType::Id);
     const std::string& type = std::get<std::string> (val.val);
     // Now that we have the type, we can now instatiate the image
     auto image = Image::ImageFactory (type, name);
@@ -296,12 +312,14 @@ bool ImageConf::processImageBlock (ParseBlock& block)
         // Handle special key case
         if (key == "partitions")
         {
-            if (!addPartitions (prop))
+            if (!addPartitions (image.get(), prop))
                 return false;
             continue;
         }
-        // Now call it
-        image->SetConf (prop, key, *this, result);
+        // Get value from property
+        ConfVal val;
+        GetVal (prop, val, 0);
+        image->SetConf (key, val, result);
         if (result.code != ConfErrorType::Ok)
         {
             parseError (result.code, result.line, result.msg);
@@ -309,12 +327,31 @@ bool ImageConf::processImageBlock (ParseBlock& block)
         }
     }
     // Now add to images list
-    this->images.push_back (std::move (image));
+    GetAction()->AddImage (std::move (image));
     return true;
 }
 
 bool ImageConf::processPartitionBlock (ParseBlock& block)
 {
+    ConfError result;
+    const std::string& name = block.name;
+    auto& conf = block.props;
+    // Create the partition object
+    std::unique_ptr<Partition> part = std::make_unique<Partition> (name);
+    // Iterate through the properties
+    for (auto& [key, prop] : conf)
+    {
+        ConfVal val;
+        GetVal (prop, val, 0);
+        // Set the key
+        part->SetConf (key, val, result);
+        if (result.code != ConfErrorType::Ok)
+        {
+            parseError (result.code, result.line, result.msg);
+            return false;
+        }
+    }
+    GetAction()->AddPartition (std::move (part));
     return true;
 }
 
@@ -349,6 +386,14 @@ bool ImageConf::ParseFile()
         }
         if (result)
             result = parser.NextBlock (curBlock, eof);
+    }
+    // Now resolve all partitions
+    if (result)
+    {
+        ConfError e;
+        result = GetAction()->ResolvePartitions (e);
+        if (e.code != ConfErrorType::Ok)
+            parseError (e.code, e.line, e.msg);
     }
     return result;
 }

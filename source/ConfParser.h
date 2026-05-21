@@ -96,7 +96,7 @@ class ConfLexer
 };
 
 // Parser structures
-enum class PropType
+enum class ConfType
 {
     Id,
     Num,
@@ -104,11 +104,10 @@ enum class PropType
     String
 };
 
-struct ParseProp;
-struct ParseVal
+struct ConfVal
 {
   public:
-    bool IsType (PropType type) const
+    bool IsType (ConfType type) const
     {
         if (this->type == type)
             return true;
@@ -117,51 +116,65 @@ struct ParseVal
     // Getter functions
     const std::string& GetString() const
     {
-        assert (type == PropType::Id || type == PropType::String);
+        assert (type == ConfType::Id || type == ConfType::String);
         return std::get<std::string> (val);
     }
     int64_t GetInteger() const
     {
-        assert (type == PropType::Num);
+        assert (type == ConfType::Num);
         return std::get<int64_t> (val);
     }
     const ConfNumId& GetNumId() const
     {
-        assert (type == PropType::NumId);
+        assert (type == ConfType::NumId);
         return std::get<ConfNumId> (val);
+    }
+    bool IsBool() const
+    {
+        if (this->type != ConfType::Id)
+            return false;
+        const std::string& id = std::get<std::string> (val);
+        if (id != "true" && id != "false")
+            return false;
+        return true;
+    }
+    bool GetBoolean() const
+    {
+        assert (type == ConfType::Id);
+        const std::string& id = std::get<std::string> (val);
+        if (id == "true")
+            return true;
+        else if (id == "false")
+            return false;
+        assert (0);
+    }
+    int GetLine() const
+    {
+        return line;
     }
 
   private:
-    ParseProp* prop;
-    PropType type;
+    ConfType type;
     std::variant<std::string, int64_t, ConfNumId> val;
     int line;
+    // TODO: remove this. This is a relic from before I made ConfVal define it's own interface
     friend class ConfParser;
     friend class ImageConf;
-    friend struct ConfError;
 };
 
 struct ParseProp
 {
-  private:
     std::string name;
     int line;
-    std::vector<ParseVal> values;
-    friend class ConfParser;
-    friend class ImageConf;
-    friend struct ConfError;
+    std::vector<ConfVal> values;
 };
 
 struct ParseBlock
 {
-  private:
     int line;
     std::string type;
     std::string name;
     std::unordered_map<std::string, ParseProp> props;
-    friend class ConfParser;
-    friend class ImageConf;
-    friend struct ConfError;
 };
 
 class ConfParser
