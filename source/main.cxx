@@ -81,14 +81,9 @@ bool CmdLine::ParseArguments (HelpCb helpCallback, VersionCb versionCallback)
         else if (optName == "-v" || optName == "-version")
             versionCallback();
         // Now we have to find this option in either GlobalOpts or the action's options
-        bool isOptGlobal = false;
         const Option* opt = findOptionInArray (optName, GlobalOpt);
         if (opt == nullptr && action)
-        {
             opt = findOptionInArray (optName, action->GetOptions());
-        }
-        else
-            isOptGlobal = true;
         if (opt == nullptr)
         {
             _log->Error ("invalid option \"" + optName + "\"");
@@ -113,12 +108,7 @@ bool CmdLine::ParseArguments (HelpCb helpCallback, VersionCb versionCallback)
             _log->Error ("argument \"" + optName + "\" requires an action");
             return false;
         }
-        bool res = false;
-        if (isOptGlobal)
-            res = action->SetGlobalOption (opt->id, value);
-        else
-            res = action->SetOption (opt->id, value);
-        if (!res)
+        if (!action->SetOption (opt->id, value))
             return false;
     }
     // Make sure we have an action
@@ -129,8 +119,6 @@ bool CmdLine::ParseArguments (HelpCb helpCallback, VersionCb versionCallback)
     }
     // Now validate it
     if (!action->ValidateOptions())
-        return false;
-    if (!action->ValidateGlobalOptions())
         return false;
     return true;
 }
@@ -162,7 +150,9 @@ static void Help()
 {
     std::cout << "nnimage - disk image management helper\n"
               << "nnimage allows you to manage the contents of a disk image for things like\n"
-              << "an OS distribution in a simple, fast and efficient way. Does not require root\n"
+              << "an OS distribution in a simple, fast and efficient way.\n"
+              << "Does not require root privileges to run, (except with the loopback backend), \n"
+              << "and can be used in a build system to create images\n"
               << "Usage: nnimage [-h|-v] ACTION [-f FILE] [-i IMAGE] OPTIONS\n"
                  "Arguments:\n";
     // Now document every argument
@@ -214,6 +204,11 @@ static void Version()
 
 int main (int argc, char** argv)
 {
+    // First see if we want to call test driver
+#ifdef NNIMAGE_ENABLE_TESTS
+    if (argc > 1 && std::string (argv[1]) == "run-test-cases")
+        return !TestDriver (argc - 1, argv + 1);
+#endif
     // Initialize command line
     _cmdLine = std::make_unique<CmdLine> (argc, argv);
     // Start up log

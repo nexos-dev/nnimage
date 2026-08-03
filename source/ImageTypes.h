@@ -49,19 +49,16 @@ class MbrImage : public Image
   public:
     MbrImage (const std::string& name) : Image (name, ImageType::Mbr)
     {}
-    BackendType GetBackend (BackendType suggestion)
-    {
-        if (suggestion != BackendType::Isofs)
-            return suggestion;
-        return BACKEND_DEFAULT;
-    }
 
   protected:
     const std::unordered_map<ImgProp, ImgConfItem>& getRegistry()
     {
         return registry;
     }
-    bool Validate() override;
+    bool checkBackend (BackendType type) const
+    {
+        return std::find (validBackends.begin(), validBackends.end(), type) != validBackends.end();
+    }
 
   private:
     // Gets numeric boot mode from string boot mode
@@ -70,6 +67,10 @@ class MbrImage : public Image
     const static std::unordered_map<std::string, BootMode> validBootModes;
     // Registry of configuration keys
     const static std::unordered_map<ImgProp, ImgConfItem> registry;
+    // Valid backends
+    const std::vector<BackendType> validBackends = {BackendType::Krun,
+                                                    BackendType::Loopback,
+                                                    BackendType::Guestfs};
 };
 
 class GptImage : public Image
@@ -77,9 +78,9 @@ class GptImage : public Image
   public:
     GptImage (const std::string& name) : Image (name, ImageType::Gpt)
     {}
-    BackendType GetBackend (BackendType suggestion)
+    BackendType GetBackendType (BackendType suggestion) const
     {
-        if (suggestion != BackendType::Isofs)
+        if (suggestion != BackendType::Xorriso && suggestion != BackendType::None)
             return suggestion;
         return BACKEND_DEFAULT;
     }
@@ -89,7 +90,10 @@ class GptImage : public Image
     {
         return registry;
     }
-    bool Validate() override;
+    bool checkBackend (BackendType type) const
+    {
+        return std::find (validBackends.begin(), validBackends.end(), type) != validBackends.end();
+    }
 
   private:
     // Gets numeric boot mode from string boot mode
@@ -98,6 +102,10 @@ class GptImage : public Image
     const static std::unordered_map<std::string, BootMode> validBootModes;
     // Registry of configuration keys
     const static std::unordered_map<ImgProp, ImgConfItem> registry;
+    // Valid backends
+    const std::vector<BackendType> validBackends = {BackendType::Krun,
+                                                    BackendType::Loopback,
+                                                    BackendType::Guestfs};
 };
 
 // Boot emulation
@@ -112,10 +120,17 @@ class IsoImage : public Image
 {
   public:
     IsoImage (const std::string& name) : Image (name, ImageType::Iso9660)
-    {}
-    BackendType GetBackend (BackendType suggestion)
     {
-        return BackendType::Isofs;
+        spec.fileExt = ".iso";    // Ensure extension is .iso
+        defaultBackend = BackendType::Xorriso;
+    }
+    BackendType GetBackendType (BackendType suggestion) const
+    {
+        return BackendType::Xorriso;
+    }
+    bool checkBackend (BackendType type) const
+    {
+        return std::find (validBackends.begin(), validBackends.end(), type) != validBackends.end();
     }
 
   protected:
@@ -140,6 +155,8 @@ class IsoImage : public Image
     const static std::unordered_map<std::string, IsoBootEmu> bootEmus;
     // Boot emulation to boot image type mapping
     const static std::unordered_map<IsoBootEmu, ImageType> bootEmuModes;
+    // Valid backends
+    const std::vector<BackendType> validBackends = {BackendType::Xorriso};
 };
 
 class FloppyImage : public Image
@@ -153,11 +170,9 @@ class FloppyImage : public Image
     {
         return registry;
     }
-    BackendType GetBackend (BackendType suggestion)
+    bool checkBackend (BackendType type) const
     {
-        if (suggestion != BackendType::Isofs)
-            return suggestion;
-        return BACKEND_DEFAULT;
+        return std::find (validBackends.begin(), validBackends.end(), type) != validBackends.end();
     }
     bool Validate() override;
 
@@ -170,6 +185,10 @@ class FloppyImage : public Image
     const static std::unordered_map<ImgProp, ImgConfItem> registry;
     // Valid sizes for a floppy image
     const static std::vector<int> validSizes;
+    // Valid backends
+    const std::vector<BackendType> validBackends = {BackendType::Krun,
+                                                    BackendType::Loopback,
+                                                    BackendType::Guestfs};
 };
 
 #endif

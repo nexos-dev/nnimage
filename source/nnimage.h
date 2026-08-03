@@ -20,14 +20,18 @@
 
 #include "ConfParser.h"
 #include "config.h"
-#include "external/MemoryMapped.h"
+#include "MemoryMapped.h"
 #include "Backend.h"
 #include <algorithm>
+#include <deque>
 #include <fstream>
 #include <functional>
 #include <list>
 #include <map>
+#include <queue>
 #include <memory>
+#include <mutex>
+#include <condition_variable>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -62,18 +66,14 @@ class Action
     {}
     // Gets all valid options for action
     virtual Option* GetOptions() = 0;
-    // Set specified option on action
-    virtual bool SetOption (OptionId opt, const std::string& val) = 0;
-    // Ensures options are in a valid state
-    virtual bool ValidateOptions() = 0;
     // Executes each task for an action
     virtual bool Execute() = 0;
     // Creates an action object
     static std::unique_ptr<Action> MakeAction (const std::string& name);
-    // Sets a non-action-specific option (TODO implement polymorphically)
-    bool SetGlobalOption (OptionId opt, const std::string& val);
-    // Validates all non-action-specific options
-    bool ValidateGlobalOptions();
+    // Set specified option on action
+    virtual bool SetOption (OptionId opt, const std::string& val);
+    // Ensures options are in a valid state
+    virtual bool ValidateOptions();
     // Gets configuration file name
     const std::string& GetConf()
     {
@@ -118,13 +118,26 @@ class Action
   protected:
     ActionType type;
     // Command line values
-    std::string outputFile;
+    std::string outputDir;
+    std::string namePrefix;
     std::string confFile = "nnimage.conf";
-    BackendType defaultBackend = BackendType::None;
+    BackendType backendType = BackendType::None;
     std::unordered_map<OptionId, std::string> opts;
     // All images and partitions
     std::vector<std::unique_ptr<Image>> images;
     std::map<std::string, std::unique_ptr<Partition>> parts;
+    // Requests user confirmation for something
+    bool getConfirmation (const std::string& msg);
+    // Gets the backend object we need for an image, given a suggestion
+    std::shared_ptr<Backend> getBackend (const Image& img, BackendType type);
+    // Prepares all backends for use
+    bool prepareBackends (const std::vector<std::unique_ptr<Image>>& images);
+
+  private:
+    // List of all backends that have been created. This is because we may have multiple backends at
+    // a time, e.g., if we have to create a regular disk image with krun and then created an ISO
+    // image with Xorriso
+    std::vector<std::shared_ptr<Backend>> backends;
 };
 
 #include "Actions.h"
@@ -174,8 +187,14 @@ class Log
     void Info (const std::string& msg);
     void SysError (const std::string& msg);
     bool AddFile (const std::string& fileName);
+    void LogAt (const std::string& msg, LogLevel level);
+    void Disable();
+    void Enable();
     ~Log();
     void SetLogLevel (LogLevel level);
+    // Creates a stream to allow logging to the returned file descriptor to go the both stderr and
+    // the log
+    int CreateLogStream (const std::string& msgPrefix, LogLevel level = LogLevel::Error);
 
   private:
     // Log files
@@ -186,6 +205,10 @@ class Log
     bool isCoutTty;
     // Cerr flags
     bool isCerrTty;
+    // If log is enabled right now
+    std::atomic<bool> isLogEnabled = true;
+    // Log mutex
+    std::mutex logMtx;
     // Lines that have been logged
     std::list<std::string> lines;
     // Program name
@@ -196,7 +219,15 @@ class Log
     void addLine (const std::string& line, LogLevel level);
     // Makes path for log
     const std::string getLogPath (const std::string& logName);
+    // Logs to cerr
+    void logToCerr (const std::string& msg, LogLevel level);
+    // Logs to cout
+    void logToCout (const std::string& msg, LogLevel level);
+    // Opened file descriptors for streams
+    std::vector<int> logStreams;
 };
+
+extern std::unique_ptr<Log> _log;
 
 enum class ConfValType
 {
@@ -295,31 +326,43 @@ struct PartConfItem
     PartConfSetter setter;
 };
 
+struct PartSpec
+{
+    std::string name;
+    std::string fs;
+    std::string prefix;
+    int64_t start = -1;
+    int64_t size = -1;
+    bool isBoot = false;
+};
+
 enum class PartProp;
 class Partition
 {
   public:
-    Partition (const std::string& name) : name{name}
-    {}
+    Partition (const std::string& name)
+    {
+        spec.name = name;
+    }
     const std::string& GetName()
     {
-        return name;
+        return spec.name;
     }
     // Sets a configuration key in the image
     void SetConf (const std::string& name, const ConfVal& val, ConfError& e);
     void SetConf (PartProp key, const ConfVal& val, ConfError& e);
     // Resolves name of property
     PartProp ResolveName (const std::string& name);
+    // Gets partition specification
+    const PartSpec& GetSpec()
+    {
+        return spec;
+    }
 
   private:
     // Gets name from property
     const std::string getPropName (PartProp prop);
-    const std::string name;    // Name of partition
-    std::string fs;            // Filesystem used on partition
-    std::string prefix;        // Prefix in output directory of partition
-    int64_t start;             // Start position of partition
-    int64_t size;              // Size of partitions in bytes
-    bool isBoot;               // Wheter this is the boot partition
+    PartSpec spec;
     const static std::unordered_map<PartProp, PartConfItem> registry;    // Configuration
                                                                          // registry
     const static std::unordered_map<std::string, PartProp> nameRegistry;
@@ -364,21 +407,54 @@ enum class BootMode
     Error
 };
 
+// Image specification
+struct ImgSpec
+{
+    std::string name;
+    std::string fileExt = ".img";
+    ImageType type = ImageType::Gpt;
+    int64_t size = -1;
+    BootMode bootMode = BootMode::None;
+    mutable std::mutex lock;
+    // Deleted copy constructors
+    ImgSpec (const ImgSpec&) = delete;
+    ImgSpec& operator= (const ImgSpec&) = delete;
+    ImgSpec (const ImgSpec&&) = delete;
+    ImgSpec& operator= (const ImgSpec&&) = delete;
+    ImgSpec() = default;
+    ~ImgSpec() = default;
+};
+
 // Image class
 enum class ImgProp;
 class Image
 {
   public:
-    Image (const std::string& name, ImageType type) : name{name}, type{type}
-    {}
+    Image (const std::string& name, ImageType type)
+    {
+        spec.name = name;
+        spec.type = type;
+    }
     const std::string& GetName()
     {
-        return name;
+        return spec.name;
     }
-    ImageType GetType()
+    ImageType GetType() const
     {
-        return type;
+        return spec.type;
     }
+    bool SetBackend (std::shared_ptr<Backend> backend)
+    {
+        if (this->backend != nullptr)
+            return false;
+        this->backend = backend;
+        return true;
+    }
+    Backend* GetBackend()
+    {
+        return backend.get();
+    }
+    BackendType GetBackendType (BackendType suggestion) const;
     // Sets a configuration key in the image
     void SetConf (const std::string& name, const ConfVal& val, ConfError& e);
     void SetConf (ImgProp prop, const ConfVal& val, ConfError& e);
@@ -394,6 +470,11 @@ class Image
     }
     // Resolves all partitions
     bool ResolvePartitions (ConfError& e);
+    // Gets the image specification
+    const ImgSpec& GetSpec() const
+    {
+        return spec;
+    }
     // Validates the image's configuration
     virtual bool Validate();
     // Creates an image object from a type and name
@@ -412,13 +493,13 @@ class Image
     virtual BootMode getBootMode (const std::string& modeStr) = 0;
     // Gets registry of configuration keys
     virtual const std::unordered_map<ImgProp, ImgConfItem>& getRegistry() = 0;
-    // Data fields
-    ImageType type = ImageType::Gpt;
-    const std::string name;
-    int64_t size = -1;    // In bytes
-    BootMode bootMode = BootMode::None;
+    virtual bool checkBackend (BackendType type) const = 0;
+    // Image data spec
+    ImgSpec spec;
     std::vector<PartRef> partitionNames;              // List of partitions before resolution
     std::vector<std::unique_ptr<Partition>> parts;    // List after resolution
+    BackendType defaultBackend = BACKEND_DEFAULT;     // Default backend for image
+    std::shared_ptr<Backend> backend;                 // Backend for image
   private:
     // Gets name from ImgProp
     const std::string getPropName (ImgProp prop);
@@ -432,48 +513,151 @@ class Image
 using TaskFunc = std::function<bool()>;
 typedef int TaskId;
 
+enum class TaskState
+{
+    Pending,
+    Running,
+    Finished,
+    Skipped,
+    Rollback,
+    RolledBack,
+    Failed
+};
+
 // Task class
 class Task
 {
   public:
-    Task (TaskId id, TaskFunc func) : id{id}, task{func}
+    Task (TaskFunc func, const std::string& name) : task{func}, name{name}
     {}
+    Task (TaskFunc func, const std::string& name, TaskFunc rollbackFunc)
+        : task{func}, name{name}, rollback{rollbackFunc}
+    {}
+    void SetId (TaskId id)
+    {
+        this->id = id;
+    }
     bool Run()
     {
-        return task();
+        // Ensure we are in a pending state
+        TaskState expected = TaskState::Pending;
+        bool result = false;
+        if (!state.compare_exchange_strong (expected, TaskState::Running))
+        {
+            if (expected == TaskState::Skipped)
+                return true;
+            else
+            {
+                _log->Error ("task \"" + name + "\" is not in a pending state");
+                return false;
+            }
+        }
+        // Do it
+        result = task();
+        if (result)
+        {
+            // If a rollback occured, do it now
+            if (rollbackPending.load())
+            {
+                rollback();
+                this->state.store (TaskState::RolledBack);
+            }
+            else
+                this->state.store (TaskState::Finished);
+        }
+        else
+            this->state.store (TaskState::Failed);
+        return result;
     }
-    TaskId GetId()
+    TaskState Skip()
+    {
+        // Ensure we are pending
+        TaskState expected = TaskState::Pending;
+        if (!state.compare_exchange_strong (expected, TaskState::Skipped))
+            return expected;
+        return TaskState::Skipped;
+    }
+    bool Rollback()
+    {
+        // Ensure we are finished
+        TaskState expected = TaskState::Finished;
+        if (!state.compare_exchange_strong (expected, TaskState::Rollback))
+            return false;
+        rollback();
+        this->state.store (TaskState::RolledBack);
+        return true;
+    }
+    TaskId GetId() const
     {
         return id;
+    }
+    const std::string& GetName() const
+    {
+        return name;
+    }
+    TaskState GetState() const
+    {
+        return state.load();
+    }
+    static std::unique_ptr<Task> EmptyTask (const std::string& name = "NoopTask")
+    {
+        return std::make_unique<Task> ([]() { return true; }, name);
+    }
+    void SetRollbackPending()
+    {
+        rollbackPending.store (true);
     }
 
   private:
     TaskId id;
     TaskFunc task;
+    TaskFunc rollback = []() {
+        _log->Warn ("default rollback handler called");
+        return true;
+    };
+    std::atomic<TaskState> state{TaskState::Pending};
+    std::atomic<bool> rollbackPending{false};
+    const std::string name;
 };
 
 class TaskGraph
 {
   public:
-    TaskId AddTask (TaskFunc func);
+    TaskGraph()
+    {}
+    TaskId AddTask (std::unique_ptr<Task> task);
     bool AddDependency (TaskId src, TaskId dest);    // Adds dependency dest to src
     bool RunTasks();    // Runs all tasks in their proper order, as parallelized as possible
   private:
     bool taskExists (TaskId task);
     int getInDegree (TaskId task);
+    bool pathExists (TaskId src, TaskId dest);
+    bool rollbackTasks (TaskId failedTask);
+    bool topoSort (std::queue<TaskId>& sortedTasks);
+    void getDescendants (TaskId task, std::vector<TaskId>& descendants);
+    void addReadyTask (TaskId task);
     std::vector<std::unique_ptr<Task>> tasks;    // Array of tasks
+    std::queue<TaskId> completedQueue;    // Queue of completed tasks, reverse topological order
+    std::mutex completedMtx;              // Mutex for completed queue
     std::vector<std::vector<TaskId>> adjList;    // Dependency info
     std::vector<TaskId> sortedTasks;             // Topologically sorted tasks
-    std::vector<int> inDegree;                   // In degree list
+    std::deque<std::atomic<int>> inDegree;       // In degree list
+    std::mutex readyMtx;                         // Mutex for ready queue
+    std::queue<TaskId> ready;                    // Ready queue
+    std::condition_variable readyCond;           // Condition variable for ready queue
+    std::mutex failureMtx;                       // Mutex for failure state
     TaskId curId = 0;
+    std::atomic<size_t> completed = 0;
+    std::atomic<size_t> succeeded = 0;
 };
-
-extern std::unique_ptr<Log> _log;
 
 static inline Action* GetAction()
 {
     extern std::unique_ptr<CmdLine> _cmdLine;
     return _cmdLine->GetAction();
 }
+
+// Test driver function
+bool TestDriver (int argc, char** argv);
 
 #endif

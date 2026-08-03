@@ -146,7 +146,9 @@ struct ConfVal
             return true;
         else if (id == "false")
             return false;
-        assert (0);
+        else
+            assert (false);
+        return false;       // To make the compiler shut up
     }
     int GetLine() const
     {

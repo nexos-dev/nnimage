@@ -21,10 +21,11 @@
 #include <cassert>
 #ifdef HAVE_CHARDET
 #include <chardet/chardet.h>
-#include <iconv.h>
 #endif
+#include <iconv.h>
+#include <cstring>
 #include <iostream>
-#include "external/MemoryMapped.h"
+#include "MemoryMapped.h"
 
 // clang-format on
 
@@ -62,7 +63,7 @@ bool ImageConf::convertFileEnc (std::string_view data,
     return true;
 }
 
-// Opens up configuration gile
+// Opens up configuration file
 bool ImageConf::openConfFile (MemoryMapped& file, std::string_view& contents)
 {
     // First open the file up
@@ -98,15 +99,15 @@ bool ImageConf::openConfFile (MemoryMapped& file, std::string_view& contents)
     if (!fileEnc.empty())
     {
         // Use this encoding
-        enc = fileEnc.c_str();
+        const char* userEnc = fileEnc.c_str();
         // Warn user if detected and specified encoding differ. If we are not confident in
         // the detected encoding, don't worry about warning them
         // NOTE: if ASCII is the detected encoding we won't warn as ASCII is compatible with
         // essentially every other encoding known to man
-        if (strcmp (enc, obj->encoding) != 0 && confidence > 0.5 && strcmp (enc, "ASCII") != 0)
+        if (strcmp (enc, userEnc) != 0 && confidence > 0.5 && strcmp (enc, "ASCII") != 0)
         {
             // It's not an error, but we will warn the user
-            std::string detectEnc = obj->encoding;
+            std::string detectEnc = enc;
             _log->Warn ("specified character encoding of \"" + fileEnc +
                         "\" doesn't match detected encoding of \"" + detectEnc + "\"");
         }
@@ -120,10 +121,10 @@ bool ImageConf::openConfFile (MemoryMapped& file, std::string_view& contents)
         // out
         if (confidence <= 0.5)
         {
-            std::string enc = obj->encoding;
+            std::string encStr = enc;
             parseError (ConfErrorType::SysError,
                         0,
-                        "unable to detect character set (guessed \"" + enc +
+                        "unable to detect character set (guessed \"" + encStr +
                             "\", pass option -confenc to force)");
 #ifdef HAVE_CHARDET
             detect_obj_free (&obj);

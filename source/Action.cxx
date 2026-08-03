@@ -17,6 +17,8 @@
 
 #include "nnimage.h"
 #include <cassert>
+#include <filesystem>
+#include <iostream>
 
 // Returns an action object given a name
 std::unique_ptr<Action> Action::MakeAction (const std::string& name)
@@ -27,49 +29,61 @@ std::unique_ptr<Action> Action::MakeAction (const std::string& name)
     return it->second();
 }
 
-bool Action::SetGlobalOption (OptionId id, const std::string& val)
+bool Action::SetOption (OptionId id, const std::string& val)
 {
     switch (id)
     {
         case OptionId::ConfFile:
-            this->confFile = val;
+            confFile = val;
             break;
-        case OptionId::ImageFile:
-            this->outputFile = val;
+        case OptionId::NamePrefix:
+            namePrefix = val;
+            break;
+        case OptionId::OutputDir:
+            outputDir = val;
             break;
         case OptionId::Backend:
             // Resolve the backend
-            this->defaultBackend = Backend::ResolveBackend (val);
-            if (this->defaultBackend == BackendType::None)
+            backendType = Backend::ResolveBackend (val);
+            if (backendType == BackendType::None)
             {
                 _log->Error ("invalid backend \"" + val + "\"");
                 return false;
             }
             break;
         case OptionId::ConfEnc:
-            this->opts[id] = val;
+            opts[id] = val;
             break;
     }
     return true;
 }
 
-bool Action::ValidateGlobalOptions()
+bool Action::ValidateOptions()
 {
+    // If output directory is not set, use current working directory
+    if (outputDir.empty())
+    {
+        auto cwd = std::filesystem::current_path();
+        outputDir = cwd.string();
+        // Ensure there is a trailing slash
+        if (outputDir.back() != '/')
+            outputDir += '/';
+    }
     return true;
 }
 
 void Action::AddPartition (std::unique_ptr<Partition> part)
 {
-    this->parts[part->GetName()] = std::move (part);
+    parts[part->GetName()] = std::move (part);
 }
 
 Image* Action::FindImage (const std::string& name)
 {
-    auto it = std::find_if (
-        this->images.begin(),
-        this->images.end(),
-        [&name] (const std::unique_ptr<Image>& img) { return img->GetName() == name; });
-    if (it == this->images.end())
+    auto it =
+        std::find_if (images.begin(), images.end(), [&name] (const std::unique_ptr<Image>& img) {
+            return img->GetName() == name;
+        });
+    if (it == images.end())
         return nullptr;
     return it.base()->get();
 }
@@ -86,40 +100,122 @@ bool Action::ResolvePartitions (ConfError& e)
     return true;
 }
 
+bool Action::getConfirmation (const std::string& msg)
+{
+    std::string input;
+    std::cout << msg << " [y/N]: ";
+    std::getline (std::cin, input);
+    if (input == "y" || input == "Y")
+        return true;
+    return false;
+}
+
+std::shared_ptr<Backend> Action::getBackend (const Image& img, BackendType type)
+{
+    // Get the real backend type
+    type = img.GetBackendType (type);
+    // Make sure the backend is enabled
+    if (!Backend::IsBackendEnabled (type))
+    {
+        _log->Error ("couldn't create backend: backend \"" + Backend::GetBackendName (type) +
+                     "\" disabled at compile time");
+        return nullptr;
+    }
+    // Check if the backend exists
+    // Yes I'm aware that doing a static_cast from an enum class is bad practice and no I don't care
+    size_t idx = static_cast<size_t> (type);
+    if (idx < backends.size() && backends[idx] != nullptr)
+    {
+        return backends[idx];
+    }
+    // Create the backend
+    auto backend = Backend::BackendFactory (type);
+    if (!backend->BackendCreated())
+        return nullptr;
+    // Ensure the backends vector is large enough
+    if (idx >= backends.size())
+        backends.resize (idx + 1);
+    backends[idx] = std::move (backend);
+    return backends[idx];
+}
+
+bool Action::prepareBackends (const std::vector<std::unique_ptr<Image>>& images)
+{
+    for (const auto& img : images)
+    {
+        auto backend = getBackend (*img, backendType);
+        if (!backend)
+            return false;
+        img->SetBackend (backend);
+    }
+    return true;
+}
+
 // Create action implementation
 bool CreateAction::ValidateOptions()
 {
-    return true;
+    return Action::ValidateOptions();
 }
 
 bool CreateAction::SetOption (OptionId opt, const std::string& val)
 {
     if (opt == OptionId::Overwrite)
-        this->overwrite = true;
+        overwrite = true;
+    else
+        return Action::SetOption (opt, val);
     return true;
 }
 
 bool CreateAction::Execute()
 {
     TaskGraph graph;
-    for (auto& img : this->images)
+    // Prepare all needed backends
+    if (!prepareBackends (images))
+        return false;
+    // Iterate through each image
+    for (auto& img : images)
     {
         // Validate it
         if (!img->Validate())
             return false;
+        auto& imgSpec = img->GetSpec();
+        // Now we need to prepare the file name
+        std::string fileName = outputDir + namePrefix + img->GetName() + imgSpec.fileExt;
+        // Check if it exists
+        if (std::filesystem::exists (fileName) && !overwrite)
+        {
+            // Request user confirmation
+            if (!getConfirmation ("image file \"" + fileName + "\" already exists. Overwrite?"))
+                return false;
+        }
+        // Get the backend
+        auto backend = img->GetBackend();
+        // Now invoke to create the image
+        auto task = backend->CreateImage (imgSpec, fileName);
+        if (task == nullptr)
+            return false;
+        auto createId = graph.AddTask (std::move (task));
+        // Do the same for the partition table
+        auto partTask = backend->CreatePartTable (imgSpec, fileName);
+        if (partTask == nullptr)
+            return false;
+        auto partId = graph.AddTask (std::move (partTask));
+        // Ensure proper ordering
+        graph.AddDependency (partId, createId);
     }
-    return true;
+    // Do the tasks now
+    return graph.RunTasks();
 }
 
 // Partition action implementation
 bool PartitionAction::ValidateOptions()
 {
-    return true;
+    return Action::ValidateOptions();
 }
 
 bool PartitionAction::SetOption (OptionId opt, const std::string& val)
 {
-    return true;
+    return Action::SetOption (opt, val);
 }
 
 bool PartitionAction::Execute()
@@ -130,12 +226,12 @@ bool PartitionAction::Execute()
 // Format action implementation
 bool FormatAction::ValidateOptions()
 {
-    return true;
+    return Action::ValidateOptions();
 }
 
 bool FormatAction::SetOption (OptionId opt, const std::string& val)
 {
-    return true;
+    return Action::SetOption (opt, val);
 }
 
 bool FormatAction::Execute()
@@ -147,18 +243,20 @@ bool FormatAction::Execute()
 bool UpdateAction::ValidateOptions()
 {
     // Make sure a directory was passed
-    if (this->srcDir.empty())
+    if (srcDir.empty())
     {
         _log->Error ("source directory must be passed to action \"update\"");
         return false;
     }
-    return true;
+    return Action::ValidateOptions();
 }
 
 bool UpdateAction::SetOption (OptionId opt, const std::string& val)
 {
     if (opt == OptionId::SrcDir)
-        this->srcDir = val;
+        srcDir = val;
+    else
+        return Action::SetOption (opt, val);
     return true;
 }
 

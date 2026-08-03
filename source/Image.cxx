@@ -39,15 +39,15 @@ const std::unordered_map<ImgProp, ImgConfItem> Image::baseRegistry = {
         if (size == -1)
             e = ConfErrorType::BadNumId;
         else
-            img.size = size;
+            img.spec.size = size;
       }
     }},
 
     {ImgProp::BootMode, {ConfType::Id, 
      [] (Image& img, const ConfVal& val, ConfErrorType& e) {
         const std::string& modeName = val.GetString();
-        img.bootMode = img.getBootMode (modeName);
-        if (img.bootMode == BootMode::Error)
+        img.spec.bootMode = img.getBootMode (modeName);
+        if (img.spec.bootMode == BootMode::Error)
             e = ConfErrorType::UnrecognizedId;
       }
     }}
@@ -141,7 +141,7 @@ ImgProp Image::ResolveProp (const std::string& name)
     return prop;
 }
 
-// TODO: use a lookup table for image type name-to-number
+// TODO: use a lookup table for image type number-to-name
 const std::string Image::GetTypeName (ImageType type)
 {
     switch (type)
@@ -191,12 +191,22 @@ bool Image::ResolvePartitions (ConfError& e)
 bool Image::Validate()
 {
     // Make sure a size was passed
-    if (size == -1)
+    if (spec.size == -1)
     {
-        _log->Error ("image \"" + name + "\" missing required property \"size\"");
+        _log->Error ("image \"" + spec.name + "\" missing required property \"size\"");
         return false;
     }
+    // Ensure there is a name
+    if (spec.name.empty())
+        spec.name = "nndisk";
     return true;
+}
+
+BackendType Image::GetBackendType (BackendType suggestion) const
+{
+    if (!checkBackend (suggestion))
+        return defaultBackend;
+    return suggestion;
 }
 
 // MBR image implementation
@@ -217,11 +227,6 @@ BootMode MbrImage::getBootMode (const std::string& modeStr)
     return it->second;
 }
 
-bool MbrImage::Validate()
-{
-    return Image::Validate();
-}
-
 // GPT image implementation
 
 // GPT registry table
@@ -239,11 +244,6 @@ BootMode GptImage::getBootMode (const std::string& modeStr)
     if (it == validBootModes.end())
         return BootMode::Error;
     return it->second;
-}
-
-bool GptImage::Validate()
-{
-    return Image::Validate();
 }
 
 // ISO image implementation
@@ -302,30 +302,33 @@ BootMode IsoImage::getBootMode (const std::string& modeStr)
 bool IsoImage::Validate()
 {
     // Make sure a boot image was passed
-    if (this->bootEmu != IsoBootEmu::Noemu)
+    if (bootEmu != IsoBootEmu::Noemu)
     {
-        if (this->bootImageName.empty())
+        if (bootImageName.empty())
         {
-            _log->Error ("image \"" + this->name + "\" missing required property \"bootemu\"");
+            _log->Error ("image \"" + spec.name + "\" missing required property \"bootemu\"");
             return false;
         }
         // Resolve it
-        this->bootImage = GetAction()->FindImage (this->bootImageName);
-        if (this->bootImage == nullptr)
+        bootImage = GetAction()->FindImage (bootImageName);
+        if (bootImage == nullptr)
         {
-            _log->Error ("non-existant image \"" + this->bootImageName +
-                         "\" given as boot image on image \"" + this->name + "\"");
+            _log->Error ("non-existant image \"" + bootImageName +
+                         "\" given as boot image on image \"" + spec.name + "\"");
             return false;
         }
         // Get the type
-        ImageType type = IsoImage::bootEmuModes.find (this->bootEmu)->second;
-        if (this->bootImage->GetType() != type)
+        ImageType type = IsoImage::bootEmuModes.find (bootEmu)->second;
+        if (bootImage->GetType() != type)
         {
-            _log->Error ("image \"" + this->name + "\" requires image type \"" +
+            _log->Error ("image \"" + spec.name + "\" requires image type \"" +
                          Image::GetTypeName (type) + "\" for boot image");
             return false;
         }
     }
+    // Make a default name
+    if (spec.name.empty())
+        spec.name = "nncdrom";
     return Image::Validate();
 }
 
@@ -355,7 +358,7 @@ bool FloppyImage::Validate()
     // Make sure this is a valid floppy disk size
     auto it = std::find (FloppyImage::validSizes.begin(),
                          FloppyImage::validSizes.end(),
-                         this->size / 1024);
+                         spec.size / 1024);
     if (it == FloppyImage::validSizes.end())
     {
         _log->Error ("floppy image must be of size 720K, 1440K, or 2880K");
@@ -377,19 +380,19 @@ const std::unordered_map<std::string, PartProp> Partition::nameRegistry = {
 const std::unordered_map<PartProp, PartConfItem> Partition::registry = {
     {PartProp::Format, {ConfType::String,
      [] (Partition& part, const ConfVal& val, ConfErrorType& e) 
-        { part.fs = val.GetString(); }
+        { part.spec.fs = val.GetString(); }
     }},
 
     {PartProp::Prefix, {ConfType::String,
      [] (Partition& part, const ConfVal& val, ConfErrorType& e) 
-        { part.prefix = val.GetString(); }
+        { part.spec.prefix = val.GetString(); }
     }},
 
     {PartProp::Start, {ConfType::NumId,
      [] (Partition& part, const ConfVal& val, ConfErrorType& e) {
         const ConfNumId& start = val.GetNumId();
-        part.start = Image::NormalizeNumId (start);
-        if (part.start == -1)
+        part.spec.start = Image::NormalizeNumId (start);
+        if (part.spec.start == -1)
             e = ConfErrorType::BadNumId;
       }
     }},
@@ -397,8 +400,8 @@ const std::unordered_map<PartProp, PartConfItem> Partition::registry = {
     {PartProp::Size, {ConfType::NumId,
      [] (Partition& part, const ConfVal& val, ConfErrorType& e) {
         const ConfNumId& size = val.GetNumId();
-        part.size = Image::NormalizeNumId (size);
-        if (part.size == -1)
+        part.spec.size = Image::NormalizeNumId (size);
+        if (part.spec.size == -1)
             e = ConfErrorType::BadNumId;
        }
     }},
@@ -410,7 +413,7 @@ const std::unordered_map<PartProp, PartConfItem> Partition::registry = {
             e = ConfErrorType::WrongType;
             return;
         }
-        part.isBoot = val.GetBoolean();
+        part.spec.isBoot = val.GetBoolean();
       }
     }}
 };
