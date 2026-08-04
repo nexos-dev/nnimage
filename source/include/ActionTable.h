@@ -1,5 +1,5 @@
 /*
-    Actions.h - contains actions
+    ActionTable.h - contains actions
     Copyright 2026 Jedidiah Thompson
 
     Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,18 +15,13 @@
     limitations under the License.
 */
 
-#ifndef ACTIONS_H
-#define ACTIONS_H
+#ifndef ACTIONTABLE_H
+#define ACTIONTABLE_H
 
-#include "nnimage.h"
+#include "include/Action.h"
 
-enum class ActionType
-{
-    ActionCreate,
-    ActionPartition,
-    ActionFormat,
-    ActionUpdate
-};
+#include <functional>
+#include <unordered_map>
 
 class CreateAction : public Action
 {

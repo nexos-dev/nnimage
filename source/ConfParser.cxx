@@ -15,13 +15,12 @@
     limitations under the License.
 */
 
-// clang-format off
 #include "nnimage.h"
-#include "ConfParser.h"
-// clang-format on
-
+#include "include/ConfParser.h"
 #include <cassert>
 #include <string_view>
+
+// TODO: split up lexer and parser into separate files
 
 // Lexer
 ConfLexer::ConfLexer (const std::string& file, std::string_view& data) : fileData{data}, file{file}
@@ -64,6 +63,24 @@ void ConfLexer::lexError (LexError err, const std::string& extra)
     curTok->type = TokenType::Error;
     isAccepted = true;
     isError = true;
+}
+
+void ConfLexer::lexWarn (LexWarning err, const std::string& extra)
+{
+    std::string msg;
+    msg = file;
+    msg += ":";
+    // Add the line
+    msg += std::to_string (curLine);
+    msg += ": ";
+    // Now add the code
+    switch (err)
+    {
+        case LexWarning::InvalidEsc:
+            msg += "Invalid escape sequence \"" + extra + "\", ignoring";
+            break;
+    }
+    _log->Warn (msg);
 }
 
 char ConfLexer::readChar()
@@ -196,15 +213,17 @@ bool ConfLexer::isCharNum (char c, int base)
     {
         case '0':
         case '1':
+            return true;
         case '2':
         case '3':
         case '4':
         case '5':
         case '6':
         case '7':
+            return base >= 8;
         case '8':
         case '9':
-            return true;
+            return base >= 10;
         case 'A':
         case 'a':
         case 'B':
@@ -460,11 +479,12 @@ std::unique_ptr<ConfToken> ConfLexer::NextToken()
                 }
                 else
                 {
-                    // Invalid number
-                    std::string num = "0";
-                    num += readChar();
-                    lexError (LexError::InvalidNum, num);
-                    return tok;
+                    // This is just a zero
+                    tok->type = TokenType::Number;
+                    tok->line = curLine;
+                    tok->val.emplace<uint64_t> (0);
+                    isAccepted = true;
+                    break;
                 }
                 goto lexNum;
             case '1':
@@ -489,10 +509,10 @@ std::unique_ptr<ConfToken> ConfLexer::NextToken()
                     c = readChar();
                 }
                 // Convert to number
-                int64_t val = 0;
+                uint64_t val = 0;
                 try
                 {
-                    val = std::stoi (numStr, 0, base);
+                    val = std::stoull (numStr, 0, base);
                 }
                 catch (const std::invalid_argument& e)
                 {
@@ -588,6 +608,14 @@ std::unique_ptr<ConfToken> ConfLexer::NextToken()
                             lexError (LexError::UnexpectedEof, "");
                             return tok;
                         }
+                        else
+                        {
+                            // Invalid escape
+                            std::string esc;
+                            esc += next;
+                            lexWarn (LexWarning::InvalidEsc, esc);
+                            skipChar();
+                        }
                     }
                     else
                         str += c;
@@ -645,13 +673,31 @@ std::unique_ptr<ConfToken> ConfParser::expectToken (TokenType type,
 
 void ConfParser::tokenError (TokenType expected, TokenType got, int line)
 {
-    std::string msg = file + ":" + std::to_string (line) +
-                      ": "
-                      "unexpected token \"" +
-                      lexer.NameFromToken (got) + "\"";
-    msg += " after token \"" + lexer.NameFromToken (lastToken->type) + "\"";
+    std::string token = lexer.NameFromToken (got);
+    std::string expectedToken = lexer.NameFromToken (expected);
+    std::string msg = "";
+    if (lastToken)
+        msg += "after token \"" + lexer.NameFromToken (lastToken->type) + "\"";
     if (expected != TokenType::None)
         msg += ", expected token \"" + lexer.NameFromToken (expected) + "\"";
+    parseError (ParseError::UnexpectedToken, line, token, msg);
+}
+
+void ConfParser::parseError (ParseError error,
+                             int line,
+                             const std::string& extra,
+                             const std::string& extra2)
+{
+    std::string msg = file + ":" + std::to_string (line) + ": ";
+    switch (error)
+    {
+        case ParseError::DuplicateProp:
+            msg += "duplicate property \"" + extra + "\"";
+            break;
+        case ParseError::UnexpectedToken:
+            msg += "unexpected token \"" + extra + "\" " + extra2;
+            break;
+    }
     _log->Error (msg);
 }
 
@@ -694,7 +740,6 @@ bool ConfParser::NextBlock (ParseBlock& block, bool& isEof)
             tokenError (TokenType::Obrace, token->type, token->line);
             return false;
         }
-        size_t propIdx = 0;
         while (1)
         {
             // Now start parsing the properties
@@ -765,6 +810,11 @@ bool ConfParser::NextBlock (ParseBlock& block, bool& isEof)
                     tokenError (TokenType::None, token->type, token->line);
                     return false;
                 }
+            }
+            if (block.props.find (prop.name) != block.props.end())
+            {
+                parseError (ParseError::DuplicateProp, prop.line, prop.name);
+                return false;
             }
             block.props[prop.name] = prop;
         }

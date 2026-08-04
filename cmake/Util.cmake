@@ -1,5 +1,5 @@
-/*
-    nnimage.h - contains header of nnimage
+#[[
+    Util.cmake - contains utility functions for the build system
     Copyright 2026 Jedidiah Thompson
 
     Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,23 +13,13 @@
     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
     See the License for the specific language governing permissions and
     limitations under the License.
-*/
+]]
 
-#ifndef NNIMAGE_H
-#define NNIMAGE_H
-
-#include "include/Log.h"
-#include "include/Task.h"
-#include "include/Image.h"
-#include "include/Action.h"
-#include "include/CmdLine.h"
-#include "include/Backend.h"
-#include "include/ActionTable.h"
-#include "include/ImageTypes.h"
-#include "include/EnumArray.h"
-#include "include/Option.h"
-
-// Test driver function
-bool TestDriver (int argc, char** argv);
-
-#endif
+function(ConvertBackendNameToType backendName outputVar)
+    # Just capitalize the first letter of the backend name and use that as the enum value
+    string(SUBSTRING "${backendName}" 0 1 firstLetter)
+    string(TOUPPER "${firstLetter}" firstLetterUpper)
+    string(SUBSTRING "${backendName}" 1 -1 restOfName)
+    string(CONCAT backendTypeName "${firstLetterUpper}${restOfName}")
+    set(${outputVar} "${backendTypeName}" PARENT_SCOPE)
+endfunction()

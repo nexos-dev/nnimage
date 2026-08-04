@@ -15,33 +15,14 @@
     limitations under the License.
 */
 
-#ifndef IMAGETYPES_H
-#define IMAGETYPES_H
+#ifndef NNIMAGE_IMAGETYPES_H
+#define NNIMAGE_IMAGETYPES_H
 
-#include "nnimage.h"
+#include "include/Image.h"
 
-// Defined image properties
-enum class ImgProp
-{
-    // Generic
-    None,
-    Size,
-    BootMode,
-    // ISO9660
-    BootEmu,
-    BootImage
-};
-
-// Defined partition properties
-enum class PartProp
-{
-    None,
-    Start,
-    Size,
-    Format,
-    Prefix,
-    IsBoot
-};
+#include <algorithm>
+#include <unordered_map>
+#include <vector>
 
 // Image type classes
 class MbrImage : public Image
@@ -55,9 +36,9 @@ class MbrImage : public Image
     {
         return registry;
     }
-    bool checkBackend (BackendType type) const
+    const std::vector<BackendType> getValidBackends() const
     {
-        return std::find (validBackends.begin(), validBackends.end(), type) != validBackends.end();
+        return validBackends;
     }
 
   private:
@@ -78,21 +59,15 @@ class GptImage : public Image
   public:
     GptImage (const std::string& name) : Image (name, ImageType::Gpt)
     {}
-    BackendType GetBackendType (BackendType suggestion) const
-    {
-        if (suggestion != BackendType::Xorriso && suggestion != BackendType::None)
-            return suggestion;
-        return BACKEND_DEFAULT;
-    }
 
   protected:
     const std::unordered_map<ImgProp, ImgConfItem>& getRegistry()
     {
         return registry;
     }
-    bool checkBackend (BackendType type) const
+    const std::vector<BackendType> getValidBackends() const
     {
-        return std::find (validBackends.begin(), validBackends.end(), type) != validBackends.end();
+        return validBackends;
     }
 
   private:
@@ -122,21 +97,16 @@ class IsoImage : public Image
     IsoImage (const std::string& name) : Image (name, ImageType::Iso9660)
     {
         spec.fileExt = ".iso";    // Ensure extension is .iso
-        defaultBackend = BackendType::Xorriso;
-    }
-    BackendType GetBackendType (BackendType suggestion) const
-    {
-        return BackendType::Xorriso;
-    }
-    bool checkBackend (BackendType type) const
-    {
-        return std::find (validBackends.begin(), validBackends.end(), type) != validBackends.end();
     }
 
   protected:
     const std::unordered_map<ImgProp, ImgConfItem>& getRegistry()
     {
         return registry;
+    }
+    const std::vector<BackendType> getValidBackends() const
+    {
+        return validBackends;
     }
     bool Validate() override;
 
@@ -170,9 +140,9 @@ class FloppyImage : public Image
     {
         return registry;
     }
-    bool checkBackend (BackendType type) const
+    const std::vector<BackendType> getValidBackends() const
     {
-        return std::find (validBackends.begin(), validBackends.end(), type) != validBackends.end();
+        return validBackends;
     }
     bool Validate() override;
 

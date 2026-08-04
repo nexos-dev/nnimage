@@ -16,6 +16,7 @@
 */
 
 #include "nnimage.h"
+#include <algorithm>
 #include <cassert>
 #include <filesystem>
 #include <iostream>
@@ -53,6 +54,9 @@ bool Action::SetOption (OptionId id, const std::string& val)
             break;
         case OptionId::ConfEnc:
             opts[id] = val;
+            break;
+        case OptionId::FailOnSkip:
+            failOnSkip = true;
             break;
     }
     return true;
@@ -114,14 +118,12 @@ std::shared_ptr<Backend> Action::getBackend (const Image& img, BackendType type)
 {
     // Get the real backend type
     type = img.GetBackendType (type);
-    // Make sure the backend is enabled
-    if (!Backend::IsBackendEnabled (type))
+    // Check if it was able to resolve a backend
+    if (type == BackendType::None)
     {
-        _log->Error ("couldn't create backend: backend \"" + Backend::GetBackendName (type) +
-                     "\" disabled at compile time");
+        _log->Error ("no valid backend found for image \"" + img.GetName() + "\"");
         return nullptr;
     }
-    // Check if the backend exists
     // Yes I'm aware that doing a static_cast from an enum class is bad practice and no I don't care
     size_t idx = static_cast<size_t> (type);
     if (idx < backends.size() && backends[idx] != nullptr)
@@ -130,6 +132,7 @@ std::shared_ptr<Backend> Action::getBackend (const Image& img, BackendType type)
     }
     // Create the backend
     auto backend = Backend::BackendFactory (type);
+    assert (backend != nullptr);
     if (!backend->BackendCreated())
         return nullptr;
     // Ensure the backends vector is large enough
@@ -139,6 +142,8 @@ std::shared_ptr<Backend> Action::getBackend (const Image& img, BackendType type)
     return backends[idx];
 }
 
+// NOTE: right now this function fails the whole action.
+// It might be better to just skip the image and continue, but that will be a future improvement
 bool Action::prepareBackends (const std::vector<std::unique_ptr<Image>>& images)
 {
     for (const auto& img : images)
@@ -147,8 +152,54 @@ bool Action::prepareBackends (const std::vector<std::unique_ptr<Image>>& images)
         if (!backend)
             return false;
         img->SetBackend (backend);
+        // Add the image to the backend
+        std::string fileName = GetImageFile (*img);
+        if (!backend->AddImage (*img, fileName, false))
+        {
+            _log->Error ("failed to add image \"" + img->GetName() + "\" to backend \"" +
+                         Backend::GetBackendName (backendType) + "\"");
+            return false;
+        }
     }
     return true;
+}
+
+bool Action::skipImage (const Image& img)
+{
+    if (failOnSkip)
+        return false;
+    _log->Warn ("skipping image \"" + img.GetName() +
+                "\", pass -fail-on-skip to treat this as an error");
+    // Remove it
+    // Disabled for now
+    // std::erase_if (images,
+    //               [&img] (const std::unique_ptr<Image>& i) { return i.get() == img.get(); });
+    return true;
+}
+
+void Action::rollBackQueuedTasks()
+{
+    while (!addedTasks.empty())
+    {
+        TaskId id = addedTasks.front();
+        addedTasks.pop();
+        graph->RemoveTask (id);
+    }
+}
+
+bool Action::skipOrFail (const Image& img, const std::string& msg)
+{
+    rollBackQueuedTasks();
+    if (!msg.empty())
+        _log->Error (msg);
+    return skipImage (img);
+}
+
+TaskId Action::addTaskToGraph (std::unique_ptr<Task> task)
+{
+    TaskId id = graph->AddTask (std::move (task));
+    addedTasks.push (id);
+    return id;
 }
 
 // Create action implementation
@@ -166,45 +217,76 @@ bool CreateAction::SetOption (OptionId opt, const std::string& val)
     return true;
 }
 
+// TODO: split this into multiple functions to make it more readable
+// I'm sure that will happen naturally as I implement more actions, but for now this is fine
 bool CreateAction::Execute()
 {
-    TaskGraph graph;
     // Prepare all needed backends
     if (!prepareBackends (images))
         return false;
     // Iterate through each image
     for (auto& img : images)
     {
+        clearAddedTasks();    // Ensure we start with a clean slate
         // Validate it
         if (!img->Validate())
+        {
+            // Skip it if we are allowed to
+            if (skipOrFail (*img, "image validation failed"))
+                continue;
             return false;
-        auto& imgSpec = img->GetSpec();
-        // Now we need to prepare the file name
-        std::string fileName = outputDir + namePrefix + img->GetName() + imgSpec.fileExt;
+        }
+        // Get the file name
+        std::string fileName = GetImageFile (*img);
         // Check if it exists
         if (std::filesystem::exists (fileName) && !overwrite)
         {
             // Request user confirmation
             if (!getConfirmation ("image file \"" + fileName + "\" already exists. Overwrite?"))
+            {
+                if (skipOrFail (*img,
+                                "image file \"" + fileName +
+                                    "\" already exists and user did not confirm overwrite"))
+                    continue;
                 return false;
+            }
+            else
+                _log->Info ("pass \"-w\" to force overwrite of existing image files");
         }
         // Get the backend
         auto backend = img->GetBackend();
-        // Now invoke to create the image
-        auto task = backend->CreateImage (imgSpec, fileName);
+        // Now invoke the backend to create the image
+        auto task = backend->CreateImage (*img, fileName);
         if (task == nullptr)
+        {
+            if (skipOrFail (*img, ""))
+                continue;
             return false;
-        auto createId = graph.AddTask (std::move (task));
+        }
+        // Add to task graph
+        auto createId = addTaskToGraph (std::move (task));
         // Do the same for the partition table
-        auto partTask = backend->CreatePartTable (imgSpec, fileName);
+        auto partTask = backend->CreatePartTable (*img, fileName);
         if (partTask == nullptr)
+        {
+            if (skipOrFail (*img, ""))
+                continue;
             return false;
-        auto partId = graph.AddTask (std::move (partTask));
+        }
+        auto partId = addTaskToGraph (std::move (partTask));
         // Ensure proper ordering
-        graph.AddDependency (partId, createId);
+        graph->AddDependency (partId, createId);
+        // That's a success for this image
+        ++imageSuccessCount;
+    }
+    // CHeck if any images were successfully processed
+    if (imageSuccessCount == 0)
+    {
+        _log->Error ("no images could be successfully processed, aborting");
+        return false;
     }
     // Do the tasks now
-    return graph.RunTasks();
+    return graph->RunTasks();
 }
 
 // Partition action implementation

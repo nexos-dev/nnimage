@@ -16,60 +16,38 @@
 */
 
 #include "nnimage.h"
+#include "BackendTable.h"
 #include <cstdio>
-
-// Backend list
-// clang-format off
-const std::unordered_map<std::string, BackendType> Backend::registry = {
-    {"krun", BackendType::Krun},
-    {"xorriso", BackendType::Xorriso},
-    {"loopback", BackendType::Loopback},
-    {"guestfs", BackendType::Guestfs},
-};
-// clang-format on
 
 BackendType Backend::ResolveBackend (const std::string& name)
 {
-    auto it = Backend::registry.find (name);
-    if (it == Backend::registry.end())
+    auto it = BackendNameRegistry.find (name);
+    // TODO: should communicate the error better
+    if (it == BackendNameRegistry.end())
         return BackendType::None;
     return it->second;
 }
 
 const std::string Backend::GetBackendName (BackendType type)
 {
-    return std::find_if (Backend::registry.begin(),
-                         Backend::registry.end(),
-                         [type] (const auto& pair) { return pair.second == type; })
-        ->first;
+    auto it = std::find_if (BackendNameRegistry.begin(),
+                            BackendNameRegistry.end(),
+                            [type] (const auto& pair) { return pair.second == type; });
+    if (it == BackendNameRegistry.end())
+        return "unknown";
+    return it->first;
 }
 
 std::unique_ptr<Backend> Backend::BackendFactory (BackendType type)
 {
-    switch (type)
-    {
-        case BackendType::Krun:
-            return std::make_unique<KrunBackend>();
-#ifdef USE_XORRISO
-        case BackendType::Xorriso:
-            return std::make_unique<XorrisoBackend>();
-#endif
-#ifdef USE_LOOPBACK
-        case BackendType::Loopback:
-            return std::make_unique<LoopbackBackend>();
-#endif
-#ifdef HAVE_GUESTFS
-        case BackendType::Guestfs:
-            return std::make_unique<GuestfsBackend>();
-#endif
-        default:
-            return nullptr;
-    }
+    auto factory = BackendFactoryRegistry[type];
+    return (factory != nullptr) ? factory() : nullptr;
 }
 
-std::unique_ptr<Task> Backend::CreateImage (const ImgSpec& spec, const std::string& fileName)
+std::unique_ptr<Task> Backend::CreateImage (Image& img, const std::string& fileName)
 {
-    auto taskCb = [this, &spec, fileName]() {
+    auto taskCb = [this, &img, fileName]() {
+        const auto& spec = img.GetSpec();
         // Lock it so we don't have multiple threads writing to the same file at the same time
         std::lock_guard<std::mutex> guard (spec.lock);
         size_t sz = spec.size;
@@ -100,40 +78,20 @@ std::unique_ptr<Task> Backend::CreateImage (const ImgSpec& spec, const std::stri
         std::fclose (imgFile);
         return true;
     };
-    auto task = std::make_unique<Task> (taskCb, "CreateImage");
+    const auto& spec = img.GetSpec();
+    auto task =
+        std::make_unique<Task> (taskCb, "CreateImage", "Creating image \"" + spec.name + "\"...");
     return task;
 }
 
-std::unique_ptr<Task> Backend::CreatePartTable (const ImgSpec& spec, const std::string& fileName)
+std::unique_ptr<Task> Backend::CreatePartTable (Image& img, const std::string& fileName)
 {
     return Task::EmptyTask();
 }
 
 bool Backend::IsBackendEnabled (BackendType type)
 {
-    switch (type)
-    {
-        case BackendType::Krun:
-            return true;
-        case BackendType::Xorriso:
-#ifdef USE_XORRISO
-            return true;
-#else
-            return false;
-#endif
-        case BackendType::Loopback:
-#ifdef USE_LOOPBACK
-            return true;
-#else
-            return false;
-#endif
-        case BackendType::Guestfs:
-#ifdef HAVE_GUESTFS
-            return true;
-#else
-            return false;
-#endif
-        default:
-            return false;
-    }
+    // Just check if the factory registry has a valid entry for this backend type
+    auto factory = BackendFactoryRegistry[type];
+    return factory != nullptr;
 }

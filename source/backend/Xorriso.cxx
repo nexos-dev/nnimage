@@ -16,8 +16,14 @@
 */
 
 #include "nnimage.h"
+#include "backend/XorrisoBackend.h"
 
 XorrisoBackend::XorrisoBackend()
 {
     backendCreated = true;
+}
+
+bool XorrisoBackend::AddImage (Image& img, const std::string& fileName, bool readonly)
+{
+    return false;
 }

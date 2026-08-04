@@ -16,6 +16,9 @@
 */
 
 #include "nnimage.h"
+#include "backend/KrunBackend.h"
+#include "include/SysMemory.h"
+#include <thread>
 #include <libkrun.h>
 #include <string.h>
 
@@ -32,6 +35,45 @@ KrunBackend::KrunBackend()
     krun_init_log (stream, KRUN_LOG_LEVEL_ERROR, KRUN_LOG_STYLE_AUTO, 0);
     // Create the krun context
     krunCtx = krun_create_ctx();
+    if (krunCtx == -1)
+    {
+        _log->Error ("failed to create krun context");
+        backendCreated = false;
+        return;
+    }
+    // Ensure block and net devices are enabled
+    bool blockEnabled = krun_has_feature (KRUN_FEATURE_BLK) == 1;
+    bool netEnabled = krun_has_feature (KRUN_FEATURE_NET) == 1;
+    // Handle failures
+    if (!blockEnabled)
+        _log->Error ("libkrun was built without block device support");
+    if (!netEnabled)
+        _log->Error ("libkrun was built without network device support");
+    if (!blockEnabled || !netEnabled)
+    {
+        _log->Error ("one or more required features are not enabled in libkrun");
+        backendCreated = false;
+        return;
+    }
+    // Get the number of vCPUs to use
+    // TODO: implement a way to specify the number of vCPUs to use for krun
+    // I could do a command line argument, but that would require a whole new class of options to be
+    // added I could also do an environ value
+    int maxCpus = std::thread::hardware_concurrency();
+    // Use half of the available CPUs for krun, but at least 1
+    int krunCpus = std::max (maxCpus / 2, 1);
+    // Get the amount of RAM the host has and use half of it for krun, but at least 512MB
+    // TODO: definitely need to make this configurable, but for now this is fine
+    uint64_t hostMemMB = GetMemorySizeMB();
+    uint64_t krunMemMB = std::max (hostMemMB / 2, static_cast<uint64_t> (512));
+    // Set it
+    if (krun_set_vm_config (krunCtx, krunCpus, krunMemMB) == -1)
+    {
+        _log->Error ("failed to set krun VM config");
+        backendCreated = false;
+        return;
+    }
+    // Now we need to set the root filesystem
     backendCreated = true;
 }
 
@@ -41,15 +83,39 @@ KrunBackend::~KrunBackend()
         krun_free_ctx (krunCtx);
 }
 
-std::unique_ptr<Task> KrunBackend::CreatePartTable (const ImgSpec& spec,
-                                                    const std::string& fileName)
+bool KrunBackend::AddImage (Image& img, const std::string& fileName, bool readonly)
 {
-    auto taskCb = [this, &spec, fileName]() {
+    const auto& spec = img.GetSpec();
+    // Get the block device
+    std::string blockDev = blockDevGen;
+    // Call the API
+    if (krun_add_disk2 (krunCtx,
+                        blockDev.c_str(),
+                        fileName.c_str(),
+                        KRUN_DISK_FORMAT_RAW,
+                        readonly) == -1)
+    {
+        _log->Error ("failed to add disk \"" + spec.name + "\" to krun");
+        return false;
+    }
+    // Now set the tag
+    img.SetBackendTag (blockDev);
+    return true;
+}
+
+std::unique_ptr<Task> KrunBackend::CreatePartTable (Image& img, const std::string& fileName)
+{
+    auto taskCb = [this, &img, fileName]() {
+        const auto& spec = img.GetSpec();
         // Lock it so we don't have multiple threads writing to the same file at the same time
         std::lock_guard<std::mutex> guard (spec.lock);
         _log->Error ("i want to fail");
         return false;
     };
-    auto task = std::make_unique<Task> (taskCb, "CreatePartTable");
+    const auto& spec = img.GetSpec();
+    auto task =
+        std::make_unique<Task> (taskCb,
+                                "CreatePartTable",
+                                "Creating partition table for image \"" + spec.name + "\"...");
     return task;
 }

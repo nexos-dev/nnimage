@@ -15,8 +15,8 @@
     limitations under the License.
 */
 
-#ifndef OPTION_H
-#define OPTION_H
+#ifndef NNIMAGE_OPTION_H
+#define NNIMAGE_OPTION_H
 
 // All valid options
 enum class OptionId
@@ -27,7 +27,18 @@ enum class OptionId
     ConfEnc,
     Backend,
     Overwrite,
-    SrcDir
+    SrcDir,
+    FailOnSkip
+};
+
+struct Option
+{
+    const char* shortOpt;
+    const char* longOpt;
+    OptionId id;
+    const char* helpString;
+    bool requiresArg;
+    const char* argHelp;
 };
 
 // General options
@@ -58,6 +69,12 @@ If an extension is specified, then argument will be whole image name",
      true,
      "ENC"},
     {"-b", "-backend", OptionId::Backend, nullptr, true, nullptr},
+    {"",
+     "-fail-on-skip",
+     OptionId::FailOnSkip,
+     "Specifies to fail the action if any image is skipped due to validation errors",
+     false,
+     nullptr},
     {.shortOpt = nullptr, .longOpt = nullptr}};
 
 // Create image options

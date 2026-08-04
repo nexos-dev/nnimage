@@ -17,7 +17,7 @@
 
 // clang-format off
 #include "nnimage.h"
-#include "ConfParser.h"
+#include "include/ConfParser.h"
 #include <cassert>
 #ifdef HAVE_CHARDET
 #include <chardet/chardet.h>
@@ -237,7 +237,7 @@ ParseProp& ImageConf::GetProp (ParseBlock& block,
         return empty;
     }
     auto& prop = it->second;
-    if (!ValidateProp (prop, ConfType::Id, 1, result))
+    if (!ValidateProp (prop, expectedType, maxVals, result))
         return empty;
     return prop;
 }
@@ -250,12 +250,7 @@ bool ImageConf::GetVal (const ParseProp& prop, ConfVal& out, int idx)
     return true;
 }
 
-int ImageConf::GetNumVals (ParseProp& prop)
-{
-    return prop.values.size();
-}
-
-void ImageConf::RemoveProp (ParseBlock& block, ParseProp& prop)
+void ImageConf::removeProp (ParseBlock& block, ParseProp& prop)
 {
     block.props.erase (prop.name);
 }
@@ -306,7 +301,7 @@ bool ImageConf::processImageBlock (ParseBlock& block)
         return false;
     }
     // Remove from property list for main parser
-    RemoveProp (block, typeProp);
+    removeProp (block, typeProp);
     // Now we need to iterate through every key,value pair in the block's property map
     for (auto& [key, prop] : block.props)
     {

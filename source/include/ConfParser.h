@@ -15,10 +15,12 @@
     limitations under the License.
 */
 
-#ifndef CONFPARSER_H
-#define CONFPARSER_H
+#ifndef NNIMAGE_CONFPARSER_H
+#define NNIMAGE_CONFPARSER_H
 
 #include <cassert>
+#include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -50,9 +52,14 @@ enum class LexError
     InvalidChar
 };
 
+enum class LexWarning
+{
+    InvalidEsc
+};
+
 struct ConfNumId
 {
-    int64_t num;
+    uint64_t num;
     std::string id;
 };
 
@@ -61,7 +68,7 @@ struct ConfToken
 {
     TokenType type;
     int line;
-    std::variant<std::string, int64_t, ConfNumId> val;
+    std::variant<std::string, uint64_t, ConfNumId> val;
 };
 
 // Lexer class
@@ -84,6 +91,7 @@ class ConfLexer
     bool isCharSpace (char c);            // Checks if a character is space
     void prepareEof (ConfToken* tok);
     void lexError (LexError err, const std::string& extra);
+    void lexWarn (LexWarning err, const std::string& extra);
     const std::string file;
     ConfToken* curTok;            // Current token
     std::string_view fileData;    // File data (in UTF-8)
@@ -119,10 +127,10 @@ struct ConfVal
         assert (type == ConfType::Id || type == ConfType::String);
         return std::get<std::string> (val);
     }
-    int64_t GetInteger() const
+    uint64_t GetInteger() const
     {
         assert (type == ConfType::Num);
-        return std::get<int64_t> (val);
+        return std::get<uint64_t> (val);
     }
     const ConfNumId& GetNumId() const
     {
@@ -148,7 +156,7 @@ struct ConfVal
             return false;
         else
             assert (false);
-        return false;       // To make the compiler shut up
+        return false;    // To make the compiler shut up
     }
     int GetLine() const
     {
@@ -157,7 +165,7 @@ struct ConfVal
 
   private:
     ConfType type;
-    std::variant<std::string, int64_t, ConfNumId> val;
+    std::variant<std::string, uint64_t, ConfNumId> val;
     int line;
     // TODO: remove this. This is a relic from before I made ConfVal define it's own interface
     friend class ConfParser;
@@ -179,6 +187,12 @@ struct ParseBlock
     std::unordered_map<std::string, ParseProp> props;
 };
 
+enum class ParseError
+{
+    DuplicateProp,
+    UnexpectedToken
+};
+
 class ConfParser
 {
   public:
@@ -192,6 +206,10 @@ class ConfParser
     std::unique_ptr<ConfToken> getToken (std::unique_ptr<ConfToken> oldToken);
     std::unique_ptr<ConfToken> expectToken (TokenType type, std::unique_ptr<ConfToken> oldToken);
     void tokenError (TokenType expected, TokenType got, int line);
+    void parseError (ParseError error,
+                     int line,
+                     const std::string& extra,
+                     const std::string& extra2 = "");
 };
 
 #endif

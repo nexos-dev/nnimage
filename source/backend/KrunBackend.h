@@ -18,18 +18,20 @@
 #ifndef KRUNBACKEND_H
 #define KRUNBACKEND_H
 
-#include "Backend.h"
+#include "include/Backend.h"
+#include "include/BlockDevGen.h"
 
 class KrunBackend : public Backend
 {
   public:
     KrunBackend();
     ~KrunBackend() override;
-    std::unique_ptr<Task> CreatePartTable (const ImgSpec& spec,
-                                           const std::string& fileName) override;
+    std::unique_ptr<Task> CreatePartTable (Image& img, const std::string& fileName) override;
+    bool AddImage (Image& img, const std::string& fileName, bool readonly) override;
 
   private:
     bool runKrunCommand (const std::string& cmd, const std::vector<std::string>& args);
+    BlockDevFactory blockDevGen{"vd"};
     int32_t krunCtx = -1;
 };
 

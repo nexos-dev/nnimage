@@ -15,27 +15,19 @@
     limitations under the License.
 */
 
-#ifndef BACKEND_H
-#define BACKEND_H
+#ifndef NNIMAGE_BACKEND_H
+#define NNIMAGE_BACKEND_H
+
+#include "include/Task.h"
+#include "include/EnumArray.h"
+#include "BackendTypes.h"
 
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <unordered_map>
-#include "nnimage.h"
 
-enum class BackendType
-{
-    None,
-    Krun,
-    Xorriso,
-    Guestfs,
-    Loopback,
-    Max
-};
-
-class Task;
-class ImgSpec;
+class Image;
 class Backend
 {
   public:
@@ -45,26 +37,18 @@ class Backend
     // Gets a backend name from type
     static const std::string GetBackendName (BackendType type);
     // Functions for each backend function
-    virtual std::unique_ptr<Task> CreateImage (const ImgSpec& spec, const std::string& fileName);
-    virtual std::unique_ptr<Task> CreatePartTable (const ImgSpec& spec,
-                                                   const std::string& fileName);
+    virtual std::unique_ptr<Task> CreateImage (Image& img, const std::string& fileName);
+    virtual std::unique_ptr<Task> CreatePartTable (Image& img, const std::string& fileName);
     bool BackendCreated()
     {
         return backendCreated;
     }
+    virtual bool AddImage (Image& img, const std::string& fileName, bool readonly) = 0;
     static bool IsBackendEnabled (BackendType type);
     virtual ~Backend() = default;
 
   protected:
     bool backendCreated = false;
-
-  private:
-    const static std::unordered_map<std::string, BackendType> registry;
 };
-
-#include "backend/KrunBackend.h"
-#include "backend/XorrisoBackend.h"
-#include "backend/LoopbackBackend.h"
-#include "backend/GuestfsBackend.h"
 
 #endif

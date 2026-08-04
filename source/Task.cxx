@@ -58,6 +58,8 @@ bool TaskGraph::taskExists (TaskId task)
         return false;
     if (task >= tasks.size())
         return false;
+    if (!tasks[task])
+        return false;
     return true;
 }
 
@@ -70,6 +72,27 @@ TaskId TaskGraph::AddTask (std::unique_ptr<Task> task)
     inDegree.emplace_back (0);
     curId++;
     return id;
+}
+
+void TaskGraph::RemoveTask (TaskId task)
+{
+    if (!taskExists (task))
+        return;
+    // Remove all edges from this task
+    auto& deps = adjList[task];
+    deps.clear();
+    // Remove all edges to this task
+    for (auto& depList : adjList)
+    {
+        // NOTE: This is woefully inefficient, but this is only called during failure handling so it
+        // doesn't matter too much
+        depList.erase (std::remove (depList.begin(), depList.end(), task), depList.end());
+    }
+    // Clear the task
+    // This does leave a nullptr in the tasks vector, but that's better than having to shift every
+    // single ID
+    tasks[task] = nullptr;
+    inDegree[task] = 0;
 }
 
 bool TaskGraph::AddDependency (TaskId src, TaskId dest)
@@ -86,13 +109,6 @@ bool TaskGraph::AddDependency (TaskId src, TaskId dest)
     deps.push_back (src);
     inDegree[src]++;
     return true;
-}
-
-int TaskGraph::getInDegree (TaskId task)
-{
-    if (!taskExists (task))
-        return -1;
-    return inDegree[task].load();
 }
 
 void TaskGraph::getDescendants (TaskId task, std::vector<TaskId>& descendants)
@@ -118,7 +134,7 @@ void TaskGraph::getDescendants (TaskId task, std::vector<TaskId>& descendants)
     }
 }
 
-bool TaskGraph::rollbackTasks (TaskId failedTask)
+void TaskGraph::skipDescendants (TaskId failedTask)
 {
     std::lock_guard<std::mutex> guard (failureMtx);
     // Get all descendants of the failed task and mark them as skipped
@@ -155,7 +171,6 @@ bool TaskGraph::rollbackTasks (TaskId failedTask)
             tasks[id]->Rollback();
         }
     }
-    return true;
 }
 
 bool TaskGraph::topoSort (std::queue<TaskId>& topoQueue)
@@ -189,6 +204,14 @@ bool TaskGraph::topoSort (std::queue<TaskId>& topoQueue)
 
 void TaskGraph::addReadyTask (TaskId task)
 {
+    if (!taskExists (task))
+    {
+        _log->Verbose ("attempted to add non-existant task " + std::to_string (task) +
+                       " to ready queue");
+        return;    // It's perfectly harmless to attempt to add a non-existant task to the ready
+                   // queue, so we just ignore it
+                   // I still log it for debugging purposes, but it causes no side effects
+    }
     std::unique_lock<std::mutex> guard (readyMtx);
     ready.push (task);
     // Let a thread know that a task is ready to run
@@ -213,7 +236,7 @@ bool TaskGraph::RunTasks()
     // Initialize ready queue with all source tasks
     for (TaskId i = 0; static_cast<size_t> (i) < tasks.size(); i++)
     {
-        if (inDegree[i].load() == 0)
+        if (inDegree[i].load() == 0 && taskExists (i))
             ready.push (i);
     }
     // Prepare worker threads
@@ -240,7 +263,11 @@ bool TaskGraph::RunTasks()
                 ready.pop();
             }
             // Run it outside the lock
-            bool ok = tasks[nextTask]->Run();
+            auto& task = tasks[nextTask];
+            assert (task != nullptr);    // THis shouldn't ever happen as we check for task
+                                         // existence before adding to ready queue, But it's better
+                                         // to be safe
+            bool ok = task->Run();
             size_t done = completed.fetch_add (1) + 1;
             // Re-compute the in-degrees of dependent tasks
             // We do this even if the task failed, because we want to mark all dependent
@@ -263,7 +290,7 @@ bool TaskGraph::RunTasks()
                 // Essentially, we go through every descendant, mark it as skipped,
                 // and if one is running or finished,we wait for it to finish
                 // and then roll it back
-                rollbackTasks (nextTask);
+                skipDescendants (nextTask);
             }
             if (done == tasks.size())
                 readyCond.notify_all();

@@ -18,14 +18,14 @@
 #ifndef GUESTFSBACKEND_H
 #define GUESTFSBACKEND_H
 
-#include "Backend.h"
+#include "include/Backend.h"
 
 class GuestfsBackend : public Backend
 {
   public:
     GuestfsBackend();
-    std::unique_ptr<Task> CreatePartTable (const ImgSpec& spec,
-                                           const std::string& fileName) override;
+    std::unique_ptr<Task> CreatePartTable (Image& img, const std::string& fileName) override;
+    bool AddImage (Image& img, const std::string& fileName, bool readonly) override;
 };
 
 #endif

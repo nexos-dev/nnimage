@@ -21,9 +21,6 @@
 #define NNIMAGE_CONFIG_H
 
 #cmakedefine HAVE_CHARDET
-#cmakedefine HAVE_GUESTFS
-#cmakedefine USE_XORRISO
-#cmakedefine USE_LOOPBACK
 #cmakedefine NNIMAGE_ENABLE_TESTS
 
 #define NNIMAGE_VERSION "@NNIMAGE_VERSION@"
@@ -38,6 +35,6 @@
 
 #define LOG_FILE "@NNIMAGE_LOG_FILE@"
 
-#define BACKEND_DEFAULT BackendType::Krun
+#define BACKEND_DEFAULT BackendType::@NNIMAGE_BACKEND_DEFAULT_ID@
 
 #endif

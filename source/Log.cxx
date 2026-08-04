@@ -70,15 +70,28 @@ void Log::Info (const std::string& msg)
     LogAt (msg, LogLevel::Info);
 }
 
+void Log::Status (const std::string& msg)
+{
+    LogAt (msg, LogLevel::Status);
+}
+
 void Log::SysError (const std::string& msg)
 {
     LogAt (msg + ": " + std::string (strerror (errno)), LogLevel::Error);
 }
 
-// Table of loglevel to message prefix
-static const char* logLevelPrefix[] = {"error: ", "warning: ", "", ""};
-static const char* ansicodePrefix[] = {ANSI_CODE_ERROR, ANSI_CODE_WARN, "", ""};
-static bool isLevelCerr[] = {true, true, false, false};
+void Log::Verbose (const std::string& msg)
+{
+    LogAt (msg, LogLevel::Verbose);
+}
+
+// Logging tables
+// TODO: this whole concept is a bit messy, and needs to be refactored.
+// We should put these tables at the class level and maybe have one table of structs
+static const char* logLevelPrefix[] = {"error: ", "warning: ", "", "", ""};
+static const char* ansiCodePrefix[] = {ANSI_CODE_ERROR, ANSI_CODE_WARN, "", "", ""};
+static bool isLevelCerr[] = {true, true, false, false, false};
+static bool printProgName[] = {true, true, true, false, true};
 
 // Called with mutex locked
 void Log::logToCerr (const std::string& msg, LogLevel level)
@@ -88,7 +101,7 @@ void Log::logToCerr (const std::string& msg, LogLevel level)
     const char* prefix = logLevelPrefix[levelInt];
     std::cerr << this->prog << ": ";
     if (this->isCerrTty)
-        std::cerr << ansicodePrefix[levelInt] << prefix << ANSI_CODE_RESET;
+        std::cerr << ansiCodePrefix[levelInt] << prefix << ANSI_CODE_RESET;
     else
         std::cerr << prefix;
     std::cerr << msg << "\n";
@@ -97,10 +110,14 @@ void Log::logToCerr (const std::string& msg, LogLevel level)
 // Called with mutex locked
 void Log::logToCout (const std::string& msg, LogLevel level)
 {
+    // Get the prefix for this log level
     const char* prefix = logLevelPrefix[static_cast<int> (level)];
-    std::cout << this->prog << ": ";
+    // Print the program name if needed
+    if (printProgName[static_cast<int> (level)])
+        std::cout << this->prog << ": ";
+    // Determine if color is needed
     if (this->isCoutTty)
-        std::cout << ANSI_CODE_ERROR << prefix << ANSI_CODE_RESET;
+        std::cout << ansiCodePrefix[static_cast<int> (level)] << prefix << ANSI_CODE_RESET;
     else
         std::cout << prefix;
     std::cout << msg << "\n";
@@ -108,16 +125,15 @@ void Log::logToCout (const std::string& msg, LogLevel level)
 
 void Log::LogAt (const std::string& msg, LogLevel level)
 {
+    // Prevent concurrent log access
     std::lock_guard<std::mutex> guard (logMtx);
-    if (level <= logLevel)
+    // Only print to console if log level allows
+    if (level <= logLevel && isLogEnabled)
     {
-        if (isLogEnabled.load())
-        {
-            if (isLevelCerr[static_cast<int> (level)])
-                logToCerr (msg, level);
-            else
-                logToCout (msg, level);
-        }
+        if (isLevelCerr[static_cast<int> (level)])
+            logToCerr (msg, level);
+        else
+            logToCout (msg, level);
     }
     // Always log to files
     addLine (msg, level);
@@ -158,6 +174,7 @@ Log::~Log()
 
 bool Log::AddFile (const std::string& fileName)
 {
+    std::lock_guard<std::mutex> guard (logMtx);
     // Create the ostream
     std::ofstream output (fileName);
     if (!output.is_open())

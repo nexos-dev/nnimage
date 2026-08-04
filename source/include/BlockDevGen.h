@@ -1,5 +1,5 @@
 /*
-    XorrisoBackend.h - contains Xorriso backend class
+    BlockDevStr.h - contains block device string manager helper
     Copyright 2026 Jedidiah Thompson
 
     Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,17 +15,34 @@
     limitations under the License.
 */
 
-#ifndef XORRISOBACKEND_H
-#define XORRISOBACKEND_H
+#ifndef BLOCKDEVSTR_H
+#define BLOCKDEVSTR_H
 
-#include "include/Backend.h"
-#include "backend/XorrisoBackend.h"
+#include <string>
 
-class XorrisoBackend : public Backend
+class BlockDevFactory
 {
   public:
-    XorrisoBackend();
-    bool AddImage (Image& img, const std::string& fileName, bool readonly) override;
+    BlockDevFactory() = default;
+    BlockDevFactory (const std::string& prefix) : prefix (prefix), idx (0)
+    {}
+
+    operator std::string() &
+    {
+        // Convert index to it's string form, e.g., 0 -> 'a', 1 -> 'b', etc.
+        char suffix = 'a' + idx++;
+        return prefix + suffix;
+    }
+
+    operator std::string() &&
+    {
+        char suffix = 'a' + idx++;
+        return prefix + suffix;
+    }
+
+  private:
+    std::string prefix;
+    int idx;
 };
 
 #endif

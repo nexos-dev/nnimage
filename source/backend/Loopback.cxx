@@ -16,14 +16,19 @@
 */
 
 #include "nnimage.h"
+#include "backend/LoopbackBackend.h"
 
 LoopbackBackend::LoopbackBackend()
 {
     backendCreated = true;
 }
 
-std::unique_ptr<Task> LoopbackBackend::CreatePartTable (const ImgSpec& spec,
-                                                        const std::string& fileName)
+std::unique_ptr<Task> LoopbackBackend::CreatePartTable (Image& img, const std::string& fileName)
 {
     return nullptr;
+}
+
+bool LoopbackBackend::AddImage (Image& img, const std::string& fileName, bool readonly)
+{
+    return false;
 }

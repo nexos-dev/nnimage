@@ -16,6 +16,7 @@
 */
 
 #include "nnimage.h"
+#include "backend/GuestfsBackend.h"
 #include <guestfs.h>
 
 GuestfsBackend::GuestfsBackend()
@@ -23,8 +24,12 @@ GuestfsBackend::GuestfsBackend()
     backendCreated = true;
 }
 
-std::unique_ptr<Task> GuestfsBackend::CreatePartTable (const ImgSpec& spec,
-                                                       const std::string& fileName)
+std::unique_ptr<Task> GuestfsBackend::CreatePartTable (Image& img, const std::string& fileName)
 {
     return nullptr;
+}
+
+bool GuestfsBackend::AddImage (Image& img, const std::string& fileName, bool readonly)
+{
+    return false;
 }

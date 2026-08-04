@@ -16,13 +16,13 @@
 */
 
 #include "nnimage.h"
+#include "include/Option.h"
 #include <iostream>
-
-#include "Option.h"
 
 // Global log instance
 std::unique_ptr<Log> _log;
 std::unique_ptr<CmdLine> _cmdLine;
+Action* _actionOverride = nullptr;
 
 // Initialize command line
 CmdLine::CmdLine (int argc, char** argv)

@@ -112,7 +112,7 @@ void Image::SetConf (ImgProp key, const ConfVal& val, ConfError& e)
             return;
         }
     }
-    ConfErrorType result;
+    ConfErrorType result = ConfErrorType::Ok;
     // Check the type
     if (!val.IsType (it->second.type))
     {
@@ -204,9 +204,15 @@ bool Image::Validate()
 
 BackendType Image::GetBackendType (BackendType suggestion) const
 {
-    if (!checkBackend (suggestion))
-        return defaultBackend;
-    return suggestion;
+    // First check the suggestion
+    if (checkBackendForImage (suggestion))
+        return suggestion;
+    // Now check the default
+    if (checkBackendForImage (BACKEND_DEFAULT))
+        return BACKEND_DEFAULT;
+    // Now just get the first valid backend
+    // If we can't find one, it will return BackendType::None
+    return firstAvailBackend();
 }
 
 // MBR image implementation
@@ -306,7 +312,7 @@ bool IsoImage::Validate()
     {
         if (bootImageName.empty())
         {
-            _log->Error ("image \"" + spec.name + "\" missing required property \"bootemu\"");
+            _log->Error ("image \"" + spec.name + "\" missing required property \"bootimage\"");
             return false;
         }
         // Resolve it
