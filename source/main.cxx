@@ -21,11 +21,11 @@
 
 // Global log instance
 std::unique_ptr<Log> _log;
-std::unique_ptr<CmdLine> _cmdLine;
-Action* _actionOverride = nullptr;
+// std::unique_ptr<CmdLine> _cmdLine;
+// Action* _actionOverride = nullptr;
 
 // Initialize command line
-CmdLine::CmdLine (int argc, char** argv)
+/*CmdLine::CmdLine (int argc, char** argv)
 {
     // Initialize arguments
     rawArgs.reserve (argc - 1);
@@ -200,21 +200,22 @@ static void Version()
     std::cout << "See https://www.apache.org/licenses/LICENSE-2.0 for licensing"
               << "\n";
     std::exit (0);
-}
+}*/
 
 int main (int argc, char** argv)
 {
     // First see if we want to call test driver
 #ifdef NNIMAGE_ENABLE_TESTS
-    if (argc > 1 && std::string (argv[1]) == "run-test-cases")
-        return !TestDriver (argc - 1, argv + 1);
+    // if (argc > 1 && std::string (argv[1]) == "run-test-cases")
+    // return !TestDriver (argc - 1, argv + 1);
 #endif
     // Initialize command line
-    _cmdLine = std::make_unique<CmdLine> (argc, argv);
+    //_cmdLine = std::make_unique<CmdLine> (argc, argv);
     // Start up log
-    _log = std::make_unique<Log> (argv[0], DEFAULT_LOGLEVEL);
+    _log = std::make_unique<Log>();
+
     // Parse command line
-    if (!_cmdLine->ParseArguments (Help, Version))
+    /*if (!_cmdLine->ParseArguments (Help, Version))
         return 1;
     // OK so we now have the arguments. Now it's time to parse the configuration file
     // First get the action
@@ -223,9 +224,32 @@ int main (int argc, char** argv)
     ImageConf conf = ImageConf (act->GetConf());
     if (!conf.ParseFile())
     {
-        // Configuration parsing failed
+        _log->Error ("configuration file parsing failed, aborting");
+        return 1;
+    }*/
+    // Now execute the action and return
+    // return !act->Execute();
+    try
+    {
+        std::filesystem::path logDir = std::filesystem::current_path() / ".." / "nnimage-log";
+        ManagedLogCtrl logCtrl (logDir);
+        ResNone res = logCtrl.Parse();
+        if (!res.IsOk())
+        {
+            Error& e = res.GetError();
+            std::string msg = "Error: " + e.LastFrame().msg;
+            auto& frames = e.GetFrames();
+            for (int i = frames.size() - 2; i >= 0; --i)
+            {
+                msg += "\n    -> " + frames[i].msg;
+            }
+            std::cerr << msg << "\n";
+        }
+    }
+    catch (const ErrorException& e)
+    {
+        std::cerr << "Error: " << e.what() << "\n";
         return 1;
     }
-    // Now execute the action and return
-    return !act->Execute();
+    return 0;
 }

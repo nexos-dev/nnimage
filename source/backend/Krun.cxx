@@ -87,7 +87,7 @@ bool KrunBackend::AddImage (Image& img, const std::string& fileName, bool readon
 {
     const auto& spec = img.GetSpec();
     // Get the block device
-    std::string blockDev = blockDevGen;
+    std::string blockDev = blockDevGen++;
     // Call the API
     if (krun_add_disk2 (krunCtx,
                         blockDev.c_str(),

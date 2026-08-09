@@ -60,6 +60,7 @@ class Task
     }
     bool Run()
     {
+        // Ensure the task is in a pending state and honor skipped tasks
         TaskState expected = TaskState::Pending;
         bool result = false;
         if (!state.compare_exchange_strong (expected, TaskState::Running))
@@ -88,6 +89,7 @@ class Task
     }
     TaskState Skip()
     {
+        // Only a pending task can be skipped, otherwise return the current state
         TaskState expected = TaskState::Pending;
         if (!state.compare_exchange_strong (expected, TaskState::Skipped))
             return expected;
@@ -95,6 +97,7 @@ class Task
     }
     bool Rollback()
     {
+        // Only a finished task can be rolled back, otherwise return false
         TaskState expected = TaskState::Finished;
         if (!state.compare_exchange_strong (expected, TaskState::Rollback))
             return false;
@@ -114,6 +117,8 @@ class Task
     {
         return state.load();
     }
+    // Used when a task is being skipped but is already running, so we need to roll it back when it
+    // finishes
     void SetRollbackPending()
     {
         rollbackPending.store (true);
@@ -126,8 +131,9 @@ class Task
   private:
     TaskId id;
     TaskFunc task;
+    // NOTE: maybe this shouldn't be user-facing?
     TaskFunc rollback = []() {
-        _log->Warn ("default rollback handler called");
+        _log->Warning ("default rollback handler called");
         return true;
     };
     std::atomic<TaskState> state{TaskState::Pending};

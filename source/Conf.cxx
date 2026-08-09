@@ -19,92 +19,60 @@
 #include "nnimage.h"
 #include "include/ConfParser.h"
 #include <cassert>
-#ifdef HAVE_CHARDET
-#include <chardet/chardet.h>
-#endif
 #include <iconv.h>
 #include <cstring>
 #include <iostream>
 #include "MemoryMapped.h"
+#include "include/Chardet.h"
+#include "include/Iconv.h"
 
 // clang-format on
 
-// Converts from source encoding to UTF-8
-bool ImageConf::convertFileEnc (std::string_view data,
-                                size_t dataSize,
-                                std::string& out,
-                                const char* enc)
-{
-    iconv_t cd = iconv_open ("UTF-8", enc);
-    if (cd == (iconv_t) -1)
-    {
-        _log->SysError ("unable to open iconv: ");
-        return false;
-    }
-    size_t inLen = dataSize;
-    size_t outLen = inLen * 4;    // Max possible size
-
-    // Prepare the strings
-    char* outBuf = new char[outLen];    // Allocate output buffer
-    char* outBase = outBuf;
-    char* in = const_cast<char*> (data.data());
-
-    size_t inLeft = inLen;
-    size_t outLeft = outLen;
-    // Convert it
-    size_t result = iconv (cd, &in, &inLeft, &outBuf, &outLeft);
-    if (result == -1)
-    {
-        _log->SysError ("unable to convert character sets: ");
-        return false;
-    }
-    out.assign (outBase, outLen - outLeft);
-    iconv_close (cd);
-    return true;
-}
-
 // Opens up configuration file
-bool ImageConf::openConfFile (MemoryMapped& file, std::string_view& contents)
+bool ImageConf::openConfFile (std::string& out)
 {
-    // First open the file up
-    if (!file.open (this->fileName))
+    MemoryMapped file;
+    if (!file.open (confFile.fileName))
     {
         // Print the error
         parseError (ConfErrorType::SysError, 0, file.getError());
         return false;
     }
-    // Create a string view from it
     std::string_view data = reinterpret_cast<const char*> (file.getData());
-    size_t sz = file.mappedSize();
-#ifdef HAVE_CHARDET
-    // Get the encoding of it
-    DetectObj* obj = detect_obj_init();
-    // FIXME: maybe passing the whole buffer is overkill?
-    if (detect (data.data(), &obj))
+    const std::string& fileEnc = confFile.fileEnc;
+    std::string enc;
+    float confidence;
+    Chardet chardet;
+    if (!chardet.Detect (data, enc, confidence))
     {
-        // Error occured
-        parseError (ConfErrorType::SysError, 0, "unable to determine character set");
-        detect_obj_free (&obj);
-        return false;
+        // If detection fails, either libchardet is not available or it couldn't determine the
+        // encoding. Look  at the confidence to determine which
+        if (confidence > 0.0)
+        {
+            parseError (ConfErrorType::SysError, 0, "unable to detect character set");
+            return false;
+        }
+        else
+        {
+            // This means that libchardet is unavailable, so we will just assume UTF-8
+            // We have no way of knowing what the file is and nine out of ten time it will be UTF-8
+            // If the user does pass a different encoding, they will get rubbish output,
+            // but they will have to specify it themselves
+            enc = "UTF-8";
+            confidence = 1.0;    // The irony of the confidence being the highest when we have no
+                                 // clue what's going on
+            _log->Warn ("unable to detect character set, assuming UTF-8. Pass -confenc to force an "
+                        "encoding");
+        }
     }
-    const char* enc = obj->encoding;
-    float confidence = obj->confidence;
-#else
-    // Just default to ASCII as non-ASCII characters should be rare (famous last words)
-    const char* enc = "ASCII";
-    float confidence = 1.0f;    // This might be foolish
-#endif
-    const std::string& fileEnc = GetAction()->GetOption (OptionId::ConfEnc);
     // First check if user passed an encoding
     if (!fileEnc.empty())
     {
-        // Use this encoding
-        const char* userEnc = fileEnc.c_str();
         // Warn user if detected and specified encoding differ. If we are not confident in
         // the detected encoding, don't worry about warning them
         // NOTE: if ASCII is the detected encoding we won't warn as ASCII is compatible with
         // essentially every other encoding known to man
-        if (strcmp (enc, userEnc) != 0 && confidence > 0.5 && strcmp (enc, "ASCII") != 0)
+        if (enc != fileEnc && confidence > 0.5 && enc != "ASCII")
         {
             // It's not an error, but we will warn the user
             std::string detectEnc = enc;
@@ -112,39 +80,30 @@ bool ImageConf::openConfFile (MemoryMapped& file, std::string_view& contents)
                         "\" doesn't match detected encoding of \"" + detectEnc + "\"");
         }
     }
-    // If this is UTF-8, we are done
-    if ((!strcmp (enc, "UTF-8") || !strcmp (enc, "ASCII")) && confidence > 0.5)
-        contents = std::move (data);
+    // If this is UTF-8/ASCII, we are done
+    if ((enc == "UTF-8" || enc == "ASCII") && confidence > 0.5)
+        out = data;
     else
     {
-        // If user didn't specify a character encoding and we couldn't accuratly detect one, error
-        // out
+        // If user didn't specify a character encoding and we couldn't accuratly detect one,
+        // error out
         if (confidence <= 0.5)
         {
-            std::string encStr = enc;
             parseError (ConfErrorType::SysError,
                         0,
-                        "unable to detect character set (guessed \"" + encStr +
+                        "unable to detect accurately character set (guessed \"" + enc +
                             "\", pass option -confenc to force)");
-#ifdef HAVE_CHARDET
-            detect_obj_free (&obj);
-#endif
             return false;
         }
-        // Now we can convert it
-        std::string out;
-        if (!convertFileEnc (data, sz, out, enc))
+        Iconv conv (enc, "UTF-8");
+        if (!conv.Convert (data, out))
         {
-#ifdef HAVE_CHARDET
-            detect_obj_free (&obj);
-#endif
+            parseError (ConfErrorType::SysError,
+                        0,
+                        "unable to convert configuration file from \"" + enc + "\" to UTF-8");
             return false;
         }
-        contents = out;
     }
-#ifdef HAVE_CHARDET
-    detect_obj_free (&obj);
-#endif
     return true;
 }
 
@@ -152,7 +111,7 @@ void ImageConf::parseError (ConfErrorType error, int line, const std::string& ex
 {
     // Construct output string for error
     std::string out;
-    out += this->fileName;
+    out += confFile.fileName;
     out += ":";
     if (line)
     {
@@ -355,16 +314,13 @@ bool ImageConf::processPartitionBlock (ParseBlock& block)
 bool ImageConf::ParseFile()
 {
     // Open the file
-    std::string_view file;
-    MemoryMapped handle;
-    // NOTE: we pass the handle so that the string_view's contents don't go out of scope.
-    // It's an awful hack but I don't care
-    if (!openConfFile (handle, file))
+    std::string file;
+    if (!openConfFile (file))
         return false;
     // Now parse it
-    ConfParser parser (this->fileName, file);
-    bool eof = false;
+    ConfParser parser (confFile.fileName, file);
     ParseBlock curBlock;
+    bool eof = false;
     if (!parser.NextBlock (curBlock, eof))
         return false;
     bool result = true;

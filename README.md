@@ -1,5 +1,5 @@
 # nnimage
-nnimage is a simple program designed to help create and manage disk images. Essentially, it serves as a tool to manage every part of disk image creation (including partitioning, formatting, and updating files) in a fast way that does not require root access. It has been designed with OS development as the first thing in mind.
+nnimage is a program designed to help create and manage disk images. Essentially, it serves as a tool to manage every part of disk image creation (including partitioning, formatting, and updating files) in a fast way that does not require root access. It has been designed with OS development as the first thing in mind, but could be useful to sysadmins, power users, and distro maintainers as well.
 
 ## Dependencies
 nnimage currently depends on libkrun/libkrunfw, as that it is the recommended way of isolating the disk image. Other backends are provided for ISO images (uses xorriso), loopback devices (requires root and generally not recommended),

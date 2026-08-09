@@ -15,95 +15,25 @@
     limitations under the License.
 */
 
-#ifndef NNIMAGE_OPTION_H
-#define NNIMAGE_OPTION_H
+#ifndef OPTION_H
+#define OPTION_H
 
-// All valid options
-enum class OptionId
-{
-    ConfFile,
-    NamePrefix,
-    OutputDir,
-    ConfEnc,
-    Backend,
-    Overwrite,
-    SrcDir,
-    FailOnSkip
-};
+#include "include/OptionTypes.h"
 
 struct Option
 {
     const char* shortOpt;
     const char* longOpt;
     OptionId id;
-    const char* helpString;
+    const char* helpString;    // String printed out by help
     bool requiresArg;
-    const char* argHelp;
+    const char* argHelp;    // String printed out by help to describe the argument
 };
 
-// General options
-static Option GlobalOpt[] = {
-    {"-f",
-     "-conf",
-     OptionId::ConfFile,
-     "Specifies configuration file to read from.\nDefaults to \"nnimage.conf\"",
-     true,
-     "FILE"},
-    {"-n",
-     "-nameprefix",
-     OptionId::NamePrefix,
-     "Specifies file name prefix for output.\nOutput image will have image name and an appropriate extension added.\n\
-If an extension is specified, then argument will be whole image name",
-     true,
-     "IMAGE"},
-    {"-o",
-     "-output",
-     OptionId::OutputDir,
-     "Specifies output directory for image files.\nDefaults to current working directory",
-     true,
-     "OUTPUT"},
-    {"-e",
-     "-confenc",
-     OptionId::ConfEnc,
-     "Specifies character encoding for configuration file.\nMust be passable to iconv(3)",
-     true,
-     "ENC"},
-    {"-b", "-backend", OptionId::Backend, nullptr, true, nullptr},
-    {"",
-     "-fail-on-skip",
-     OptionId::FailOnSkip,
-     "Specifies to fail the action if any image is skipped due to validation errors",
-     false,
-     nullptr},
-    {.shortOpt = nullptr, .longOpt = nullptr}};
-
-// Create image options
-static Option CreateOpt[] = {
-    {"-w", "-overwrite", OptionId::Overwrite, "Specifies to overwrite pre-existing image", false},
-    {nullptr}};
-// Partition options
-static Option PartitionOpt[] = {{nullptr}};
-// FOrmat options
-static Option FormatOpt[] = {{nullptr}};
-// Update options
-static Option UpdateOpt[] = {{"-d",
-                              "-directory",
-                              OptionId::SrcDir,
-                              "Specifies directory to use as input for updating",
-                              true,
-                              "DIR"},
-                             {nullptr}};
-
-// Action structure (for help)
 struct ActionHelp
 {
-    const char* action;    // Name of action
-    Option* opts;          // Array of options
+    const char* action;
+    Option* opts;
 };
-
-static ActionHelp Actions[] = {{"create", CreateOpt},
-                               {"partition", nullptr},
-                               {"format", nullptr},
-                               {"update", UpdateOpt}};
 
 #endif

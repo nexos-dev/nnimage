@@ -35,6 +35,7 @@
 
 class Backend;
 
+// TODO this probably should go into ConfParser.h
 enum class ConfErrorType
 {
     Ok,
@@ -65,13 +66,20 @@ struct ConfError
     int line;
 };
 
+// Used by action logic to store conf file stuff
+struct ImgConfFile
+{
+    std::string fileName;
+    std::string fileEnc;
+};
+
 class Image;
 class Partition;
 class ImageConf
 {
   public:
     ImageConf() = delete;
-    ImageConf (const std::string& fileName) : fileName{fileName}
+    ImageConf (const ImgConfFile& file) : confFile{file}
     {}
     std::vector<std::unique_ptr<Image>>& GetImages()
     {
@@ -97,8 +105,7 @@ class ImageConf
     bool GetVal (const ParseProp& prop, ConfVal& out, int idx);
 
   private:
-    bool convertFileEnc (std::string_view data, size_t dataSize, std::string& out, const char* enc);
-    bool openConfFile (MemoryMapped& file, std::string_view& contents);
+    bool openConfFile (std::string& contents);
     bool processImageBlock (ParseBlock& block);
     bool processPartitionBlock (ParseBlock& block);
     void parseError (ConfErrorType error, int line, const std::string& extra);
@@ -106,7 +113,7 @@ class ImageConf
     void removeProp (ParseBlock& block, ParseProp& prop);
     std::vector<std::unique_ptr<Image>> images;
     std::map<std::string, std::unique_ptr<Partition>> parts;
-    const std::string& fileName;
+    ImgConfFile confFile;
 };
 
 using ImgConfSetter = std::function<void (Image&, const ConfVal&, ConfErrorType&)>;
@@ -293,6 +300,7 @@ class Image
     {
         return parts;
     }
+    // Used by backends to identify the image, e.g. the block device name
     void SetBackendTag (const std::string& tag)
     {
         spec.backendTag = tag;
@@ -319,6 +327,7 @@ class Image
     std::shared_ptr<Backend> backend;
 
   private:
+    // These functions are the main driver of backend detection logic
     bool checkBackendForImage (BackendType type) const
     {
         const auto& validBackends = getValidBackends();

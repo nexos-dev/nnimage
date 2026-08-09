@@ -18,6 +18,8 @@
 #include "nnimage.h"
 #include <algorithm>
 
+// TODO: move most of these tables to ImageTypes.h
+
 // clang-format off
 
 // Property name registry

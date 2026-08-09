@@ -23,24 +23,29 @@
 #include <initializer_list>
 #include <type_traits>
 
-template <typename EnumType, typename ValueType, size_t Size = static_cast<size_t> (EnumType::Max)>
+template <typename EnumType, typename ValueType, EnumType Size>
 class EnumArray
 {
   public:
     EnumArray()
     {
         static_assert (std::is_enum<EnumType>::value, "EnumType must be an enum type");
-        static_assert (Size > 0, "Size must be greater than 0");
-        static_assert (Size <= static_cast<size_t> (EnumType::Max),
-                       "Size must be less than or equal to EnumType::Max");
+        static_assert (static_cast<size_t> (Size) > 0, "Size must be greater than 0");
     }
     constexpr EnumArray (std::initializer_list<ValueType> vals)
     {
         static_assert (std::is_enum<EnumType>::value, "EnumType must be an enum type");
-        static_assert (Size > 0, "Size must be greater than 0");
-        static_assert (Size <= static_cast<size_t> (EnumType::Max),
-                       "Size must be less than or equal to EnumType::Max");
+        static_assert (static_cast<size_t> (Size) > 0, "Size must be greater than 0");
         std::copy (vals.begin(), vals.end(), data.begin());
+    }
+    constexpr EnumArray (std::initializer_list<std::pair<EnumType, ValueType>> vals)
+    {
+        static_assert (std::is_enum<EnumType>::value, "EnumType must be an enum type");
+        static_assert (static_cast<size_t> (Size) > 0, "Size must be greater than 0");
+        for (const auto& val : vals)
+        {
+            data[static_cast<size_t> (val.first)] = val.second;
+        }
     }
 
     constexpr ValueType& operator[] (EnumType index)
@@ -54,7 +59,7 @@ class EnumArray
     }
     constexpr size_t size() const noexcept
     {
-        return Size;
+        return static_cast<size_t> (Size);
     }
     constexpr auto begin() noexcept
     {
@@ -66,7 +71,7 @@ class EnumArray
     }
 
   private:
-    std::array<ValueType, Size> data{};
+    std::array<ValueType, static_cast<size_t> (Size)> data{};
 };
 
 #endif

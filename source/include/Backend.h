@@ -32,17 +32,15 @@ class Backend
 {
   public:
     static std::unique_ptr<Backend> BackendFactory (BackendType type);
-    // Resolves backend type from string name
     static BackendType ResolveBackend (const std::string& name);
-    // Gets a backend name from type
     static const std::string GetBackendName (BackendType type);
-    // Functions for each backend function
-    virtual std::unique_ptr<Task> CreateImage (Image& img, const std::string& fileName);
-    virtual std::unique_ptr<Task> CreatePartTable (Image& img, const std::string& fileName);
     bool BackendCreated()
     {
         return backendCreated;
     }
+    // Functions for each backend function
+    virtual std::unique_ptr<Task> CreateImage (Image& img, const std::string& fileName);
+    virtual std::unique_ptr<Task> CreatePartTable (Image& img, const std::string& fileName);
     virtual bool AddImage (Image& img, const std::string& fileName, bool readonly) = 0;
     static bool IsBackendEnabled (BackendType type);
     virtual ~Backend() = default;

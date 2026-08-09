@@ -18,8 +18,13 @@
 #ifndef NNIMAGE_H
 #define NNIMAGE_H
 
+// TODO: it would be better if source files included the headers they need, but I also like the
+// simplicity of this
+
 #include "include/Log.h"
-#include "include/Task.h"
+#include "include/Error.h"
+#include "include/ConfParser.h"
+/*#include "include/Task.h"
 #include "include/Image.h"
 #include "include/Action.h"
 #include "include/CmdLine.h"
@@ -27,7 +32,7 @@
 #include "include/ActionTable.h"
 #include "include/ImageTypes.h"
 #include "include/EnumArray.h"
-#include "include/Option.h"
+#include "include/Option.h"*/
 
 // Test driver function
 bool TestDriver (int argc, char** argv);

@@ -1,1 +1,4 @@
 Audit partition handling
+Add backend command line options
+Make error handling more consistent
+Maybe move image property lists into a header?

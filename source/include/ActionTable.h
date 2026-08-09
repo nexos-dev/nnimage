@@ -19,6 +19,7 @@
 #define ACTIONTABLE_H
 
 #include "include/Action.h"
+#include "include/ActionOptions.h"
 
 #include <functional>
 #include <unordered_map>

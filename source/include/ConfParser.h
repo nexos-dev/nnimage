@@ -1,5 +1,5 @@
 /*
-    ConfParser.h - contains header for lexer/parser
+    ConfParser.h - contains a simple configuration file format parser
     Copyright 2026 Jedidiah Thompson
 
     Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,201 +15,144 @@
     limitations under the License.
 */
 
-#ifndef NNIMAGE_CONFPARSER_H
-#define NNIMAGE_CONFPARSER_H
+#ifndef CONFPARSER_H
+#define CONFPARSER_H
 
-#include <cassert>
-#include <cstdint>
+#include "include/Error.h"
+#include "include/SimpleLexer.h"
 #include <functional>
-#include <memory>
 #include <string>
-#include <string_view>
-#include <unordered_map>
-#include <variant>
-#include <vector>
 
-enum class TokenType
-{
-    Identifier,
-    String,
-    Number,
-    NumId,
-    Colon,
-    Semicolon,
-    Comma,
-    Obrace,
-    Ebrace,
-    Eof,
-    Error,
-    None
-};
-
-enum class LexError
-{
-    UnexpectedEof,
-    UnexpectedChar,
-    InvalidNum,
-    InvalidChar
-};
-
-enum class LexWarning
-{
-    InvalidEsc
-};
-
-struct ConfNumId
-{
-    uint64_t num;
-    std::string id;
-};
-
-// Token structure
-struct ConfToken
-{
-    TokenType type;
-    int line;
-    std::variant<std::string, uint64_t, ConfNumId> val;
-};
-
-// Lexer class
-class ConfLexer
-{
-  public:
-    ConfLexer (const std::string& file, std::string_view& fileData);
-    // Returns next token
-    std::unique_ptr<ConfToken> NextToken();
-    // Gets name of token type
-    const std::string NameFromToken (TokenType type);
-
-  private:
-    char readChar();                      // Gets next character
-    char peekChar();                      // Peeks at the next character
-    void skipChar();                      // Skips over next character
-    void returnChar (char c);             // Goes back a character
-    bool isCharId (char c);               // Checks if a character it an ID character
-    bool isCharNum (char c, int base);    // Checks if a character is numeric
-    bool isCharSpace (char c);            // Checks if a character is space
-    void prepareEof (ConfToken* tok);
-    void lexError (LexError err, const std::string& extra);
-    void lexWarn (LexWarning err, const std::string& extra);
-    const std::string file;
-    ConfToken* curTok;            // Current token
-    std::string_view fileData;    // File data (in UTF-8)
-    int idx;                      // Index in file data
-    int curLine;                  // Current line
-    bool isAccepted;              // If the state is accepted
-    bool isEof;                   // Have we reached end of file
-    bool isError;                 // Is stream in error?
-    char nextChar;                // Character that was peeked at
-};
-
-// Parser structures
+// NOTE: MUST BE SYNCED WITH ORDER OF ConfValue
+// I know this is the C programmer coming out in me, but this trickery is the cleanest way to do
+// this without a lot of template boilerplate
 enum class ConfType
 {
-    Id,
-    Num,
-    NumId,
-    String
+    Int,
+    String,
+    List,
+    Max
 };
 
-struct ConfVal
-{
-  public:
-    bool IsType (ConfType type) const
-    {
-        if (this->type == type)
-            return true;
-        return false;
-    }
-    // Getter functions
-    const std::string& GetString() const
-    {
-        assert (type == ConfType::Id || type == ConfType::String);
-        return std::get<std::string> (val);
-    }
-    uint64_t GetInteger() const
-    {
-        assert (type == ConfType::Num);
-        return std::get<uint64_t> (val);
-    }
-    const ConfNumId& GetNumId() const
-    {
-        assert (type == ConfType::NumId);
-        return std::get<ConfNumId> (val);
-    }
-    bool IsBool() const
-    {
-        if (this->type != ConfType::Id)
-            return false;
-        const std::string& id = std::get<std::string> (val);
-        if (id != "true" && id != "false")
-            return false;
-        return true;
-    }
-    bool GetBoolean() const
-    {
-        assert (type == ConfType::Id);
-        const std::string& id = std::get<std::string> (val);
-        if (id == "true")
-            return true;
-        else if (id == "false")
-            return false;
-        else
-            assert (false);
-        return false;    // To make the compiler shut up
-    }
-    int GetLine() const
-    {
-        return line;
-    }
+// KEEP SYNCED WITH ABOVE
+using ConfList = std::vector<std::string>;
+using ConfValue = std::variant<int, std::string, ConfList>;
 
-  private:
+template <typename Derived, typename ConfKey>
+class ConfParser;
+
+template <typename Derived, typename ConfKey>
+using ConfSetter = std::function<void (Derived&, const ConfValue&)>;
+template <typename Derived, typename ConfKey>
+using ConfGetter = std::function<ConfValue (Derived&)>;
+
+template <typename Derived, typename ConfKey>
+struct ConfInstance
+{
     ConfType type;
-    std::variant<std::string, uint64_t, ConfNumId> val;
-    int line;
-    // TODO: remove this. This is a relic from before I made ConfVal define it's own interface
-    friend class ConfParser;
-    friend class ImageConf;
+    ConfSetter<Derived, ConfKey> setter;
+    ConfGetter<Derived, ConfKey> getter;
 };
 
-struct ParseProp
+struct ConfProp
 {
     std::string name;
-    int line;
-    std::vector<ConfVal> values;
+    ConfValue val;
 };
 
-struct ParseBlock
-{
-    int line;
-    std::string type;
-    std::string name;
-    std::unordered_map<std::string, ParseProp> props;
-};
+using TokenPtr = std::unique_ptr<LexToken>;
 
-enum class ParseError
-{
-    DuplicateProp,
-    UnexpectedToken
-};
-
+template <typename Derived, typename ConfKey>
 class ConfParser
 {
   public:
-    ConfParser (const std::string& file, std::string_view& fileData);
-    bool NextBlock (ParseBlock& block, bool& isEof);
+    ConfParser (std::ifstream& file);
+    Result<bool> Get (ConfKey key, ConfValue& val);
+    ResNone Set (ConfKey key, const ConfValue& val, bool overwrite = true);
+
+    ResNone Parse();
+
+  protected:
+    // CRTP function
+    Derived& derived()
+    {
+        return *static_cast<Derived*> (this);
+    }
 
   private:
-    ConfLexer lexer;
-    const std::string& file;
-    std::unique_ptr<ConfToken> lastToken;
-    std::unique_ptr<ConfToken> getToken (std::unique_ptr<ConfToken> oldToken);
-    std::unique_ptr<ConfToken> expectToken (TokenType type, std::unique_ptr<ConfToken> oldToken);
-    void tokenError (TokenType expected, TokenType got, int line);
-    void parseError (ParseError error,
-                     int line,
-                     const std::string& extra,
-                     const std::string& extra2 = "");
+    ResNone parseLoop (std::vector<ConfProp>& props);
+    Result<TokenPtr> parseProp (TokenPtr startTok, ConfProp& out);
+    Result<TokenPtr> setNumberProp (ConfProp& prop, LexToken* tok);
+    Result<TokenPtr> setIdProp (ConfProp& prop, TokenPtr tok);
+    Result<TokenPtr> setListProp (ConfProp& prop, TokenPtr tok);
+
+    SimpleLexer lexer;
+
+    Result<TokenPtr> expectToken (TokenType expected)
+    {
+        auto res = lexer.NextToken();
+        if (!res.IsOk())
+            return res.GetError();
+        TokenPtr tok = std::move (res.GetValue());
+        assert (tok);
+        if (tok->type != expected)
+            return unexpectedToken (tok->type);
+        return std::move (tok);
+    }
+    Result<TokenPtr> nextToken()
+    {
+        auto res = lexer.NextToken();
+        if (!res.IsOk())
+            return res.GetError();
+        TokenPtr tok = std::move (res.GetValue());
+        assert (tok);
+        return std::move (tok);
+    }
+
+    Error unexpectedToken (TokenType type)
+    {
+        return Error ({ErrorDomain::Log, ErrorCode::ParseError},
+                      "Unexpected token \"%s\"",
+                      lexer.NameFromToken (type));
+    }
+    Error parseFailed()
+    {
+        return Error ({ErrorDomain::Log, ErrorCode::ParseError},
+                      "Parsing log control file %s failed",
+                      confPath);
+    }
+
+    ConfKey getPropKey (const std::string& name)
+    {
+        auto it = nameToKey.find (name);
+        if (it == nameToKey.end())
+            return ConfKey::None;
+        return it->second;
+    }
+
+    const std::string& nameFromKey (ConfKey key)
+    {
+        auto& nameToKey = getNameToKey();
+        auto it = std::find_if (nameToKey.begin(), nameToKey.end(), [&key] (const auto& pair) {
+            return pair.second == key;
+        });
+        if (it == nameToKey.end())
+        {
+            throw ErrorException (Error ({ErrorDomain::Log, ErrorCode::Internal},
+                                         "Access to non-existant log control key"));
+        }
+        return it->first;
+    }
+
+    virtual const EnumArray<ConfKey, ConfInstance<Derived, ConfKey>, ConfKey::Max>&
+    getKeyRegistry() = 0;
+    virtual const std::unordered_map<std::string, ConfKey>& getNameToKey() = 0;
+
+    // Yes, I know this is bad practice, but this is the simplest way of doing this
+    static ConfType getValueType (const ConfValue& val)
+    {
+        return static_cast<ConfType> (val.index());
+    }
 };
 
 #endif

@@ -27,22 +27,45 @@ class BlockDevFactory
     BlockDevFactory (const std::string& prefix) : prefix (prefix), idx (0)
     {}
 
-    operator std::string() &
+    std::string operator++ (int)
     {
-        // Convert index to it's string form, e.g., 0 -> 'a', 1 -> 'b', etc.
+        // Convert index to it's string form
         char suffix = 'a' + idx++;
         return prefix + suffix;
     }
 
-    operator std::string() &&
+    std::string operator++()
     {
-        char suffix = 'a' + idx++;
+        char suffix = 'a' + ++idx;
+        return prefix + suffix;
+    }
+
+    std::string operator()()
+    {
+        char suffix = 'a' + idx;
+        return prefix + suffix;
+    }
+
+    std::string operator() (int index)
+    {
+        char suffix = 'a' + index;
+        return prefix + suffix;
+    }
+
+    std::string operator-- (int)
+    {
+        char suffix = 'a' + idx--;
+        return prefix + suffix;
+    }
+    std::string operator--()
+    {
+        char suffix = 'a' + --idx;
         return prefix + suffix;
     }
 
   private:
-    std::string prefix;
-    int idx;
+    std::string prefix = "";
+    int idx = 0;
 };
 
 #endif

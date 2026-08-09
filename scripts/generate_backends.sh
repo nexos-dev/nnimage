@@ -104,7 +104,7 @@ echo "};" >> "$outputfile"
 echo "" >> "$outputfile"
 
 # Lastly, generate table of lambdas to create backend instances
-echo "static EnumArray<BackendType, std::function<std::unique_ptr<Backend>()>> BackendFactoryRegistry = {" >> "$outputfile"
+echo "static EnumArray<BackendType, std::function<std::unique_ptr<Backend>()>, BackendType::Max> BackendFactoryRegistry = {" >> "$outputfile"
 echo "    nullptr," >> "$outputfile"
 for backend in $allbackends
 do

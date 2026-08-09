@@ -34,45 +34,33 @@ include(GNUInstallDirs)
 include(cmake/Util.cmake)
 
 # Compile options
-set(NNIMAGE_LOGLEVEL Normal CACHE STRING "Specified verbosity of nnimage (can be Normal or Verbose)")
-set(NNIMAGE_LOG_FILE "nnimage/nnimage-log" CACHE PATH "Specifies where default nnimage log goes in users .config")
 option(NNIMAGE_ENABLE_TESTS "Enable tests" OFF)
 set(NNIMAGE_ENABLED_BACKENDS "krun;xorriso" CACHE STRING "Comma-separated list of enabled backends (krun, guestfs, xorriso, loopback)")
 set(NNIMAGE_DEFAULT_BACKEND "krun" CACHE STRING "Default backend to use when creating images (krun, guestfs, xorriso, loopback)")
 
-# Validate options
-if(NOT NNIMAGE_LOGLEVEL STREQUAL "Normal" AND NOT NNIMAGE_LOGLEVEL STREQUAL "Verbose")
-    message(FATAL_ERROR "Invalid log level \"${NNIMAGE_LOGLEVEL}\" specified")
-endif()
-
-if(NNIMAGE_LOGLEVEL STREQUAL "Normal")
-    set(NNIMAGE_LOGLEVEL_NAME "Status")
-else()
-    set(NNIMAGE_LOGLEVEL_NAME ${NNIMAGE_LOGLEVEL})
-endif()
 
 find_package(PkgConfig REQUIRED)
-
-# Get libchardet
-pkg_check_modules(CHARDET chardet)
-# If not found, that's fine
-if(NOT CHARDET_FOUND STREQUAL "1")
-    set(HAVE_CHARDET OFF)
-    set(NNIMAGE_INCLUDES ${CHARDET_INCLUDE_DIRS})
-    set(NNIMAGE_LIBRARIES ${CHARDET_LIBRARIES})
-else()
-    set(HAVE_CHARDET ON)
-endif()
-
-# Get iconv
-find_package(Iconv REQUIRED)
-set(NNIMAGE_LIBRARIES ${NNIMAGE_LIBRARIES} Iconv::Iconv)
 
 # Prepare sources
 set(NNIMAGE_SOURCES "")
 set(NNIMAGE_INCLUDES "")
 set(NNIMAGE_LIBRARIES "")
 set(NNIMAGE_USABLE_BACKENDS "")
+
+# Get libchardet
+pkg_check_modules(CHARDET chardet)
+# If not found, that's fine
+if(NOT CHARDET_FOUND STREQUAL "1")
+    set(HAVE_CHARDET OFF)
+else()
+    set(HAVE_CHARDET ON)
+    list(APPEND NNIMAGE_INCLUDES ${CHARDET_INCLUDE_DIRS})
+    list(APPEND NNIMAGE_LIBRARIES ${CHARDET_LIBRARIES})
+endif()
+
+# Get iconv
+find_package(Iconv REQUIRED)
+list(APPEND NNIMAGE_LIBRARIES Iconv::Iconv)
 
 # Define backend configurations
 # This is where CMake gets a little annoying, as we need a list of lists
@@ -121,7 +109,7 @@ foreach(BACKEND ${NNIMAGE_ENABLED_BACKENDS})
             endif()
             if(BACKEND_ENABLED)
                 list(APPEND NNIMAGE_USABLE_BACKENDS ${BACKEND_NAME})
-                list(APPEND NNIMAGE_SOURCES ${BACKEND_SOURCE})
+                #list(APPEND NNIMAGE_SOURCES ${BACKEND_SOURCE})
             else()
                 message(WARNING "Backend ${BACKEND} is not supported on this system")
             endif()
@@ -160,22 +148,28 @@ configure_file(source/config.h.in config.h)
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 include_directories(source)
 include_directories(external/include)
+# Ugly hack because libchardet doesn't provide version.h which it depends on, so we have a fake one
+# We probably shouldn't go to such lengths to support a broken library
+include_directories(cmake)
 
 # List sources
 list(APPEND NNIMAGE_SOURCES source/main.cxx
-                         source/Log.cxx
-                         source/Action.cxx
-                         source/Conf.cxx
-                         source/ConfParser.cxx
-                         source/Image.cxx
-                         source/Task.cxx
-                         source/backend/Krun.cxx
-                         source/backend/Backend.cxx
+                            source/Log.cxx
+                            source/SimpleLexer.cxx
+                            source/ConfParser.cxx
+
+#                         source/Action.cxx
+#                         source/Conf.cxx
+#                         source/ConfParser.cxx
+#                         source/Image.cxx
+#                         source/Task.cxx
+#                         source/backend/Krun.cxx
+#                         source/backend/Backend.cxx
                          external/MemoryMapped.cpp)
 
-if(NNIMAGE_ENABLE_TESTS)
-    list(APPEND NNIMAGE_SOURCES tests/TestDriver.cxx)
-endif()
+#if(NNIMAGE_ENABLE_TESTS)
+#    list(APPEND NNIMAGE_SOURCES tests/TestDriver.cxx)
+#endif()
 
 # Create the program
 add_executable(nnimage ${NNIMAGE_SOURCES})

@@ -16,6 +16,7 @@
 */
 
 #include "nnimage.h"
+#include "include/ActionOptions.h"
 #include <algorithm>
 #include <cassert>
 #include <filesystem>
@@ -35,7 +36,7 @@ bool Action::SetOption (OptionId id, const std::string& val)
     switch (id)
     {
         case OptionId::ConfFile:
-            confFile = val;
+            conf.fileName = val;
             break;
         case OptionId::NamePrefix:
             namePrefix = val;
@@ -53,7 +54,7 @@ bool Action::SetOption (OptionId id, const std::string& val)
             }
             break;
         case OptionId::ConfEnc:
-            opts[id] = val;
+            conf.fileEnc = val;
             break;
         case OptionId::FailOnSkip:
             failOnSkip = true;

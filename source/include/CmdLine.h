@@ -46,11 +46,15 @@ class CmdLine
 
 extern std::unique_ptr<CmdLine> _cmdLine;
 
+// TODO: I really don't like this, but it is needed in a couple of places
+// Once those are addressed this is going to be removed
 static inline Action* GetAction()
 {
     if (_actionOverride)
         return _actionOverride;
-    return _cmdLine->GetAction();
+    if (_cmdLine)
+        return _cmdLine->GetAction();
+    return nullptr;
 }
 
 #endif
