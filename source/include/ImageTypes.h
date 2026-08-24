@@ -20,10 +20,6 @@
 
 #include "include/Image.h"
 
-#include <algorithm>
-#include <unordered_map>
-#include <vector>
-
 // Image type classes
 class MbrImage : public Image
 {

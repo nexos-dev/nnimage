@@ -17,8 +17,6 @@
 
 #include "nnimage.h"
 #include "include/ConfParser.h"
-#include <cassert>
-#include <string_view>
 
 // NOTE: I already here the comments from a mile away, "why aren't you using flex and bison?"
 // Well, that would make life a lot simpler, but I really don't want the user to only see "parser
@@ -661,8 +659,7 @@ std::unique_ptr<ConfToken> ConfParser::getToken (std::unique_ptr<ConfToken> oldT
     return tok;
 }
 
-std::unique_ptr<ConfToken> ConfParser::expectToken (TokenType type,
-                                                    std::unique_ptr<ConfToken> oldToken)
+std::unique_ptr<ConfToken> ConfParser::expectToken (TokenType type, std::unique_ptr<ConfToken> oldToken)
 {
     // Set last token
     lastToken = std::move (oldToken);
@@ -689,10 +686,7 @@ void ConfParser::tokenError (TokenType expected, TokenType got, int line)
     parseError (ParseError::UnexpectedToken, line, token, msg);
 }
 
-void ConfParser::parseError (ParseError error,
-                             int line,
-                             const std::string& extra,
-                             const std::string& extra2)
+void ConfParser::parseError (ParseError error, int line, const std::string& extra, const std::string& extra2)
 {
     std::string msg = file + ":" + std::to_string (line) + ": ";
     switch (error)

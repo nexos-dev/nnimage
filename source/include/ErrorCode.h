@@ -19,7 +19,6 @@
 #define ERRORCODE_H
 
 #include "include/EnumArray.h"
-#include <string>
 
 enum class ErrorCode
 {
@@ -29,7 +28,11 @@ enum class ErrorCode
     ParseError,
     LexError,
     LogCtrlLocked,
+    EncMismatch,
+    SysFailure,
     Internal,
+    BadAction,
+    InvalidOption,
     Max
 };
 
@@ -40,6 +43,10 @@ static const EnumArray<ErrorCode, std::string, ErrorCode::Max> _errorCodeStrings
     {ErrorCode::ParseError, "Parser error"},
     {ErrorCode::LexError, "Lexer error"},
     {ErrorCode::LogCtrlLocked, "Log control file is locked"},
-    {ErrorCode::Internal, "Internal error"}};
+    {ErrorCode::EncMismatch, "Unable to retrieve character encoding"},
+    {ErrorCode::SysFailure, "Call to system failed"},
+    {ErrorCode::Internal, "Internal error"},
+    {ErrorCode::BadAction, "Invalid action specified"},
+    {ErrorCode::InvalidOption, "Invalid option configuration specified"}};
 
 #endif

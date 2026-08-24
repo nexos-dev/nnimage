@@ -18,16 +18,6 @@
 #ifndef NNIMAGE_CONFPARSER_H
 #define NNIMAGE_CONFPARSER_H
 
-#include <cassert>
-#include <cstdint>
-#include <functional>
-#include <memory>
-#include <string>
-#include <string_view>
-#include <unordered_map>
-#include <variant>
-#include <vector>
-
 enum class TokenType
 {
     Identifier,
@@ -201,10 +191,7 @@ class ConfParser
     // Similar to above, but fails if token isn't expected type
     std::unique_ptr<ConfToken> expectToken (TokenType type, std::unique_ptr<ConfToken> oldToken);
     void tokenError (TokenType expected, TokenType got, int line);
-    void parseError (ParseError error,
-                     int line,
-                     const std::string& extra,
-                     const std::string& extra2 = "");
+    void parseError (ParseError error, int line, const std::string& extra, const std::string& extra2 = "");
 };
 
 #endif

@@ -16,7 +16,6 @@
 */
 
 #include "nnimage.h"
-#include <algorithm>
 
 // TODO: move most of these tables to ImageTypes.h
 
@@ -165,10 +164,10 @@ const std::string Image::GetTypeName (ImageType type)
 const std::string Image::getPropName (ImgProp prop)
 {
     // Use find_if to find
-    auto it = std::find_if (
-        Image::nameRegistry.begin(),
-        Image::nameRegistry.end(),
-        [&prop] (const std::pair<std::string, ImgProp> pair) { return pair.second == prop; });
+    auto it =
+        std::find_if (Image::nameRegistry.begin(),
+                      Image::nameRegistry.end(),
+                      [&prop] (const std::pair<std::string, ImgProp> pair) { return pair.second == prop; });
     if (it == Image::nameRegistry.end())
         return "";
     return it->first;
@@ -223,9 +222,8 @@ BackendType Image::GetBackendType (BackendType suggestion) const
 const std::unordered_map<ImgProp, ImgConfItem> MbrImage::registry = {};
 
 // Defined boot modes
-const std::unordered_map<std::string, BootMode> MbrImage::validBootModes = {
-    {"none", BootMode::None},
-    {"bios", BootMode::Bios}};
+const std::unordered_map<std::string, BootMode> MbrImage::validBootModes = {{"none", BootMode::None},
+                                                                            {"bios", BootMode::Bios}};
 
 BootMode MbrImage::getBootMode (const std::string& modeStr)
 {
@@ -241,10 +239,9 @@ BootMode MbrImage::getBootMode (const std::string& modeStr)
 const std::unordered_map<ImgProp, ImgConfItem> GptImage::registry = {};
 
 // Defined boot modes
-const std::unordered_map<std::string, BootMode> GptImage::validBootModes = {
-    {"none", BootMode::None},
-    {"bios", BootMode::Bios},
-    {"efi", BootMode::Efi}};
+const std::unordered_map<std::string, BootMode> GptImage::validBootModes = {{"none", BootMode::None},
+                                                                            {"bios", BootMode::Bios},
+                                                                            {"efi", BootMode::Efi}};
 
 BootMode GptImage::getBootMode (const std::string& modeStr)
 {
@@ -256,10 +253,9 @@ BootMode GptImage::getBootMode (const std::string& modeStr)
 
 // ISO image implementation
 
-const std::unordered_map<std::string, IsoBootEmu> IsoImage::bootEmus = {
-    {"noemu", IsoBootEmu::Noemu},
-    {"hdd", IsoBootEmu::Hdd},
-    {"fdd", IsoBootEmu::Fdd}};
+const std::unordered_map<std::string, IsoBootEmu> IsoImage::bootEmus = {{"noemu", IsoBootEmu::Noemu},
+                                                                        {"hdd", IsoBootEmu::Hdd},
+                                                                        {"fdd", IsoBootEmu::Fdd}};
 
 const std::unordered_map<IsoBootEmu, ImageType> IsoImage::bootEmuModes = {
     {IsoBootEmu::Noemu, ImageType::Error},
@@ -294,10 +290,9 @@ const std::unordered_map<ImgProp, ImgConfItem> IsoImage::registry = {
 // clang-format on
 
 // Defined boot modes
-const std::unordered_map<std::string, BootMode> IsoImage::validBootModes = {
-    {"none", BootMode::None},
-    {"bios", BootMode::Bios},
-    {"efi", BootMode::Efi}};
+const std::unordered_map<std::string, BootMode> IsoImage::validBootModes = {{"none", BootMode::None},
+                                                                            {"bios", BootMode::Bios},
+                                                                            {"efi", BootMode::Efi}};
 
 BootMode IsoImage::getBootMode (const std::string& modeStr)
 {
@@ -321,16 +316,16 @@ bool IsoImage::Validate()
         bootImage = GetAction()->FindImage (bootImageName);
         if (bootImage == nullptr)
         {
-            _log->Error ("non-existant image \"" + bootImageName +
-                         "\" given as boot image on image \"" + spec.name + "\"");
+            _log->Error ("non-existant image \"" + bootImageName + "\" given as boot image on image \"" +
+                         spec.name + "\"");
             return false;
         }
         // Get the type
         ImageType type = IsoImage::bootEmuModes.find (bootEmu)->second;
         if (bootImage->GetType() != type)
         {
-            _log->Error ("image \"" + spec.name + "\" requires image type \"" +
-                         Image::GetTypeName (type) + "\" for boot image");
+            _log->Error ("image \"" + spec.name + "\" requires image type \"" + Image::GetTypeName (type) +
+                         "\" for boot image");
             return false;
         }
     }
@@ -346,9 +341,8 @@ bool IsoImage::Validate()
 const std::unordered_map<ImgProp, ImgConfItem> FloppyImage::registry = {};
 
 // Defined boot modes
-const std::unordered_map<std::string, BootMode> FloppyImage::validBootModes = {
-    {"none", BootMode::None},
-    {"bios", BootMode::Bios}};
+const std::unordered_map<std::string, BootMode> FloppyImage::validBootModes = {{"none", BootMode::None},
+                                                                               {"bios", BootMode::Bios}};
 
 // Valid sizes for a floppy image
 const std::vector<int> FloppyImage::validSizes = {720, 1440, 2880};
@@ -364,9 +358,7 @@ BootMode FloppyImage::getBootMode (const std::string& modeStr)
 bool FloppyImage::Validate()
 {
     // Make sure this is a valid floppy disk size
-    auto it = std::find (FloppyImage::validSizes.begin(),
-                         FloppyImage::validSizes.end(),
-                         spec.size / 1024);
+    auto it = std::find (FloppyImage::validSizes.begin(), FloppyImage::validSizes.end(), spec.size / 1024);
     if (it == FloppyImage::validSizes.end())
     {
         _log->Error ("floppy image must be of size 720K, 1440K, or 2880K");
@@ -430,10 +422,10 @@ const std::unordered_map<PartProp, PartConfItem> Partition::registry = {
 const std::string Partition::getPropName (PartProp prop)
 {
     // Use find_if to find
-    auto it = std::find_if (
-        Partition::nameRegistry.begin(),
-        Partition::nameRegistry.end(),
-        [&prop] (const std::pair<std::string, PartProp> pair) { return pair.second == prop; });
+    auto it =
+        std::find_if (Partition::nameRegistry.begin(),
+                      Partition::nameRegistry.end(),
+                      [&prop] (const std::pair<std::string, PartProp> pair) { return pair.second == prop; });
     if (it == Partition::nameRegistry.end())
         return "";
     return it->first;

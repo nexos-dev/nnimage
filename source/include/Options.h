@@ -1,5 +1,5 @@
 /*
-    Option.h - contains all defined command line options
+    Options.h - contains generic options base class
     Copyright 2026 Jedidiah Thompson
 
     Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,25 +15,17 @@
     limitations under the License.
 */
 
-#ifndef OPTION_H
-#define OPTION_H
+#ifndef OPTIONS_H
+#define OPTIONS_H
 
-#include "include/OptionTypes.h"
+#include "include/Error.h"
 
-struct Option
+class Options
 {
-    const char* shortOpt;
-    const char* longOpt;
-    OptionId id;
-    const char* helpString;    // String printed out by help
-    bool requiresArg;
-    const char* argHelp;    // String printed out by help to describe the argument
-};
-
-struct ActionHelp
-{
-    const char* action;
-    Option* opts;
+  public:
+    virtual ~Options() = default;
+    virtual void CollectOptions (cxxopts::Options& opts) = 0;
+    virtual ResNone ValidateOptions() = 0;
 };
 
 #endif

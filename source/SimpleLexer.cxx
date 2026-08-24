@@ -17,10 +17,9 @@
 
 #include "nnimage.h"
 #include "include/SimpleLexer.h"
-#include <cassert>
 
-SimpleLexer::SimpleLexer (const std::string& file, std::string_view fileData)
-    : fileData{fileData}, file{file}
+SimpleLexer::SimpleLexer (const std::string& file, std::string fileData)
+    : fileData{std::move (fileData)}, file{file}
 {
     curLine = 1;
     curTok = nullptr;
@@ -310,13 +309,7 @@ TokenResult SimpleLexer::NextToken()
         tok->type = TokenType::Eof;
         return TokenResult (std::move (tok));
     }
-    // Check for error
-    // THrow an exception if we attempt to read from the lexer in an invalid state
-    else if (isError)
-    {
-        throw ErrorException (Error ({ErrorDomain::Conf, ErrorCode::ParseError},
-                                     "Attempt to read token after lexer error"));
-    }
+    assert (!isError);
     // Now keep looping until it's accepted
     isAccepted = false;
     while (!isAccepted)

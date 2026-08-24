@@ -15,7 +15,6 @@
     limitations under the License.
 */
 
-#include <cstdint>
 #include <unistd.h>
 
 static uint64_t GetMemorySize()

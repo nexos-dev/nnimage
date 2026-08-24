@@ -18,10 +18,7 @@
 // clang-format off
 #include "nnimage.h"
 #include "include/ConfParser.h"
-#include <cassert>
 #include <iconv.h>
-#include <cstring>
-#include <iostream>
 #include "MemoryMapped.h"
 #include "include/Chardet.h"
 #include "include/Iconv.h"
@@ -161,10 +158,7 @@ void ImageConf::parseError (ConfErrorType error, int line, const std::string& ex
     _log->Error (out);
 }
 
-bool ImageConf::ValidateProp (const ParseProp& prop,
-                              ConfType expectedType,
-                              int maxVal,
-                              ConfError& result)
+bool ImageConf::ValidateProp (const ParseProp& prop, ConfType expectedType, int maxVal, ConfError& result)
 {
     if (prop.values.size() > maxVal)
     {

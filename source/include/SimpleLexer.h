@@ -20,12 +20,6 @@
 
 #include "include/Error.h"
 
-#include <string>
-#include <string_view>
-#include <memory>
-#include <cstdint>
-#include <variant>
-
 enum class TokenType
 {
     Identifier,
@@ -72,7 +66,7 @@ class SimpleLexer
 {
   public:
     SimpleLexer() = default;
-    SimpleLexer (const std::string& file, std::string_view fileData);
+    SimpleLexer (const std::string& file, std::string fileData);
     Result<std::unique_ptr<LexToken>> NextToken();
     const char* NameFromToken (TokenType type);
 
@@ -89,8 +83,8 @@ class SimpleLexer
     void lexWarn (LexWarning err, const std::string& extra);
     std::string file;
     LexToken* curTok;
-    std::string_view fileData;    // File data (in UTF-8)
-    int idx;                      // Index in file data
+    std::string fileData;    // File data (in UTF-8)
+    int idx;                 // Index in file data
     int curLine;
     bool isAccepted;
     bool isEof;

@@ -157,22 +157,23 @@ list(APPEND NNIMAGE_SOURCES source/main.cxx
                             source/Log.cxx
                             source/SimpleLexer.cxx
                             source/ConfParser.cxx
-
-#                         source/Action.cxx
+                            source/Dispatch.cxx
+                            source/Action.cxx
+                            source/ErrorFormat.cxx
 #                         source/Conf.cxx
 #                         source/ConfParser.cxx
 #                         source/Image.cxx
 #                         source/Task.cxx
-#                         source/backend/Krun.cxx
 #                         source/backend/Backend.cxx
                          external/MemoryMapped.cpp)
 
-#if(NNIMAGE_ENABLE_TESTS)
-#    list(APPEND NNIMAGE_SOURCES tests/TestDriver.cxx)
-#endif()
+if(NNIMAGE_ENABLE_TESTS)
+    list(APPEND NNIMAGE_SOURCES tests/TestDriver.cxx)
+endif()
 
 # Create the program
 add_executable(nnimage ${NNIMAGE_SOURCES})
+target_precompile_headers(nnimage PRIVATE source/include/pch.h)
 
 # Ensure nnimage is dependent on the backend header file
 add_dependencies(nnimage GenerateBackendHeader)

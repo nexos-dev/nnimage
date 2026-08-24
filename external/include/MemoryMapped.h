@@ -37,16 +37,12 @@ class MemoryMapped
     /// do nothing, must use open()
     MemoryMapped();
     /// open file, mappedBytes = 0 maps the whole file
-    MemoryMapped (const std::string& filename,
-                  size_t mappedBytes = WholeFile,
-                  CacheHint hint = Normal);
+    MemoryMapped (const std::string& filename, size_t mappedBytes = WholeFile, CacheHint hint = Normal);
     /// close file (see close() )
     ~MemoryMapped();
 
     /// open file, mappedBytes = 0 maps the whole file
-    bool open (const std::string& filename,
-               size_t mappedBytes = WholeFile,
-               CacheHint hint = Normal);
+    bool open (const std::string& filename, size_t mappedBytes = WholeFile, CacheHint hint = Normal);
     /// close file
     void close();
 
@@ -105,5 +101,5 @@ class MemoryMapped
     /// file handle
     FileHandle _file;
     /// pointer to the file contents mapped into memory
-    void* _mappedView;
+    void* _mappedView = NULL;
 };

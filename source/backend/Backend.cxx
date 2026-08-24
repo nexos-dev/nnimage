@@ -17,7 +17,6 @@
 
 #include "nnimage.h"
 #include "BackendTable.h"
-#include <cstdio>
 
 BackendType Backend::ResolveBackend (const std::string& name)
 {
@@ -45,44 +44,7 @@ std::unique_ptr<Backend> Backend::BackendFactory (BackendType type)
 }
 
 std::unique_ptr<Task> Backend::CreateImage (Image& img, const std::string& fileName)
-{
-    auto taskCb = [this, &img, fileName]() {
-        const auto& spec = img.GetSpec();
-        // Lock it so we don't have multiple threads writing to the same file at the same time
-        std::lock_guard<std::mutex> guard (spec.lock);
-        size_t sz = spec.size;
-        assert (sz > 0);
-        // Create the file
-        FILE* imgFile = std::fopen (fileName.c_str(), "wb");
-        if (imgFile == nullptr)
-        {
-            _log->SysError ("failed to create image file \"" + fileName + "\"");
-            return false;
-        }
-        // Now write the file with zeroes
-        // TODO: dynamically sized buffer
-        const size_t bufSize = 1024 * 1024;
-        std::vector<char> buf (bufSize, 0);
-        while (sz > 0)
-        {
-            size_t writeSize = std::min (sz, bufSize);
-            size_t written = std::fwrite (buf.data(), 1, writeSize, imgFile);
-            if (written != writeSize)
-            {
-                _log->SysError ("failed to write to image file \"" + fileName + "\"");
-                std::fclose (imgFile);
-                return false;
-            }
-            sz -= written;
-        }
-        std::fclose (imgFile);
-        return true;
-    };
-    const auto& spec = img.GetSpec();
-    auto task =
-        std::make_unique<Task> (taskCb, "CreateImage", "Creating image \"" + spec.name + "\"...");
-    return task;
-}
+{}
 
 std::unique_ptr<Task> Backend::CreatePartTable (Image& img, const std::string& fileName)
 {

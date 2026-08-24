@@ -19,9 +19,6 @@
 #define ICONV_H
 
 #include <iconv.h>
-#include <vector>
-#include <string>
-#include <string_view>
 
 class Iconv
 {
@@ -71,7 +68,7 @@ class Iconv
         iconv (cd, nullptr, nullptr, nullptr, nullptr);
 
         size_t inBytesLeft = input.size();
-        size_t outBytesLeft = inBytesLeft * 4;    // Max possible size if using UTF-8
+        size_t outBytesLeft = inBytesLeft * 4;    // Max possible size if using UTF-8/UTF-32
         std::vector<char> outBuffer (outBytesLeft);
 
         char* inBuf = const_cast<char*> (input.data());

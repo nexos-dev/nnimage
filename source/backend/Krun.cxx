@@ -18,7 +18,6 @@
 #include "nnimage.h"
 #include "backend/KrunBackend.h"
 #include "include/SysMemory.h"
-#include <thread>
 #include <libkrun.h>
 #include <string.h>
 
@@ -89,11 +88,7 @@ bool KrunBackend::AddImage (Image& img, const std::string& fileName, bool readon
     // Get the block device
     std::string blockDev = blockDevGen++;
     // Call the API
-    if (krun_add_disk2 (krunCtx,
-                        blockDev.c_str(),
-                        fileName.c_str(),
-                        KRUN_DISK_FORMAT_RAW,
-                        readonly) == -1)
+    if (krun_add_disk2 (krunCtx, blockDev.c_str(), fileName.c_str(), KRUN_DISK_FORMAT_RAW, readonly) == -1)
     {
         _log->Error ("failed to add disk \"" + spec.name + "\" to krun");
         return false;
@@ -113,9 +108,8 @@ std::unique_ptr<Task> KrunBackend::CreatePartTable (Image& img, const std::strin
         return false;
     };
     const auto& spec = img.GetSpec();
-    auto task =
-        std::make_unique<Task> (taskCb,
-                                "CreatePartTable",
-                                "Creating partition table for image \"" + spec.name + "\"...");
+    auto task = std::make_unique<Task> (taskCb,
+                                        "CreatePartTable",
+                                        "Creating partition table for image \"" + spec.name + "\"...");
     return task;
 }

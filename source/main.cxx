@@ -16,240 +16,119 @@
 */
 
 #include "nnimage.h"
-#include "include/Option.h"
-#include <iostream>
 
 // Global log instance
 std::unique_ptr<Log> _log;
-// std::unique_ptr<CmdLine> _cmdLine;
-// Action* _actionOverride = nullptr;
 
-// Initialize command line
-/*CmdLine::CmdLine (int argc, char** argv)
+static bool createLog (const char* progName)
 {
-    // Initialize arguments
-    rawArgs.reserve (argc - 1);
-    for (int i = 1; i < argc; ++i)
-        rawArgs.push_back (argv[i]);
-}
-
-// Finds option in option array
-const Option* CmdLine::findOptionInArray (const std::string& opt, const Option* opts)
-{
-    int i = 0;
-    for (;;)
-    {
-        const Option* iter = &opts[i++];
-        if (!iter->shortOpt && !iter->longOpt)
-            return nullptr;
-        if (iter->shortOpt == opt || iter->longOpt == opt)
-            return iter;
-    }
-    return nullptr;
-}
-
-bool CmdLine::ParseArguments (HelpCb helpCallback, VersionCb versionCallback)
-{
-    // Find an action
-    if (rawArgs.size() >= 1)
-    {
-        if (!rawArgs[0].starts_with ("-"))
-        {
-            auto& actionName = rawArgs[0];
-            action = Action::MakeAction (actionName);
-            if (action == nullptr)
-            {
-                _log->Error ("invalid action \"" + actionName + "\"");
-                return false;    // This means the action was invalid
-            }
-            rawArgs.erase (rawArgs.begin() + 0);
-        }
-    }
-    // Loop through every argument
-    for (int i = 0; i < rawArgs.size(); i++)
-    {
-        const std::string& optName = rawArgs[i];
-        // Make sure this is an option
-        if (!optName.starts_with ("-"))
-        {
-            _log->Error ("invalid argument \"" + optName + "\"");
-            return false;
-        }
-        // Handle special cases
-        if (optName == "-h" || optName == "-help")
-            helpCallback();
-        else if (optName == "-v" || optName == "-version")
-            versionCallback();
-        // Now we have to find this option in either GlobalOpts or the action's options
-        const Option* opt = findOptionInArray (optName, GlobalOpt);
-        if (opt == nullptr && action)
-            opt = findOptionInArray (optName, action->GetOptions());
-        if (opt == nullptr)
-        {
-            _log->Error ("invalid option \"" + optName + "\"");
-            return false;
-        }
-        // Ok, so have the option now. Now we have to determine wheter this option takes an argument
-        std::string value;
-        if (opt->requiresArg)
-        {
-            // Make sure there's an argument
-            if (i + 1 == rawArgs.size() || rawArgs[i + 1].starts_with ("-"))
-            {
-                // This is an option, that's an error
-                _log->Error ("option \"" + optName + "\" requires an argument");
-                return false;
-            }
-            value = std::move (rawArgs[++i]);
-        }
-        // Set it if the action is valid
-        if (!action)
-        {
-            _log->Error ("argument \"" + optName + "\" requires an action");
-            return false;
-        }
-        if (!action->SetOption (opt->id, value))
-            return false;
-    }
-    // Make sure we have an action
-    if (!action)
-    {
-        _log->Error ("action not specified.\nRun \"nnimage -h\" for help");
+    _log = std::make_unique<Log>();
+    // Add cout and cerr to it at their defaults
+    LogSinkInfo coutSink = {LogLevel::Info, LogLevel::Status};
+    auto res = _log->AddConsoleSink (coutSink, progName, std::cout);
+    if (!res.IsOk())
         return false;
-    }
-    // Now validate it
-    if (!action->ValidateOptions())
+
+    LogSinkInfo cerrSink = {LogLevel::Warning, LogLevel::Fatal};
+    res = _log->AddConsoleSink (cerrSink, progName, std::cerr);
+    if (!res.IsOk())
         return false;
     return true;
 }
 
-static inline void printOptHelp (const Option& opt)
+static void version()
 {
-    std::cout << "  " << opt.shortOpt;
-    if (opt.requiresArg && opt.argHelp)
-        std::cout << " " << opt.argHelp << "\n";
-    else
-        std::cout << "\n";
-    // Split up help string
-    size_t pos = 0;
-    size_t lastPos = 0;
-    std::string cur;
-    const std::string& str = opt.helpString;
-    while ((pos = str.find ("\n", lastPos)) != std::string::npos)
-    {
-        cur = str.substr (lastPos, pos - lastPos);
-        lastPos = pos + 1;
-        std::cout << "        " << cur << "\n";
-    }
-    // Print last part of string
-    cur = str.substr (lastPos);
-    std::cout << "        " << cur << "\n";
+    std::cout << "nnimage version " << NNIMAGE_VERSION << std::endl;
+    std::cout << "Copyright (C) 2026 Jedidiah Thompson" << std::endl;
+    std::cout << "See https://www.apache.org/licenses/LICENSE-2.0 for licensing" << std::endl;
 }
 
-static void Help()
+static void help (cxxopts::Options& opts)
 {
-    std::cout << "nnimage - disk image management helper\n"
-              << "nnimage allows you to manage the contents of a disk image for things like\n"
-              << "an OS distribution in a simple, fast and efficient way.\n"
-              << "Does not require root privileges to run, (except with the loopback backend), \n"
-              << "and can be used in a build system to create images\n"
-              << "Usage: nnimage [-h|-v] ACTION [-f FILE] [-i IMAGE] OPTIONS\n"
-                 "Arguments:\n";
-    // Now document every argument
-    for (const Option& opt : GlobalOpt)
+    std::cout << "nnimage: " << opts.help() << std::endl;
+    std::cout << "For more info, run \"man nnimage\"" << std::endl;
+}
+
+static void prepareOpts (cxxopts::Options& opts)
+{
+    opts.custom_help ("<operation> [-f conf_file] [-i image] [-o output] [options]");
+    opts.positional_help (
+        "\nTakes configuration found in conf_file, or configuration specified on the command "
+        "line and outputs it into specified output file.\nFor mult-image configurations, "
+        "use -i to specify which images to generate");
+    opts.set_width (90);
+    // clang-format off
+    opts.add_options("Global")
+        ("h,help", "Shows this help screen")
+        ("v,version", "Shows version information");
+    // clang-format on
+}
+
+static cxxopts::ParseResult parseOpts (cxxopts::Options& opts, int argc, char** argv)
+{
+    try
     {
-        // Print option
-        if (opt.helpString)
-            printOptHelp (opt);
-    }
-    // Now add on -h and -v
-    std::cout << "  -h\n";
-    std::cout << "        Prints this page\n";
-    std::cout << "  -v\n";
-    std::cout << "        Shows version info\n";
-    // Now show for every action
-    for (const auto& action : Actions)
-    {
-        if (action.opts)
+        auto res = opts.parse (argc, argv);
+        // Check for extra positional arguments
+        if (!res.unmatched().empty())
         {
-            std::cout << "\nOptions for action \"" << action.action << "\":\n";
-            size_t i = 0;
-            while (1)
-            {
-                const Option& opt = action.opts[i];
-                // Check if this is the end
-                if (!opt.shortOpt && !opt.longOpt)
-                    break;
-                // Print option
-                if (opt.helpString)
-                    printOptHelp (opt);
-                ++i;
-            }
+            // Only print the first one out to avoid being too verbose
+            _log->Error ("Unexpected extra argument \"" + res.unmatched().front() + "\"\nRun " + argv[0] +
+                         " --help for usage");
+            std::exit (1);
         }
+        return res;
     }
-    std::cout << "Reads specified configuration file, and performs action into specified image\n"
-              << "See nnimage(1) for full documentation.\n";
-    std::exit (0);
+    catch (const cxxopts::exceptions::exception& e)
+    {
+        _log->Error (std::string (e.what()) + "\nRun " + argv[0] + " --help for usage");
+        std::exit (1);
+    }
 }
-
-static void Version()
-{
-    std::cout << "nnimage version " << NNIMAGE_VERSION << "\n";
-    std::cout << "Copyright (C) 2026 Jedidiah Thompson"
-              << "\n";
-    std::cout << "See https://www.apache.org/licenses/LICENSE-2.0 for licensing"
-              << "\n";
-    std::exit (0);
-}*/
 
 int main (int argc, char** argv)
 {
-    // First see if we want to call test driver
-#ifdef NNIMAGE_ENABLE_TESTS
-    // if (argc > 1 && std::string (argv[1]) == "run-test-cases")
-    // return !TestDriver (argc - 1, argv + 1);
-#endif
-    // Initialize command line
-    //_cmdLine = std::make_unique<CmdLine> (argc, argv);
-    // Start up log
-    _log = std::make_unique<Log>();
+    // First task we have is to create the initial log
+    if (!createLog (argv[0]))
+    {
+        std::cerr << argv[0] << ": error: Failed to create log" << std::endl;
+        return 1;
+    }
 
-    // Parse command line
-    /*if (!_cmdLine->ParseArguments (Help, Version))
-        return 1;
-    // OK so we now have the arguments. Now it's time to parse the configuration file
-    // First get the action
-    Action* act = _cmdLine->GetAction();
-    // Now start the configuration
-    ImageConf conf = ImageConf (act->GetConf());
-    if (!conf.ParseFile())
+    // Now see if we want to call test driver
+#ifdef NNIMAGE_ENABLE_TESTS
+    if (argc > 1 && std::string (argv[1]) == "run-test-cases")
+        return !TestDriver (argc - 1, argv + 1);
+#endif
+
+    Dispatch disp;
+
+    // Now we need to prepare the command line
+    cxxopts::Options opts (basename (argv[0]), "A powerful, easy-to-use, all-in-one disk image manager");
+    prepareOpts (opts);
+    disp.CollectOptions (opts);
+    auto result = parseOpts (opts, argc, argv);
+
+    // Now check for help/version
+    if (result.count ("help"))
     {
-        _log->Error ("configuration file parsing failed, aborting");
-        return 1;
-    }*/
-    // Now execute the action and return
-    // return !act->Execute();
-    try
-    {
-        std::filesystem::path logDir = std::filesystem::current_path() / ".." / "nnimage-log";
-        ManagedLogCtrl logCtrl (logDir);
-        ResNone res = logCtrl.Parse();
-        if (!res.IsOk())
-        {
-            Error& e = res.GetError();
-            std::string msg = "Error: " + e.LastFrame().msg;
-            auto& frames = e.GetFrames();
-            for (int i = frames.size() - 2; i >= 0; --i)
-            {
-                msg += "\n    -> " + frames[i].msg;
-            }
-            std::cerr << msg << "\n";
-        }
+        help (opts);
+        return 0;
     }
-    catch (const ErrorException& e)
+    else if (result.count ("version"))
     {
-        std::cerr << "Error: " << e.what() << "\n";
+        version();
+        return 0;
+    }
+
+    // Prepare for the dispatcher to run
+    auto res = disp.ValidateOptions();
+    if (!res.IsOk())
+    {
+        _log->Error (res.GetError().RootFrame().msg + std::string ("\nRun ") + argv[0] + " --help for usage");
         return 1;
     }
-    return 0;
+
+    // We have all the info we need now, begin the dispatcher
+    return !disp.Execute();
 }

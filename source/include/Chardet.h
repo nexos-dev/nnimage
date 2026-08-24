@@ -19,8 +19,6 @@
 #define NNIMAGE_CHARDET_H
 
 #include <config.h>
-#include <string_view>
-#include <string>
 
 #ifdef HAVE_CHARDET
 #include <chardet/chardet.h>
@@ -58,7 +56,7 @@ class Chardet
     }
     // API NOTE: if chardet is unavailable, this will always return false and set confidence to 1.0
     // if false is returned, confidence is set to 0 so the caller can differentiate
-    bool Detect (std::string_view data, std::string& encoding, float& confidence)
+    bool Detect (const std::string_view data, std::string& encoding, float& confidence)
     {
         confidence = 0.0;    // Reset it
         if (!obj)

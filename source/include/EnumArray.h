@@ -18,11 +18,6 @@
 #ifndef ENUMARRAY_H
 #define ENUMARRAY_H
 
-#include <array>
-#include <cstdlib>
-#include <initializer_list>
-#include <type_traits>
-
 template <typename EnumType, typename ValueType, EnumType Size>
 class EnumArray
 {
@@ -68,6 +63,12 @@ class EnumArray
     constexpr auto end() noexcept
     {
         return data.end();
+    }
+
+    using EnumArrayIter = std::array<ValueType, static_cast<size_t> (Size)>::iterator;
+    constexpr EnumType index (EnumArrayIter it) noexcept
+    {
+        return static_cast<EnumType> (it - data.begin());
     }
 
   private:

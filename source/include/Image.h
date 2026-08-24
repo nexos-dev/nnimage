@@ -23,16 +23,6 @@
 #include "config.h"
 #include "BackendTypes.h"
 
-#include <cstdint>
-#include <functional>
-#include <map>
-#include <memory>
-#include <mutex>
-#include <string>
-#include <string_view>
-#include <unordered_map>
-#include <vector>
-
 class Backend;
 
 // TODO this probably should go into ConfParser.h
@@ -55,11 +45,9 @@ struct ConfError
 {
     ConfError()
     {}
-    ConfError (ConfErrorType type, const ParseProp& prop)
-        : code{type}, msg{prop.name}, line{prop.line}
+    ConfError (ConfErrorType type, const ParseProp& prop) : code{type}, msg{prop.name}, line{prop.line}
     {}
-    ConfError (ConfErrorType type, const std::string& msg, int line)
-        : code{type}, msg{msg}, line{line}
+    ConfError (ConfErrorType type, const std::string& msg, int line) : code{type}, msg{msg}, line{line}
     {}
     ConfErrorType code = ConfErrorType::Ok;
     std::string msg;
@@ -98,10 +86,7 @@ class ImageConf
                         ConfType expectedType,
                         int maxVals,
                         ConfError& result);
-    bool ValidateProp (const ParseProp& prop,
-                       ConfType expectedsType,
-                       int maxVal,
-                       ConfError& result);
+    bool ValidateProp (const ParseProp& prop, ConfType expectedsType, int maxVal, ConfError& result);
     bool GetVal (const ParseProp& prop, ConfVal& out, int idx);
 
   private:
@@ -331,8 +316,7 @@ class Image
     bool checkBackendForImage (BackendType type) const
     {
         const auto& validBackends = getValidBackends();
-        return (std::find (validBackends.begin(), validBackends.end(), type) !=
-                validBackends.end()) &&
+        return (std::find (validBackends.begin(), validBackends.end(), type) != validBackends.end()) &&
                Backend::IsBackendEnabled (type);
     }
     BackendType firstAvailBackend() const

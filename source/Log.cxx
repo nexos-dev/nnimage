@@ -16,14 +16,132 @@
 */
 
 #include "nnimage.h"
+#include "include/TextReader.h"
 #include <unistd.h>
-#include <cstdlib>
-#include <cassert>
-#include <cstring>
-#include <cerrno>
 
-void Log::LogAt (const std::string& message, LogLevel level) noexcept
-{}
+void Log::LogAt (const std::string& message, LogLevel level, LogTime time) noexcept
+{
+    if (time == LogTime{})
+        time = std::chrono::system_clock::now();
+    std::shared_lock lock (sinkMtx);
+
+    for (auto& sink : sinks)
+    {
+        auto& sinkInfo = sink.second;
+        if (!isLoggable (sinkInfo, level))
+            continue;
+
+        auto lock = sink.first->LockSink();
+        sink.first->Log (message, level, time);
+    }
+}
+
+void Log::LogWithTag (SinkType type, const std::string& message, LogLevel level, LogTime time) noexcept
+{
+    if (time == LogTime{})
+        time = std::chrono::system_clock::now();
+    std::shared_lock lock (sinkMtx);
+
+    for (auto& sink : sinks)
+    {
+        if (sink.second.type == type)
+        {
+            auto& sinkInfo = sink.second;
+            if (!isLoggable (sinkInfo, level))
+                continue;
+
+            auto lock = sink.first->LockSink();
+            sink.first->Log (message, level, time);
+        }
+    }
+}
+
+void Log::SetSinkLogLevel (SinkType type, LogLevel level)
+{
+    std::unique_lock lock (sinkMtx);
+    for (auto& sink : sinks)
+    {
+        if (sink.second.type == type)
+        {
+            auto lock = sink.first->LockSink();
+            sink.second.level = level;
+        }
+    }
+}
+
+void Log::SetSinkMaxLogLevel (SinkType type, LogLevel level)
+{
+    std::unique_lock lock (sinkMtx);
+    for (auto& sink : sinks)
+    {
+        if (sink.second.type == type)
+        {
+            auto lock = sink.first->LockSink();
+            sink.second.maxLevel = level;
+        }
+    }
+}
+
+Result<LogStream> Log::StreamIntoSink (SinkType type, const std::string& msgPrefix, LogLevel level)
+{
+    return -1;
+}
+
+ResNone Log::AddFileSink (LogSinkInfo& info, const std::string& filename)
+{
+    // Validate the sink info
+    assert (info.maxLevel >= info.level);
+    info.type = SinkType::File;
+    std::unique_ptr<FileLogSink> sink;
+    try
+    {
+        sink = std::make_unique<FileLogSink> (filename);
+    }
+    catch (ErrorException& e)
+    {
+        return e.GetError();
+    }
+    // Add it
+    std::unique_lock<std::shared_mutex> lock (sinkMtx);
+    sinks.emplace_back (std::move (sink), info);
+    return Success();
+}
+
+ResNone Log::AddConsoleSink (LogSinkInfo& info, const char* progName, std::ostream& out)
+{
+    assert (info.maxLevel >= info.level);
+    info.type = SinkType::Console;
+    auto sink = std::make_unique<ConsoleLogSink> (progName, out);
+
+    std::unique_lock<std::shared_mutex> lock (sinkMtx);
+    sinks.emplace_back (std::move (sink), info);
+    return Success();
+}
+
+ResNone Log::AddManagedSink (LogSinkInfo& info, std::filesystem::path logDir)
+{
+    assert (info.maxLevel >= info.level);
+    info.type = SinkType::Managed;
+
+    std::unique_ptr<ManagedLogSink> sink;
+    try
+    {
+        sink = std::make_unique<ManagedLogSink> (logDir);
+    }
+    catch (ErrorException& e)
+    {
+        return e.GetError();
+    }
+
+    std::unique_lock<std::shared_mutex> lock (sinkMtx);
+
+    auto res = sink->Prepare();
+    if (!res.IsOk())
+        return res;
+
+    sinks.emplace_back (std::move (sink), info);
+    return Success();
+}
 
 // Log sink implementations
 FileLogSink::FileLogSink (const std::string& filename) : file (filename)
@@ -41,14 +159,14 @@ FileLogSink::~FileLogSink()
         file.close();
 }
 
-void FileLogSink::Log (const std::string& message, LogLevel level) noexcept
+void FileLogSink::Log (const std::string& message, LogLevel level, LogTime time) noexcept
 {
     file << logParams[level] << message << "\n";
-    file.flush();
+    if (level >= LogLevel::Error)
+        file.flush();
 }
 
-ConsoleLogSink::ConsoleLogSink (const char* progName, std::ostream& out)
-    : out (out), progName (progName)
+ConsoleLogSink::ConsoleLogSink (const char* progName, std::ostream& out) : out (out), progName (progName)
 {
     // Check if this is a color terminal
     isOutColor = checkIsOutColor();
@@ -56,16 +174,17 @@ ConsoleLogSink::ConsoleLogSink (const char* progName, std::ostream& out)
         _log->Debug ("Output stream is not a color terminal, disabling color output");
 }
 
-void ConsoleLogSink::Log (const std::string& message, LogLevel level) noexcept
+void ConsoleLogSink::Log (const std::string& message, LogLevel level, LogTime time) noexcept
 {
     // Grab our parameters for this log level
     const ConsLogParams& params = logParams[level];
     std::string output = "";
-    if (params.printPrefix)
+    if (params.printPrefix && isOutColor)
         output = progName + std::string (": ") + params.color + params.prefix + ansiReset;
-    output += message + "\n";
-    out << output;
-    out.flush();
+    else
+        output = progName + std::string (": ") + params.prefix;
+    output += message;
+    out << output << std::endl;
 }
 
 bool ConsoleLogSink::checkIsOutColor() const
@@ -75,6 +194,7 @@ bool ConsoleLogSink::checkIsOutColor() const
         return true;
     else if (getenv ("NO_COLOR") != nullptr)
         return false;
+
     // Check if the output stream is cerr or cout
     int unixFd = 0;
     if (&out == &std::cout)
@@ -87,105 +207,207 @@ bool ConsoleLogSink::checkIsOutColor() const
                          // TODO: maybe we just use C streams in the first place?
     if (!isatty (unixFd))
         return false;
+
     // Now check term
     const char* term = getenv ("TERM");
     if (term == nullptr)
         return false;
     std::string termStr (term);
-    bool isColor = termStr.find ("color") != std::string::npos ||
-                   termStr.find ("256") != std::string::npos ||
+    bool isColor = termStr.find ("color") != std::string::npos || termStr.find ("256") != std::string::npos ||
                    termStr.find ("xterm") != std::string::npos;
     return isColor;
 }
 
-ManagedLogSink::ManagedLogSink()
-{
-    logCtrlLock = LockFile ("test");
-}
-
-ResNone ManagedLogSink::loadCtrlFile (std::filesystem::path ctrlPath)
-{}
-
-ManagedLogCtrl::ManagedLogCtrl (std::ifstream& file) : ConfParser<ManagedLogCtrl, LogCtrlKey> (file)
+ManagedLogSink::ManagedLogSink (std::filesystem::path logDir) : logDir{logDir}
 {
     if (!std::filesystem::exists (logDir))
     {
-        _log->Debug ("Log directory does not exist, creating: " + logDir.string());
-        std::filesystem::create_directories (logDir);
+        if (!std::filesystem::create_directories (logDir))    // Go ahead and create it
+        {
+            throw ErrorException (
+                Error ({ErrorDomain::Log, ErrorCode::PathError}, "Unable to create log directory"));
+        }
     }
     else if (!std::filesystem::is_directory (logDir))
     {
-        throw ErrorException (Error ({ErrorDomain::Log, ErrorCode::FileError},
-                                     "Log path is not a directory: " + logDir.string()));
+        throw ErrorException (
+            Error ({ErrorDomain::Log, ErrorCode::PathError}, "Log path is not a directory"));
     }
-    // Now grab the log ctrl file
-    std::filesystem::path logCtrlPath = logDir / logCtrlFile;
-    auto res = loadFile (logCtrlPath);
-    if (!res.IsOk())
-        throw ErrorException (res.GetError());
-    confPath = logCtrlPath.string();
+    ctrlPath = logDir / logCtrlFile;
 }
 
-ManagedLogCtrl::~ManagedLogCtrl()
-{}
-
-ResNone ManagedLogCtrl::loadFile (std::filesystem::path ctrlPath)
+void ManagedLogSink::Log (const std::string& message, LogLevel level, LogTime time) noexcept
 {
-    std::string confFile;
-    if (!std::filesystem::exists (ctrlPath))
+    // Prepare time stamp
+    // NOTE: we use time_t as I prefer using strftime to std::format
+    std::time_t timeVal = std::chrono::system_clock::to_time_t (time);
+    std::tm localTime;
+    localtime_r (&timeVal, &localTime);
+
+    char buf[128];
+    std::strftime (buf, 128, "%Y-%m-%dT%H:%M:%S", &localTime);
+
+    std::string_view timeStr = buf;
+    std::string severity = logParams[level];
+    curLog << timeStr << severity << message << "\n";
+    if (level >= LogLevel::Error)
+        curLog.flush();
+}
+
+ResNone ManagedLogSink::Prepare()
+{
+    std::string name = getLogName();
+    std::filesystem::path log = logDir / name;
+
+    // TODO: racey
+    int i = 0;
+    while (std::filesystem::exists (log))
     {
-        // Create the log control file
-        std::ofstream ctrlFile (ctrlPath);
-        if (!ctrlFile.is_open())
-        {
-            return Error ({ErrorDomain::Log, ErrorCode::FileError},
-                          "Failed to create log control file: " + ctrlPath.string())
-                .AddByCode ({ErrorDomain::Log, ErrorCode::FileError, ErrorLog::Debug}, true);
-        }
-        ctrlFile.close();
-        confFile = "";    // Ensure that ctrlFile is empty, since we just created the
-                          // log control file
+        log = logDir / (name + "_" + std::to_string (i));
+        i++;
     }
-    else
-    {
-        std::ifstream ctrlFile (ctrlPath, std::ios::binary | std::ios::ate);
-        if (!ctrlFile.is_open())
-        {
-            return Error ({ErrorDomain::Log, ErrorCode::FileError},
-                          "Failed to open log control file: " + ctrlPath.string())
-                .AddByCode ({ErrorDomain::Log, ErrorCode::FileError, ErrorLog::Debug}, true);
-        }
-        // Read the file into a string
-        std::streamsize size = ctrlFile.tellg();
-        ctrlFile.seekg (0, std::ios::beg);
-        confFile.resize (size);
-        if (!ctrlFile.read (confFile.data(), size))
-        {
-            return Error ({ErrorDomain::Log, ErrorCode::FileError},
-                          "Failed to read log control file: " + ctrlPath.string())
-                .AddByCode ({ErrorDomain::Log, ErrorCode::FileError, ErrorLog::Debug}, true);
-        }
-        ctrlFile.close();
-    }
+
+    curLog = std::ofstream (log, std::ios::trunc);
+    if (!curLog.is_open())
+        return Error ({ErrorDomain::Log, ErrorCode::FileError}, "Failed to open log");
+
+    // Create log worker
+    maintThread = std::jthread (logMaintWorker, std::ref (*this));
+
     return Success();
 }
 
+bool ManagedLogSink::openLogCtrl (ManagedLogSink& inst,
+                                  const std::filesystem::path& ctrl,
+                                  int& maxAge,
+                                  int& maxLogs)
+{
+    std::string data;
+    try
+    {
+        TextReader ctrlReader = TextReader (inst.ctrlPath);
+        auto res = ctrlReader.Read (data);
+        if (!res.IsOk())
+            return false;    // Just ignore it
+    }
+    catch (const ErrorException& e)
+    {
+        return false;    // Don't even fight it
+    }
+
+    ManagedLogCtrl logCtrl = ManagedLogCtrl (inst.ctrlPath, std::move (data));
+    auto resParse = logCtrl.Parse();
+    if (!resParse.IsOk())
+        return false;
+
+    // Get our values
+    ConfValue val;
+    auto res = logCtrl.Get (LogCtrlKey::MaxFiles, val);
+    if (res.GetValue())
+        maxLogs = std::get<int> (val);
+    res = logCtrl.Get (LogCtrlKey::MaxAge, val);
+    if (res.GetValue())
+        maxAge = std::get<int> (val);
+    assert (maxAge >= 0 && maxLogs >= 0);
+    return true;
+}
+
+bool ManagedLogSink::checkLog (const std::filesystem::path& log, int maxAge)
+{
+    auto writeTime = std::filesystem::last_write_time (log);
+    auto lastWrite = std::chrono::file_clock::to_sys (writeTime);
+    auto timeNow = std::chrono::system_clock::now();
+
+    auto nowDays = std::chrono::floor<std::chrono::days> (timeNow);
+    auto writeDays = std::chrono::floor<std::chrono::days> (lastWrite);
+
+    if ((nowDays.time_since_epoch().count() - writeDays.time_since_epoch().count()) > maxAge)
+    {
+        std::filesystem::remove (log);
+        return true;
+    }
+    return false;
+}
+
+void ManagedLogSink::deleteOldestLogs (std::vector<std::filesystem::path>& files, int count)
+{
+    // First we need to sort by oldest
+    std::sort (files.begin(), files.end(), [] (const auto& a, const auto& b) {
+        return std::filesystem::last_write_time (a) < std::filesystem::last_write_time (b);
+    });
+
+    // Now delete count
+    for (int i = 0; i < count; i++)
+    {
+        auto& path = files[i];
+        std::filesystem::remove (path);
+    }
+}
+
+void ManagedLogSink::logMaintWorker (ManagedLogSink& inst)
+{
+    // TODO: once we have ErrorOutput, make these returns use that instead
+    int maxAge = MAX_LOG_AGE, maxLogs = MAX_LOG_COUNT;
+
+    // First parse the control file
+    if (std::filesystem::exists (inst.ctrlPath))
+    {
+        if (!openLogCtrl (inst, inst.ctrlPath, maxAge, maxLogs))
+            return;
+    }
+
+    // Now we have the parameters, it's time to begin checking logs
+    std::filesystem::path lockPath = inst.logDir / "logmaint_lock";
+    auto res = LockFileUnique::TryAcquire (lockPath);
+    if (!res.has_value())
+        return;    // We were beaten to it
+    auto lock = std::move (res.value());
+
+    // Pass 1: delete every out-of-date file
+    int numLogs = 0;
+    std::vector<std::filesystem::path> files;
+    for (const auto& entry : std::filesystem::directory_iterator (inst.logDir))
+    {
+        // Check for prefix
+        std::string file = entry.path().filename().string();
+        if (file.substr (0, filePrefix.length()) == filePrefix && entry.is_regular_file())
+        {
+            if (!checkLog (entry.path(), maxAge))
+            {
+                files.push_back (entry.path());
+                numLogs++;    // Do it now so we don't have to iterate again later}
+            }
+        }
+    }
+
+    // Pass 2: delete oldest files if we have more than the max
+    if (numLogs > maxLogs)
+        deleteOldestLogs (files, numLogs - maxLogs);
+}
+
 // Log control table array
-const EnumArray<LogCtrlKey, LogCtrlInstance, LogCtrlKey::Max> ManagedLogCtrl::keys = {
-    {LogCtrlKey::FileCount,
-     {LogCtrlType::Int,
-      [] (ManagedLogCtrl* ctrl, const LogCtrlValue& val) {
-          assert (ctrl && std::holds_alternative<int> (val));
-          ctrl->fileCount = std::get<int> (val);
-      },
-      [] (ManagedLogCtrl* ctrl) {
-          assert (ctrl);
-          return LogCtrlValue (ctrl->fileCount);
-      }}},
-    {LogCtrlKey::Files,
-     {LogCtrlType::List,
-      [] (ManagedLogCtrl* ctrl, const LogCtrlValue& val) {
-          assert (ctrl && std::holds_alternative<LogList> (val));
-          ctrl->logFiles = std::get<LogList> (val);
-      },
-      [] (ManagedLogCtrl* ctrl) { return LogCtrlValue (ctrl->logFiles); }}}};
+const EnumArray<LogCtrlKey, ConfInstance<ManagedLogCtrl, LogCtrlKey>, LogCtrlKey::Max> ManagedLogCtrl::keys =
+    {{LogCtrlKey::MaxFiles,
+      {ConfType::Int,
+       [] (ManagedLogCtrl& ctrl, const ConfValue& val) {
+           assert (std::holds_alternative<int> (val));
+           ctrl.maxLogs = std::get<int> (val);
+       },
+       [] (ManagedLogCtrl& ctrl) -> ConfValue {
+           int count = ctrl.maxLogs;
+           if (count == -1)
+               return std::monostate{};
+           return count;
+       }}},
+     {LogCtrlKey::MaxAge,
+      {ConfType::Int,
+       [] (ManagedLogCtrl& ctrl, const ConfValue& val) {
+           assert (std::holds_alternative<int> (val));
+           ctrl.maxAge = std::get<int> (val);
+       },
+       [] (ManagedLogCtrl& ctrl) -> ConfValue {
+           int count = ctrl.maxAge;
+           if (count == -1)
+               return std::monostate{};
+           return count;
+       }}}};

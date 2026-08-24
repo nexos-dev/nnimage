@@ -22,11 +22,6 @@
 #include "include/EnumArray.h"
 #include "BackendTypes.h"
 
-#include <cstdint>
-#include <memory>
-#include <string>
-#include <unordered_map>
-
 class Image;
 class Backend
 {

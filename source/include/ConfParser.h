@@ -20,8 +20,7 @@
 
 #include "include/Error.h"
 #include "include/SimpleLexer.h"
-#include <functional>
-#include <string>
+#include "MemoryMapped.h"
 
 // NOTE: MUST BE SYNCED WITH ORDER OF ConfValue
 // I know this is the C programmer coming out in me, but this trickery is the cleanest way to do
@@ -36,7 +35,7 @@ enum class ConfType
 
 // KEEP SYNCED WITH ABOVE
 using ConfList = std::vector<std::string>;
-using ConfValue = std::variant<int, std::string, ConfList>;
+using ConfValue = std::variant<int, std::string, ConfList, std::monostate>;
 
 template <typename Derived, typename ConfKey>
 class ConfParser;
@@ -66,11 +65,24 @@ template <typename Derived, typename ConfKey>
 class ConfParser
 {
   public:
-    ConfParser (std::ifstream& file);
+    ConfParser() = default;
+    ConfParser (const std::string& fileName, std::string data) : lexer (fileName, data), fileName (fileName)
+    {}
+    virtual ~ConfParser() = default;
+
     Result<bool> Get (ConfKey key, ConfValue& val);
     ResNone Set (ConfKey key, const ConfValue& val, bool overwrite = true);
 
     ResNone Parse();
+    ResNone Serialize (std::string& out);
+
+    void Reset (std::string data, const std::string& fileName = "")
+    {
+        if (!fileName.empty())
+            this->fileName = fileName;
+        // Reset the lexer
+        lexer = SimpleLexer (this->fileName, std::move (data));
+    }
 
   protected:
     // CRTP function
@@ -79,7 +91,11 @@ class ConfParser
         return *static_cast<Derived*> (this);
     }
 
+    virtual const EnumArray<ConfKey, ConfInstance<Derived, ConfKey>, ConfKey::Max>& getKeyRegistry() = 0;
+    virtual const std::unordered_map<std::string, ConfKey>& getNameToKey() = 0;
+
   private:
+    ResNone readFile();
     ResNone parseLoop (std::vector<ConfProp>& props);
     Result<TokenPtr> parseProp (TokenPtr startTok, ConfProp& out);
     Result<TokenPtr> setNumberProp (ConfProp& prop, LexToken* tok);
@@ -87,6 +103,9 @@ class ConfParser
     Result<TokenPtr> setListProp (ConfProp& prop, TokenPtr tok);
 
     SimpleLexer lexer;
+    std::string fileName;
+    std::vector<ConfKey> foundKeys;
+    mutable std::shared_mutex parseLock;
 
     Result<TokenPtr> expectToken (TokenType expected)
     {
@@ -115,15 +134,10 @@ class ConfParser
                       "Unexpected token \"%s\"",
                       lexer.NameFromToken (type));
     }
-    Error parseFailed()
-    {
-        return Error ({ErrorDomain::Log, ErrorCode::ParseError},
-                      "Parsing log control file %s failed",
-                      confPath);
-    }
 
     ConfKey getPropKey (const std::string& name)
     {
+        auto& nameToKey = getNameToKey();
         auto it = nameToKey.find (name);
         if (it == nameToKey.end())
             return ConfKey::None;
@@ -138,15 +152,11 @@ class ConfParser
         });
         if (it == nameToKey.end())
         {
-            throw ErrorException (Error ({ErrorDomain::Log, ErrorCode::Internal},
-                                         "Access to non-existant log control key"));
+            throw ErrorException (
+                Error ({ErrorDomain::Log, ErrorCode::Internal}, "Access to non-existant log control key"));
         }
         return it->first;
     }
-
-    virtual const EnumArray<ConfKey, ConfInstance<Derived, ConfKey>, ConfKey::Max>&
-    getKeyRegistry() = 0;
-    virtual const std::unordered_map<std::string, ConfKey>& getNameToKey() = 0;
 
     // Yes, I know this is bad practice, but this is the simplest way of doing this
     static ConfType getValueType (const ConfValue& val)

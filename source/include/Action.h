@@ -18,102 +18,63 @@
 #ifndef NNIMAGE_ACTION_H
 #define NNIMAGE_ACTION_H
 
-#include "Option.h"
-#include "BackendTypes.h"
-#include "include/Image.h"
-
-#include <map>
-#include <memory>
-#include <string>
-#include <unordered_map>
-#include <vector>
-#include <queue>
-
-class Backend;
+#include "include/Options.h"
+#include "include/EnumArray.h"
+#include "include/Error.h"
 
 enum class ActionType
 {
-    ActionCreate,
-    ActionPartition,
-    ActionFormat,
-    ActionUpdate
+    Create,
+    Init,
+    Partition,
+    Format,
+    Update,
+    Max
 };
 
 class Action
 {
   public:
     Action() = delete;
+    virtual ~Action() = default;
     Action (ActionType action) : type{action}
     {}
-    void AddPartition (std::unique_ptr<Partition> part);
-    Image* FindImage (const std::string& name);
-    bool ResolvePartitions (ConfError& e);
-    const ImgConfFile& GetConf() const
+
+    static Result<ActionType> ResolveName (std::string name)
     {
-        return conf;
+        auto it = actionNameTable.find (name);
+        if (it == actionNameTable.end())
+            return Error ({ErrorDomain::Action, ErrorCode::BadAction}, "invalid action name specfied");
+        return it->second;
     }
-    void AddImage (std::unique_ptr<Image> image)
-    {
-        images.push_back (std::move (image));
-    }
-    std::string GetImageFile (const Image& img)
-    {
-        return outputDir + namePrefix + img.GetName() + img.GetSpec().fileExt;
-    }
-    std::unique_ptr<Partition> GetPartition (const std::string& name)
-    {
-        auto it = parts.find (name);
-        if (it == parts.end())
-            return nullptr;
-        return std::move (it->second);
-    }
-    virtual Option* GetOptions() = 0;
-    virtual bool Execute() = 0;
-    virtual bool SetOption (OptionId opt, const std::string& val);
-    virtual bool ValidateOptions();
-    static std::unique_ptr<Action> MakeAction (const std::string& name);
-    // Destructor/copy stuff
-    virtual ~Action() = default;
+
     Action (const Action&) = delete;
     Action& operator= (const Action&) = delete;
 
   protected:
-    bool getConfirmation (const std::string& msg);
-    std::shared_ptr<Backend> getBackend (const Image& img, BackendType type);
-    bool prepareBackends (const std::vector<std::unique_ptr<Image>>& images);
-    bool skipImage (const Image& img);
-    // Rolls back all tasks that have been added to the task graph for the current working image
-    void rollBackQueuedTasks();
-    // Clears the list of added tasks for the current working image
-    void clearAddedTasks()
-    {
-        addedTasks = std::queue<TaskId>();
-    }
-    TaskId addTaskToGraph (std::unique_ptr<Task> task);
-    // Skips over the given image, and if failOnSkip is set, returns false to abort the action,
-    // otherwise returns true to continue. Prints given message if failure is imminent
-    bool skipOrFail (const Image& img, const std::string& msg);
     ActionType type;
-    // Set when the user wants any image failure to abort the entire action, otherwise the action
-    // will roll with what's left
-    bool failOnSkip = false;
-    size_t imageSuccessCount = 0;
-    std::string outputDir;
-    std::string namePrefix;
-    ImgConfFile conf{"nnimage.conf", ""};
-    BackendType backendType = BackendType::None;
-    std::vector<std::unique_ptr<Image>> images;
-    std::map<std::string, std::unique_ptr<Partition>> parts;
-    std::unique_ptr<TaskGraph> graph = std::make_unique<TaskGraph>();
 
   private:
-    // TODO: make this into an EnumArray
-    std::vector<std::shared_ptr<Backend>> backends;
-    // All tasks that have been added to the task graph for the current working image, used for
-    // rollback
-    std::queue<TaskId> addedTasks;
+    inline static const std::unordered_map<std::string, ActionType> actionNameTable = {
+        {"create", ActionType::Create},
+        {"init", ActionType::Init},
+        {"partition", ActionType::Partition},
+        {"format", ActionType::Format},
+        {"update", ActionType::Update}};
 };
 
-extern Action* _actionOverride;
+class ActionOptions;
+using ActOptSetter = std::function<std::unique_ptr<ActionOptions>()>;
+
+class ActionOptions : public Options
+{
+  public:
+    virtual ~ActionOptions() = default;
+    virtual std::unique_ptr<Action> MakeAction() = 0;
+    static std::unique_ptr<ActionOptions> MakeActOptions (ActionType type);
+
+  private:
+    const static EnumArray<ActionType, ActOptSetter, ActionType::Max> actionTable;
+};
 
 #endif

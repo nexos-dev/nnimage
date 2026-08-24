@@ -20,15 +20,13 @@
 
 #include "include/Error.h"
 
-#include <string>
-#include <cerrno>
 #include <unistd.h>
 #include <fcntl.h>
 
-// TODO: we should RAII this
 class LockFile
 {
   public:
+    LockFile() = default;
     LockFile (const std::string& path)
     {
         this->path = path;
@@ -36,12 +34,12 @@ class LockFile
         if (fd == -1)
         {
             throw ErrorException (
-                Error ({ErrorDomain::Log, ErrorCode::FileError},
-                       "Failed to open lock file: " + path)
-                    .AddByCode ({ErrorDomain::Log, ErrorCode::FileError, ErrorLog::Debug}, true));
+                Error ({ErrorDomain::None, ErrorCode::FileError}, "Failed to open lock file: " + path)
+                    .AddByCode ({ErrorDomain::None, ErrorCode::FileError, ErrorLog::Debug}, true));
         }
     }
-    // Ensures we don't leave a ghost lock file behind
+    LockFile (const std::filesystem::path& path) : LockFile (path.string())
+    {}
     ~LockFile()
     {
         close (fd);
@@ -54,53 +52,153 @@ class LockFile
     }
     void Unlock()
     {
-        setFileLock (fd, F_SETLK, F_UNLCK);
-        locked = false;
-    }
-    Result<bool> ReadLock (bool block = false)
-    {
-        setFileLock (fd, block ? F_SETLKW : F_SETLK, F_RDLCK);
-        if (errno == EACCES || errno == EAGAIN)
-            return Result<bool> (false);
-        else if (errno != 0)
+        if (locked)
         {
-            return Result<bool> (
-                Error ({ErrorDomain::Log, ErrorCode::FileError},
-                       "Failed to acquire read lock on lock file: " + path)
-                    .AddByCode ({ErrorDomain::Log, ErrorCode::FileError, ErrorLog::Debug}, true));
+            assert (fd != -1);
+            setFileLock (fd, F_SETLK, F_UNLCK);
+            locked = false;
         }
-        locked = true;
-        return true;
     }
-    Result<bool> WriteLock (bool block = false)
+    bool ReadLock (bool block = false)
     {
-        setFileLock (fd, block ? F_SETLKW : F_SETLK, F_WRLCK);
-        if (errno == EACCES || errno == EAGAIN)
-            return Result<bool> (false);
-        else if (errno != 0)
-        {
-            return Result<bool> (
-                Error ({ErrorDomain::Log, ErrorCode::FileError},
-                       "Failed to acquire write lock on lock file: " + path)
-                    .AddByCode ({ErrorDomain::Log, ErrorCode::FileError, ErrorLog::Debug}, true));
-        }
-        locked = true;
-        return true;
+        assert (fd != -1);
+        bool res = setFileLock (fd, block ? F_SETLKW : F_SETLK, F_RDLCK);
+        if (res)
+            locked = true;
+        return res;
+    }
+    bool WriteLock (bool block = false)
+    {
+        assert (fd != -1);
+        bool res = setFileLock (fd, block ? F_SETLKW : F_SETLK, F_WRLCK);
+        if (res)
+            locked = true;
+        return res;
+    }
+
+    LockFile (const LockFile& other) = delete;
+    LockFile& operator= (const LockFile& other) = delete;
+
+    LockFile (LockFile&& other) : fd{other.fd}, path{other.path}, locked{other.locked}
+    {
+        other.fd = -1;
+        other.locked = false;
+    }
+    LockFile& operator= (LockFile&& other)
+    {
+        if (this == &other)
+            return *this;
+        if (fd != -1)
+            close (fd);
+        fd = other.fd;
+        path = std::move (other.path);
+        locked = other.locked;
+        other.fd = -1;
+        other.locked = false;
+        return *this;
     }
 
   private:
-    int setFileLock (int fd, int cmd, int type)
+    bool setFileLock (int fd, int cmd, int type)
     {
-        struct flock fl;
+        struct flock fl{};
         fl.l_type = type;
         fl.l_whence = SEEK_SET;
         fl.l_start = 0;
         fl.l_len = 0;    // Lock the whole file
-        return fcntl (fd, cmd, &fl);
+        if (fcntl (fd, cmd, &fl) < 0)
+        {
+            if (errno == EACCES || errno == EAGAIN)
+                return false;
+            throw ErrorException (
+                Error ({ErrorDomain::Log, ErrorCode::FileError},
+                       "Failed to acquire lock on file \"%s\": ",
+                       path)
+                    .AddByCode ({ErrorDomain::Log, ErrorCode::FileError, ErrorLog::Debug}, true));
+        }
+        return true;
     }
     bool locked = false;
     std::string path;
     int fd = -1;
+};
+
+class LockFileShared
+{
+  public:
+    LockFileShared() = default;
+    LockFileShared (LockFile&& lock) : lock (std::move (lock))
+    {
+        lock.ReadLock (true);
+    }
+    LockFileShared (LockFileShared&& other) noexcept : lock (std::move (other.lock))
+    {}
+    LockFileShared& operator= (LockFileShared&& other) noexcept
+    {
+        if (this == &other)
+            return *this;
+        lock = std::move (other.lock);
+        return *this;
+    }
+    ~LockFileShared()
+    {
+        lock.Unlock();
+    }
+    static std::optional<LockFileShared> TryAcquire (const std::string& path)
+    {
+        LockFileShared lock;
+        lock.lock = LockFile (path);
+        bool res = lock.lock.ReadLock();
+        if (!res)
+            return {};
+        return std::move (lock);
+    }
+    static std::optional<LockFileShared> TryAcquire (const std::filesystem::path& path)
+    {
+        return TryAcquire (path.string());
+    }
+
+  private:
+    LockFile lock;
+};
+
+class LockFileUnique
+{
+  public:
+    LockFileUnique() = default;
+    LockFileUnique (LockFile&& lock) : lock (std::move (lock))
+    {
+        lock.WriteLock (true);
+    }
+    LockFileUnique (LockFileUnique&& other) noexcept : lock (std::move (other.lock))
+    {}
+    LockFileUnique& operator= (LockFileUnique&& other) noexcept
+    {
+        if (this == &other)
+            return *this;
+        lock = std::move (other.lock);
+        return *this;
+    }
+    ~LockFileUnique()
+    {
+        lock.Unlock();
+    }
+    static std::optional<LockFileUnique> TryAcquire (const std::string& path)
+    {
+        LockFileUnique lock;
+        lock.lock = LockFile (path);
+        bool res = lock.lock.WriteLock();
+        if (!res)
+            return {};
+        return std::move (lock);
+    }
+    static std::optional<LockFileUnique> TryAcquire (const std::filesystem::path& path)
+    {
+        return TryAcquire (path.string());
+    }
+
+  private:
+    LockFile lock;
 };
 
 #endif

@@ -17,12 +17,6 @@
 
 #include "nnimage.h"
 
-#include <condition_variable>
-#include <unordered_set>
-#include <mutex>
-#include <queue>
-#include <thread>
-
 bool TaskGraph::pathExists (TaskId src, TaskId dest)
 {
     if (src == dest)
@@ -206,8 +200,7 @@ void TaskGraph::addReadyTask (TaskId task)
 {
     if (!taskExists (task))
     {
-        _log->Verbose ("attempted to add non-existant task " + std::to_string (task) +
-                       " to ready queue");
+        _log->Verbose ("attempted to add non-existant task " + std::to_string (task) + " to ready queue");
         return;    // It's perfectly harmless to attempt to add a non-existant task to the ready
                    // queue, so we just ignore it
                    // I still log it for debugging purposes, but it causes no side effects
@@ -253,8 +246,7 @@ bool TaskGraph::RunTasks()
                 // Here, first we wait for a task to be ready, and then we pop it
                 // We also check for failure or completion to exit the loop
                 std::unique_lock<std::mutex> guard (readyMtx);
-                readyCond.wait (guard,
-                                [&]() { return !ready.empty() || completed == tasks.size(); });
+                readyCond.wait (guard, [&]() { return !ready.empty() || completed == tasks.size(); });
 
                 if (completed == tasks.size())
                     return;
