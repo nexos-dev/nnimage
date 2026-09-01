@@ -20,6 +20,7 @@
 
 #include "include/Action.h"
 #include "include/Error.h"
+#include "include/Frontend.h"
 
 struct ActionReg
 {
@@ -80,6 +81,8 @@ class Dispatch
 
     EnumArray<ActionType, ActionReg, ActionType::Max> actionTable;
     DispatchOptions options;
+
+    FrontendOptions frontOpts;
 };
 
 #endif

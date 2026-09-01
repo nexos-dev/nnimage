@@ -23,8 +23,13 @@ std::unique_ptr<ActionOptions> ActionOptions::MakeActOptions (ActionType type)
     return actionTable[type]();
 }
 
-void CreateActOptions::CollectOptions (cxxopts::Options& opts)
+void ActionOptions::CollectOptions (cxxopts::Options& opts)
 {}
+
+void CreateActOptions::CollectOptions (cxxopts::Options& opts)
+{
+    ActionOptions::CollectOptions (opts);
+}
 
 ResNone CreateActOptions::ValidateOptions()
 {
@@ -32,7 +37,9 @@ ResNone CreateActOptions::ValidateOptions()
 }
 
 void InitActOptions::CollectOptions (cxxopts::Options& opts)
-{}
+{
+    ActionOptions::CollectOptions (opts);
+}
 
 ResNone InitActOptions::ValidateOptions()
 {
@@ -48,7 +55,9 @@ ResNone PartitionActOptions::ValidateOptions()
 }
 
 void FormatActOptions::CollectOptions (cxxopts::Options& opts)
-{}
+{
+    ActionOptions::CollectOptions (opts);
+}
 
 ResNone FormatActOptions::ValidateOptions()
 {
@@ -56,7 +65,9 @@ ResNone FormatActOptions::ValidateOptions()
 }
 
 void UpdateActOptions::CollectOptions (cxxopts::Options& opts)
-{}
+{
+    ActionOptions::CollectOptions (opts);
+}
 
 ResNone UpdateActOptions::ValidateOptions()
 {

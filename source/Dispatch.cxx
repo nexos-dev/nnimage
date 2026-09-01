@@ -152,6 +152,9 @@ void Dispatch::CollectOptions (cxxopts::Options& opts)
     // Add operation argument
     opts.parse_positional ({"operation"});
 
+    // Add frontend options
+    frontOpts.CollectOptions (opts);
+
     // Now add every action's options
     for (auto it = actionTable.begin(); it != actionTable.end(); it++)
     {
@@ -166,6 +169,11 @@ ResNone Dispatch::ValidateOptions()
     // Ensure an operation was passed
     if (options.operation.empty())
         return makeOptionError ("No operation specified");
+
+    // Validate frontend
+    auto res = frontOpts.ValidateOptions();
+    if (!res.IsOk())
+        return res;
 
     // Check every action
     for (auto it = actionTable.begin(); it != actionTable.end(); it++)

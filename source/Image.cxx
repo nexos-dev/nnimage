@@ -84,6 +84,7 @@ ImageResult Image::Set (ImgProp prop, const ImageVal& val)
 
 ImageResult Image::Validate()
 {
+    // Check if spec has size unset
     if (spec.size < 0)
     {
         return ImageError (ErrorCode::MissingRequiredProp,
@@ -118,6 +119,9 @@ ImageResult IsoImage::Validate()
 
 ImageResult FloppyImage::Validate()
 {
+    // Ensure this is a valid floppy size
+    // NOTE: not all possible floppy sizes have been included but if a user needs a 360K floppy they have
+    // bigger issues anyway. Quite frankly if they need a floppy to begin with that's already rather curious
     auto it = std::find (validSizes.begin(), validSizes.end(), spec.size);
     if (it == validSizes.end())
         return ImageError (ErrorCode::BadFloppySize, {{"name", spec.name}});
@@ -137,6 +141,7 @@ ImageResult Partition::Set (PartProp prop, const ImageVal& val)
     auto it = registry.find (prop);
     if (it == registry.end())
     {
+        // Shouldn't ever happen but then again we can't be too safe
         return ImageError (ErrorCode::InvalidPartProp,
             {{"prop_name", GetPropName (prop)}, {"name", spec.name}});
     }
@@ -161,6 +166,7 @@ void ImageError::makeMessage (ErrorFrame& frame)
 
     switch (frame.code)
     {
+        // NOTE: all the below assertKeys calls only do anything on debug builds. That shouldn't be an issue
         case ErrorCode::NameMissing:
             assertKeys ({"block_type"});
             msg << "Name required for block type \"" << getString ("block_type") << "\"";
@@ -205,6 +211,8 @@ void ImageError::makeMessage (ErrorFrame& frame)
 
 // Now begins the all-important registries
 
+// NOTE: this contains names across all image types. It might be a questionable design choice but it's simpler
+// then having to chase down 100 different registries when we already do enough of that here
 const NameRegistry<ImgProp> Image::nameRegistry = {{"size", ImgProp::Size},
     {"boot_mode", ImgProp::BootMode},
     // MBR/GPT
@@ -215,10 +223,15 @@ const NameRegistry<ImgProp> Image::nameRegistry = {{"size", ImgProp::Size},
     {"boot_image", ImgProp::BootImage}};
 
 const EnumArray<ImgType, ImgConstruct, ImgType::Max> Image::factory = {
-    {ImgType::Mbr, [] (auto& name) { return std::make_unique<MbrImage> (name); }},
-    {ImgType::Gpt, [] (auto& name) { return std::make_unique<GptImage> (name); }},
-    {ImgType::Iso9660, [] (auto& name) { return std::make_unique<IsoImage> (name); }},
-    {ImgType::Floppy, [] (auto& name) { return std::make_unique<FloppyImage> (name); }}};
+    {ImgType::Mbr,
+        [] (const std::string& name) -> std::unique_ptr<Image> { return std::make_unique<MbrImage> (name); }},
+    {ImgType::Gpt,
+        [] (const std::string& name) -> std::unique_ptr<Image> { return std::make_unique<GptImage> (name); }},
+    {ImgType::Iso9660,
+        [] (const std::string& name) -> std::unique_ptr<Image> { return std::make_unique<IsoImage> (name); }},
+    {ImgType::Floppy, [] (const std::string& name) -> std::unique_ptr<Image> {
+         return std::make_unique<FloppyImage> (name);
+     }}};
 
 const NameRegistry<ImgType> Image::typeNames = {{"mbr", ImgType::Mbr},
     {"gpt", ImgType::Gpt},
@@ -229,6 +242,9 @@ const NameRegistry<BootMode> Image::bootModes = {{"none", BootMode::None},
     {"bios", BootMode::Bios},
     {"efi", BootMode::Efi}};
 
+// NOTE: when the day comes that C++26 is fully ratified and implemented, the first thing I'm doing is erasing
+// this whole thing and using reflection to simplify this mess
+
 // clang-format off
 const ImgConfRegistry Image::baseRegistry = {
     {ImgProp::Size, {typeid (ImageNumId),
@@ -236,7 +252,7 @@ const ImgConfRegistry Image::baseRegistry = {
             img.spec.size = (*val.Get<ImageNumId>()).Get();
             return Success();
         },
-        [] (Image& img) {
+        [] (Image& img) -> std::optional<std::any> {
             return img.spec.size;
         }
     }},
@@ -252,7 +268,7 @@ const ImgConfRegistry Image::baseRegistry = {
             img.spec.bootMode = mode;
             return Success();
         },
-        [] (Image& img) {
+        [] (Image& img) -> std::optional<std::any> {
             return img.spec.bootMode;
         }
     }}
@@ -263,20 +279,20 @@ const ImgConfRegistry Image::baseRegistry = {
 const ImgConfRegistry MbrImage::registry = {
     {ImgProp::VbrFile, {typeid (std::string),
         [] (Image& img, const ImageVal& val) -> ImageResult {
-            static_cast<MbrImage&> (img).vbrFile = *val.Get<std::string>();
+            derived<MbrImage> (img).vbrFile = *val.Get<std::string>();
             return Success();
         },
-        [] (Image& img) {
-            return static_cast<MbrImage&> (img).vbrFile;
+        [] (Image& img) -> std::optional<std::any> {
+            return derived<MbrImage> (img).vbrFile;
         }
     }},
     {ImgProp::MbrFile, {typeid (std::string),
         [] (Image& img, const ImageVal& val) -> ImageResult {
-            static_cast<MbrImage&> (img).mbrFile = *val.Get<std::string>();
+            derived<MbrImage> (img).mbrFile = *val.Get<std::string>();
             return Success();
         },
-        [] (Image& img) {
-            return static_cast<MbrImage&> (img).mbrFile;
+        [] (Image& img) -> std::optional<std::any> {
+            return derived<MbrImage> (img).mbrFile;
         }
     }}
 };
@@ -284,20 +300,20 @@ const ImgConfRegistry MbrImage::registry = {
 const ImgConfRegistry GptImage::registry = {
     {ImgProp::VbrFile, {typeid (std::string),
         [] (Image& img, const ImageVal& val) -> ImageResult {
-            static_cast<GptImage&> (img).vbrFile = *val.Get<std::string>();
+            derived<GptImage> (img).vbrFile = *val.Get<std::string>();
             return Success();
         },
-        [] (Image& img) {
-            return static_cast<GptImage&> (img).vbrFile;
+        [] (Image& img) -> std::optional<std::any> {
+            return derived<GptImage> (img).vbrFile;
         }
     }},
     {ImgProp::MbrFile, {typeid (std::string),
         [] (Image& img, const ImageVal& val) -> ImageResult {
-            static_cast<GptImage&> (img).mbrFile = *val.Get<std::string>();
+            derived<GptImage> (img).mbrFile = *val.Get<std::string>();
             return Success();
         },
-        [] (Image& img) {
-            return static_cast<GptImage&> (img).mbrFile;
+        [] (Image& img) -> std::optional<std::any> {
+            return derived<GptImage> (img).mbrFile;
         }
     }}
 };
@@ -305,11 +321,11 @@ const ImgConfRegistry GptImage::registry = {
 const ImgConfRegistry IsoImage::registry = {
     {ImgProp::BootImage, {typeid (std::string),
         [] (Image& img, const ImageVal& val) -> ImageResult {
-            static_cast<IsoImage&> (img).bootImageName = *val.Get<std::string>();
+            derived<IsoImage> (img).bootImageName = *val.Get<std::string>();
             return Success();
         },
-        [] (Image& img) {
-            return static_cast<IsoImage&> (img).bootImageName;
+        [] (Image& img) -> std::optional<std::any> {
+            return derived<IsoImage> (img).bootImageName;
         }
     }},
     {ImgProp::BootEmu, {typeid (ImageId),
@@ -319,11 +335,11 @@ const ImgConfRegistry IsoImage::registry = {
             if (bootEmu == IsoBootEmu::Max)
                 return invalidId (img, id);
 
-            static_cast<IsoImage&> (img).bootEmu = bootEmu;
+            derived<IsoImage> (img).bootEmu = bootEmu;
             return Success();
         },
-        [] (Image& img) {
-            return static_cast<IsoImage&> (img).bootEmu;
+        [] (Image& img) -> std::optional<std::any> {
+            return derived<IsoImage> (img).bootEmu;
         }
     }}
 };
@@ -331,11 +347,11 @@ const ImgConfRegistry IsoImage::registry = {
 const ImgConfRegistry FloppyImage::registry = {
     {ImgProp::MbrFile, {typeid (std::string),
         [] (Image& img, const ImageVal& val) -> ImageResult {
-            static_cast<FloppyImage&> (img).mbrFile = *val.Get<std::string>();
+            derived<FloppyImage> (img).mbrFile = *val.Get<std::string>();
             return Success();
         },
-        [] (Image& img) {
-            return static_cast<FloppyImage&> (img).mbrFile;
+        [] (Image& img) -> std::optional<std::any> {
+            return derived<FloppyImage> (img).mbrFile;
         }
     }}
 };
@@ -366,7 +382,7 @@ const PartConfRegistry Partition::registry = {
             part.spec.start = (*val.Get<ImageNumId>()).Get();
             return Success();
         },
-        [] (Partition& part) {
+        [] (Partition& part) -> std::optional<std::any> {
             return part.spec.start;
         }
     }},
@@ -375,7 +391,7 @@ const PartConfRegistry Partition::registry = {
             part.spec.size = (*val.Get<ImageNumId>()).Get();
             return Success();
         },
-        [] (Partition& part) {
+        [] (Partition& part) -> std::optional<std::any> {
             return part.spec.size;
         }
     }},
@@ -384,7 +400,7 @@ const PartConfRegistry Partition::registry = {
             part.spec.format = *val.Get<std::string>();
             return Success();
         },
-        [] (Partition& part) {
+        [] (Partition& part) -> std::optional<std::any> {
             return part.spec.format;
         }
     }},
@@ -393,7 +409,7 @@ const PartConfRegistry Partition::registry = {
             part.spec.prefix = *val.Get<std::string>();
             return Success();
         },
-        [] (Partition& part) {
+        [] (Partition& part) -> std::optional<std::any> {
             return part.spec.prefix;
         }
     }},
@@ -402,7 +418,7 @@ const PartConfRegistry Partition::registry = {
             part.spec.isBoot = *val.Get<bool>();
             return Success();
         },
-        [] (Partition& part) {
+        [] (Partition& part) -> std::optional<std::any> {
             return part.spec.isBoot;
         }
     }}

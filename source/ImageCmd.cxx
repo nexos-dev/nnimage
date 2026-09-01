@@ -1,5 +1,5 @@
 /*
-    nnimage.h - contains header of nnimage
+    ImageCmd.cxx - contains ImageCmd frontend
     Copyright 2026 Jedidiah Thompson
 
     Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,23 +15,4 @@
     limitations under the License.
 */
 
-#ifndef NNIMAGE_H
-#define NNIMAGE_H
-
-// TODO: it would be better if source files included the headers they need, but I also like the
-// simplicity of this
-
-#include "include/Log.h"
-#include "include/Error.h"
-#include "include/ConfParser.h"
-#include "include/Dispatch.h"
-#include "include/Action.h"
-#include "include/Image.h"
-#include "include/Backend.h"
-#include "include/Frontend.h"
-#include "include/Task.h"
-
-// Test driver function
-bool TestDriver (int argc, char** argv);
-
-#endif
+#include "nnimage.h"

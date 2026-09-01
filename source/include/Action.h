@@ -72,6 +72,7 @@ class ActionOptions : public Options
     virtual ~ActionOptions() = default;
     virtual std::unique_ptr<Action> MakeAction() = 0;
     static std::unique_ptr<ActionOptions> MakeActOptions (ActionType type);
+    virtual void CollectOptions (cxxopts::Options& opts);
 
   private:
     const static EnumArray<ActionType, ActOptSetter, ActionType::Max> actionTable;

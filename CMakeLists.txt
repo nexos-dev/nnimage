@@ -162,6 +162,9 @@ list(APPEND NNIMAGE_SOURCES source/main.cxx
                             source/ErrorFormat.cxx
                             source/Backend.cxx
                             source/Image.cxx
+                            source/Frontend.cxx
+                            source/ImageCmd.cxx
+                            source/ImageConf.cxx
                             source/Task.cxx
                             external/MemoryMapped.cpp)
 

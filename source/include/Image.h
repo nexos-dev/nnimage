@@ -91,7 +91,7 @@ class NameRegistry
 
 // NOTE NOTE NOTE: this struct is in NO WAY copyable or movable and ALWAYS is const
 // If any code ever tries to copy or move it, many things would fail
-// It is STRICTLY NON COPYABLE and NON MOVABLE
+// It is STRICTLY NON COPYABLE
 // Do not attempt to do so. If you do, gcc/clang will find your home and make your life miserable
 struct ImgSpec
 {
@@ -102,13 +102,11 @@ struct ImgSpec
     BootMode bootMode = BootMode::None;
     ImgSpec (const ImgSpec&) = delete;
     ImgSpec& operator= (const ImgSpec&) = delete;
-    ImgSpec (const ImgSpec&&) = delete;
-    ImgSpec& operator= (const ImgSpec&&) = delete;
     ImgSpec() = default;
     ~ImgSpec() = default;
 };
 
-// NOTE: this struct is in NO WAY copyable or movable and ALWAYS is const
+// NOTE: this struct is in NO WAY copyable and ALWAYS is const
 struct PartSpec
 {
     std::string name;
@@ -118,11 +116,9 @@ struct PartSpec
     int64_t size = PartSpec::Default;
     bool isBoot = false;
     static constexpr int64_t Default = -1;
-    // Delete all copy and move constructors and assignment operators
+    // Delete all copy constructors assignment operators
     PartSpec (const PartSpec&) = delete;
     PartSpec& operator= (const PartSpec&) = delete;
-    PartSpec (const PartSpec&&) = delete;
-    PartSpec& operator= (const PartSpec&&) = delete;
     PartSpec() = default;
     ~PartSpec() = default;
 };
@@ -277,10 +273,10 @@ using ImageResult = ResCustom<NoResult, ImageError>;
 class Image;
 class Partition;
 
-using ImgConfSetter = std::function<ImageResult (Image&, const ImageVal&)>;
-using PartConfSetter = std::function<ImageResult (Partition&, const ImageVal&)>;
-using ImgConfGetter = std::function<std::optional<std::any> (Image&)>;
-using PartConfGetter = std::function<std::optional<std::any> (Partition&)>;
+using ImgConfSetter = ImageResult (*) (Image&, const ImageVal&);
+using PartConfSetter = ImageResult (*) (Partition&, const ImageVal&);
+using ImgConfGetter = std::optional<std::any> (*) (Image&);
+using PartConfGetter = std::optional<std::any> (*) (Partition&);
 
 struct ImgConfItem
 {
@@ -306,6 +302,9 @@ class Partition
     {
         spec.name = name;
     }
+    Partition (const Partition&) = delete;
+    Partition& operator= (const Partition&) = delete;
+
     const std::string& GetName()
     {
         return spec.name;
@@ -319,11 +318,11 @@ class Partition
     template <typename T>
     ResCustom<std::optional<T>, ImageError> Get (PartProp prop);
 
-    PartProp ResolveName (const std::string& name)
+    static PartProp ResolveName (const std::string& name)
     {
         return nameRegistry.Resolve (name);
     }
-    std::string GetPropName (PartProp prop)
+    static std::string GetPropName (PartProp prop)
     {
         return nameRegistry.GetName (prop);
     }
@@ -339,11 +338,11 @@ class Partition
     const static NameRegistry<PartProp> nameRegistry;
 };
 
-class PartRef
+template <typename T>
+class CompRef
 {
   public:
-    PartRef (const std::string& name, const std::string& image, int line = -1)
-        : name{name}, line{line}, image{image}
+    CompRef (const std::string& name, T& comp, int line = -1) : name{name}, line{line}, comp{comp}
     {}
     std::string GetName() const
     {
@@ -353,18 +352,18 @@ class PartRef
     {
         return line;
     }
-    std::string GetImage() const
+    T& GetImage()
     {
-        return image;
+        return comp;
     }
 
   private:
-    std::string image;
+    T& comp;
     std::string name;
     int line;
 };
 
-using ImgConstruct = std::function<std::unique_ptr<Image> (const std::string&)>;
+using ImgConstruct = std::unique_ptr<Image> (*) (const std::string&);
 
 class Image
 {
@@ -441,15 +440,15 @@ class Image
     {
         return typeNames.Resolve (type);
     }
-    ImgProp ResolveProp (const std::string& name)
+    static ImgProp ResolveProp (const std::string& name)
     {
         return nameRegistry.Resolve (name);
     }
-    std::string GetPropName (ImgProp prop)
+    static std::string GetPropName (ImgProp prop)
     {
         return nameRegistry.GetName (prop);
     }
-    std::string GetBootModeName (BootMode mode)
+    static std::string GetBootModeName (BootMode mode)
     {
         return bootModes.GetName (mode);
     }
@@ -458,8 +457,6 @@ class Image
     // Delete all copy and move constructors and assignment operators
     Image (const Image&) = delete;
     Image& operator= (const Image&) = delete;
-    Image (const Image&&) = delete;
-    Image& operator= (const Image&&) = delete;
 
   protected:
     Image (const std::string& name, ImgType type)
@@ -479,11 +476,19 @@ class Image
         return bootModes.Resolve (mode);
     }
 
+    template <typename Derived>
+    static Derived& derived (Image& img)
+    {
+        // NOTE: this assert only exists to ensure that the below static cast is safe in debug builds. In
+        // release builds that check is slow and uneccesary
+        assert (typeid (img) == typeid (Derived));
+        return static_cast<Derived&> (img);
+    }
+
     virtual const ImgConfRegistry& getRegistry() const = 0;
     virtual const std::vector<BackendType> getValidBackends() const = 0;
 
     ImgSpec spec;
-    std::vector<PartRef> partitionNames;
     std::vector<std::unique_ptr<Partition>> parts;
     std::shared_ptr<Backend> backend;
     std::string backendTag;

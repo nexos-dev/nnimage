@@ -91,6 +91,11 @@ class IsoImage : public Image
     }
     ImageResult Validate() override;
 
+    static std::string GetBootEmuName (IsoBootEmu emu)
+    {
+        return bootEmus.GetName (emu);
+    }
+
   protected:
     const ImgConfRegistry& getRegistry() const
     {
