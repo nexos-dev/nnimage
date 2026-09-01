@@ -20,33 +20,43 @@
 
 #include "include/EnumArray.h"
 
+#define ERROR_CODE_LIST(X)                                   \
+    X (None, "No error")                                     \
+    X (FileError, "File failure")                            \
+    X (PathError, "Path failure")                            \
+    X (ParseError, "Parser error")                           \
+    X (LexError, "Lexer error")                              \
+    X (LogCtrlLocked, "Log control file is locked")          \
+    X (EncMismatch, "Unable to retrieve character encoding") \
+    X (SysFailure, "Call to system failed")                  \
+    X (Internal, "Internal error")                           \
+    X (BadAction, "Invalid action specified")                \
+    X (InvalidOption, "Invalid option configuration")        \
+    X (OpFailed, "Operation failed")                         \
+    X (NameMissing, "Component name missing")                \
+    X (InvalidImgType, "Invalid image type")                 \
+    X (MissingRequiredProp, "Missing required property")     \
+    X (InvalidImgProp, "Invalid image property")             \
+    X (BadFloppySize, "Invalid floppy disc size")            \
+    X (PropTypeMismatch, "Unexpected property type")         \
+    X (ImgInvalid, "Image validation failure")               \
+    X (InvalidPartProp, "Invalid partition property")        \
+    X (InvalidId, "Invalid indentifier")
+
+// Make clang-format shut up to prevent it from moving Max to the previous line
+// clang-format off
+#define ERROR_CODE_ENUM(code, message) code,
 enum class ErrorCode
 {
-    None,
-    FileError,
-    PathError,
-    ParseError,
-    LexError,
-    LogCtrlLocked,
-    EncMismatch,
-    SysFailure,
-    Internal,
-    BadAction,
-    InvalidOption,
+    ERROR_CODE_LIST (ERROR_CODE_ENUM)
     Max
 };
+#undef ERROR_CODE_ENUM
 
+#define ERROR_CODE_STRING(code, message) {ErrorCode::code, message},
 static const EnumArray<ErrorCode, std::string, ErrorCode::Max> _errorCodeStrings = {
-    {ErrorCode::None, "No error"},
-    {ErrorCode::FileError, "File failure"},
-    {ErrorCode::PathError, "Path failure"},
-    {ErrorCode::ParseError, "Parser error"},
-    {ErrorCode::LexError, "Lexer error"},
-    {ErrorCode::LogCtrlLocked, "Log control file is locked"},
-    {ErrorCode::EncMismatch, "Unable to retrieve character encoding"},
-    {ErrorCode::SysFailure, "Call to system failed"},
-    {ErrorCode::Internal, "Internal error"},
-    {ErrorCode::BadAction, "Invalid action specified"},
-    {ErrorCode::InvalidOption, "Invalid option configuration specified"}};
+    ERROR_CODE_LIST (ERROR_CODE_STRING)};
+#undef ERROR_CODE_STRING
+#undef ERROR_CODE_LIST
 
 #endif

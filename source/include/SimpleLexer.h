@@ -33,6 +33,8 @@ enum class TokenType
     Ebrace,
     Eof,
     Equals,
+    True,
+    False,
     None
 };
 
@@ -59,7 +61,7 @@ struct LexToken
 {
     TokenType type;
     int line;
-    std::variant<std::string, uint64_t, LexNumId> val;
+    std::variant<std::string, uint64_t, LexNumId, bool> val;
 };
 
 class SimpleLexer

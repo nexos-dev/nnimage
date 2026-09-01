@@ -24,14 +24,14 @@
 KrunBackend::KrunBackend()
 {
     // Create a log stream so that errors are properly logged
-    int stream = _log->CreateLogStream ("libkrun error:", LogLevel::Error);
+    /*int stream = _log->CreateLogStream ("libkrun error:", LogLevel::Error);
     if (stream == -1)
     {
         backendCreated = false;
         return;
     }
     // Redirect libkrun's log to our log stream
-    krun_init_log (stream, KRUN_LOG_LEVEL_ERROR, KRUN_LOG_STYLE_AUTO, 0);
+    krun_init_log (stream, KRUN_LOG_LEVEL_ERROR, KRUN_LOG_STYLE_AUTO, 0);*/
     // Create the krun context
     krunCtx = krun_create_ctx();
     if (krunCtx == -1)
@@ -102,14 +102,12 @@ std::unique_ptr<Task> KrunBackend::CreatePartTable (Image& img, const std::strin
 {
     auto taskCb = [this, &img, fileName]() {
         const auto& spec = img.GetSpec();
-        // Lock it so we don't have multiple threads writing to the same file at the same time
-        std::lock_guard<std::mutex> guard (spec.lock);
         _log->Error ("i want to fail");
         return false;
     };
     const auto& spec = img.GetSpec();
     auto task = std::make_unique<Task> (taskCb,
-                                        "CreatePartTable",
-                                        "Creating partition table for image \"" + spec.name + "\"...");
+        "CreatePartTable",
+        "Creating partition table for image \"" + spec.name + "\"...");
     return task;
 }

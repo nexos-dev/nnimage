@@ -112,7 +112,7 @@ class LockFile
                 return false;
             throw ErrorException (
                 Error ({ErrorDomain::Log, ErrorCode::FileError},
-                       "Failed to acquire lock on file \"%s\": ",
+                       "Failed to acquire lock on file \"{}\": ",
                        path)
                     .AddByCode ({ErrorDomain::Log, ErrorCode::FileError, ErrorLog::Debug}, true));
         }

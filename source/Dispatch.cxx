@@ -60,6 +60,25 @@ ResNone Dispatch::setupLogs()
     return Success();
 }
 
+ResNone Dispatch::setupError()
+{
+    std::unique_ptr<ErrorFormatter> fmt = nullptr;
+    if (options.traceErrors)
+        fmt = std::make_unique<TraceErrorFormatter>();
+    else
+        fmt = std::make_unique<UserErrorFormatter> (options.verbose);
+
+    std::unique_ptr<LogErrorSink> logSink = std::make_unique<LogErrorSink> (std::move (fmt));
+    ErrorOutput::The()->AddSink (std::move (logSink));
+
+    if (options.quiet)
+        _log->SetSinkLogLevel (SinkType::Console, LogLevel::Max);
+    else if (options.verbose)
+        _log->SetSinkLogLevel (SinkType::Console, LogLevel::Debug);
+
+    return Success();
+}
+
 // TODO for when we add in a configuration file for options
 ResNone Dispatch::SetupConf()
 {
@@ -70,11 +89,44 @@ bool Dispatch::Execute()
 {
     // This is the main driver for the dispatcher. All the main business logic is controlled through here
     // This routine is a little annoying cause it's mostly error checking, but it is what it is
+    auto resErr = setupError();
+    if (!resErr.IsOk())
+    {
+        // We can't do too much as we don't know if we have errOut avaiable, so just do our best
+        _log->Fatal (resErr.GetError().RootFrame().msg);
+        return false;
+    }
 
-    // Start off by setting up logging
     auto resLog = setupLogs();
     if (!resLog.IsOk())
+    {
+        dispatchFail (resLog.GetError());
         return false;
+    }
+
+    auto imgRes = Image::ImageFactory ("mbr", "test");
+    if (!imgRes.IsOk())
+    {
+        dispatchFail (imgRes.GetError());
+        return false;
+    }
+
+    auto img = std::move (imgRes.GetValue());
+    ImageNumId size = ImageNumId (512, "MiB");
+    size.Parse();
+    img->Set (ImgProp::Size, ImageVal (size));
+
+    auto resGet = img->Get<int64_t> (ImgProp::Size);
+    auto val = resGet.GetValue();
+    int64_t sizeM = (*val) / (1024 * 1024);
+
+    img->Set (ImgProp::BootMode, ImageVal (ImageId ("bios")));
+    auto resGet2 = img->Get<BootMode> (ImgProp::BootMode);
+    auto mode = *resGet2.GetValue();
+
+    img->Set (ImgProp::MbrFile, ImageVal ("testf"));
+    auto resGet3 = img->Get<std::string> (ImgProp::MbrFile);
+    auto file = *resGet3.GetValue();
 
     return true;
 }

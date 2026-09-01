@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <any>
 #include <cassert>
 #include <cerrno>
 #include <ctime>
@@ -50,6 +51,8 @@
 #include <system_error>
 #include <thread>
 #include <type_traits>
+#include <typeinfo>
+#include <typeindex>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>

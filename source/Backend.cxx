@@ -30,8 +30,8 @@ BackendType Backend::ResolveBackend (const std::string& name)
 const std::string Backend::GetBackendName (BackendType type)
 {
     auto it = std::find_if (BackendNameRegistry.begin(),
-                            BackendNameRegistry.end(),
-                            [type] (const auto& pair) { return pair.second == type; });
+        BackendNameRegistry.end(),
+        [type] (const auto& pair) { return pair.second == type; });
     if (it == BackendNameRegistry.end())
         return "unknown";
     return it->first;
@@ -44,7 +44,9 @@ std::unique_ptr<Backend> Backend::BackendFactory (BackendType type)
 }
 
 std::unique_ptr<Task> Backend::CreateImage (Image& img, const std::string& fileName)
-{}
+{
+    return Task::EmptyTask();
+}
 
 std::unique_ptr<Task> Backend::CreatePartTable (Image& img, const std::string& fileName)
 {

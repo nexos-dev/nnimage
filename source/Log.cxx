@@ -19,7 +19,7 @@
 #include "include/TextReader.h"
 #include <unistd.h>
 
-void Log::LogAt (const std::string& message, LogLevel level, LogTime time) noexcept
+void Log::LogAt (const std::string& message, LogLevel level, LogTime time)
 {
     if (time == LogTime{})
         time = std::chrono::system_clock::now();
@@ -36,7 +36,7 @@ void Log::LogAt (const std::string& message, LogLevel level, LogTime time) noexc
     }
 }
 
-void Log::LogWithTag (SinkType type, const std::string& message, LogLevel level, LogTime time) noexcept
+void Log::LogWithTag (SinkType type, const std::string& message, LogLevel level, LogTime time)
 {
     if (time == LogTime{})
         time = std::chrono::system_clock::now();
@@ -159,7 +159,7 @@ FileLogSink::~FileLogSink()
         file.close();
 }
 
-void FileLogSink::Log (const std::string& message, LogLevel level, LogTime time) noexcept
+void FileLogSink::Log (const std::string& message, LogLevel level, LogTime time)
 {
     file << logParams[level] << message << "\n";
     if (level >= LogLevel::Error)
@@ -174,7 +174,7 @@ ConsoleLogSink::ConsoleLogSink (const char* progName, std::ostream& out) : out (
         _log->Debug ("Output stream is not a color terminal, disabling color output");
 }
 
-void ConsoleLogSink::Log (const std::string& message, LogLevel level, LogTime time) noexcept
+void ConsoleLogSink::Log (const std::string& message, LogLevel level, LogTime time)
 {
     // Grab our parameters for this log level
     const ConsLogParams& params = logParams[level];
@@ -236,20 +236,11 @@ ManagedLogSink::ManagedLogSink (std::filesystem::path logDir) : logDir{logDir}
     ctrlPath = logDir / logCtrlFile;
 }
 
-void ManagedLogSink::Log (const std::string& message, LogLevel level, LogTime time) noexcept
+void ManagedLogSink::Log (const std::string& message, LogLevel level, LogTime time)
 {
-    // Prepare time stamp
-    // NOTE: we use time_t as I prefer using strftime to std::format
-    std::time_t timeVal = std::chrono::system_clock::to_time_t (time);
-    std::tm localTime;
-    localtime_r (&timeVal, &localTime);
-
-    char buf[128];
-    std::strftime (buf, 128, "%Y-%m-%dT%H:%M:%S", &localTime);
-
-    std::string_view timeStr = buf;
+    std::string now = "[" + std::string (Timestamp::MakeTimestampNow()) + std::string ("]");
     std::string severity = logParams[level];
-    curLog << timeStr << severity << message << "\n";
+    curLog << now << severity << message << "\n";
     if (level >= LogLevel::Error)
         curLog.flush();
 }
@@ -277,10 +268,10 @@ ResNone ManagedLogSink::Prepare()
     return Success();
 }
 
-bool ManagedLogSink::openLogCtrl (ManagedLogSink& inst,
-                                  const std::filesystem::path& ctrl,
-                                  int& maxAge,
-                                  int& maxLogs)
+ResNone ManagedLogSink::openLogCtrl (ManagedLogSink& inst,
+    const std::filesystem::path& ctrl,
+    int& maxAge,
+    int& maxLogs)
 {
     std::string data;
     try
@@ -288,17 +279,17 @@ bool ManagedLogSink::openLogCtrl (ManagedLogSink& inst,
         TextReader ctrlReader = TextReader (inst.ctrlPath);
         auto res = ctrlReader.Read (data);
         if (!res.IsOk())
-            return false;    // Just ignore it
+            return res.GetError();
     }
     catch (const ErrorException& e)
     {
-        return false;    // Don't even fight it
+        return e.GetError();
     }
 
     ManagedLogCtrl logCtrl = ManagedLogCtrl (inst.ctrlPath, std::move (data));
     auto resParse = logCtrl.Parse();
     if (!resParse.IsOk())
-        return false;
+        return resParse.GetError();
 
     // Get our values
     ConfValue val;
@@ -309,7 +300,7 @@ bool ManagedLogSink::openLogCtrl (ManagedLogSink& inst,
     if (res.GetValue())
         maxAge = std::get<int> (val);
     assert (maxAge >= 0 && maxLogs >= 0);
-    return true;
+    return Success();
 }
 
 bool ManagedLogSink::checkLog (const std::filesystem::path& log, int maxAge)
@@ -346,14 +337,18 @@ void ManagedLogSink::deleteOldestLogs (std::vector<std::filesystem::path>& files
 
 void ManagedLogSink::logMaintWorker (ManagedLogSink& inst)
 {
-    // TODO: once we have ErrorOutput, make these returns use that instead
     int maxAge = MAX_LOG_AGE, maxLogs = MAX_LOG_COUNT;
 
     // First parse the control file
     if (std::filesystem::exists (inst.ctrlPath))
     {
-        if (!openLogCtrl (inst, inst.ctrlPath, maxAge, maxLogs))
+        auto res = openLogCtrl (inst, inst.ctrlPath, maxAge, maxLogs);
+        if (!res.IsOk())
+        {
+            ErrorOutput::The()->Report (res.GetError().Add ({ErrorDomain::Log, ErrorCode::FileError},
+                "unable to open log control file"));
             return;
+        }
     }
 
     // Now we have the parameters, it's time to begin checking logs
@@ -388,26 +383,26 @@ void ManagedLogSink::logMaintWorker (ManagedLogSink& inst)
 // Log control table array
 const EnumArray<LogCtrlKey, ConfInstance<ManagedLogCtrl, LogCtrlKey>, LogCtrlKey::Max> ManagedLogCtrl::keys =
     {{LogCtrlKey::MaxFiles,
-      {ConfType::Int,
-       [] (ManagedLogCtrl& ctrl, const ConfValue& val) {
-           assert (std::holds_alternative<int> (val));
-           ctrl.maxLogs = std::get<int> (val);
-       },
-       [] (ManagedLogCtrl& ctrl) -> ConfValue {
-           int count = ctrl.maxLogs;
-           if (count == -1)
-               return std::monostate{};
-           return count;
-       }}},
-     {LogCtrlKey::MaxAge,
-      {ConfType::Int,
-       [] (ManagedLogCtrl& ctrl, const ConfValue& val) {
-           assert (std::holds_alternative<int> (val));
-           ctrl.maxAge = std::get<int> (val);
-       },
-       [] (ManagedLogCtrl& ctrl) -> ConfValue {
-           int count = ctrl.maxAge;
-           if (count == -1)
-               return std::monostate{};
-           return count;
-       }}}};
+         {ConfType::Int,
+             [] (ManagedLogCtrl& ctrl, const ConfValue& val) {
+                 assert (std::holds_alternative<int> (val));
+                 ctrl.maxLogs = std::get<int> (val);
+             },
+             [] (ManagedLogCtrl& ctrl) -> ConfValue {
+                 int count = ctrl.maxLogs;
+                 if (count == -1)
+                     return std::monostate{};
+                 return count;
+             }}},
+        {LogCtrlKey::MaxAge,
+            {ConfType::Int,
+                [] (ManagedLogCtrl& ctrl, const ConfValue& val) {
+                    assert (std::holds_alternative<int> (val));
+                    ctrl.maxAge = std::get<int> (val);
+                },
+                [] (ManagedLogCtrl& ctrl) -> ConfValue {
+                    int count = ctrl.maxAge;
+                    if (count == -1)
+                        return std::monostate{};
+                    return count;
+                }}}};

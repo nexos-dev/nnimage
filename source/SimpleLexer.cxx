@@ -75,7 +75,8 @@ void SimpleLexer::lexWarn (LexWarning err, const std::string& extra)
             msg += "Invalid escape sequence \"" + extra + "\", ignoring";
             break;
     }
-    _log->Warning (msg);
+    ErrorOutput::The()->Report (
+        Error ({ErrorDomain::Conf, ErrorCode::LexError, ErrorLog::Normal, ErrorSeverity::Warning}, msg));
 }
 
 char SimpleLexer::readChar()
@@ -451,7 +452,13 @@ TokenResult SimpleLexer::NextToken()
                 }
                 // Return last character to buffer
                 returnChar (c);
-                tok->val = id;
+                // Check if the ID is a reserved word
+                if (id == "true")
+                    tok->type = TokenType::True;
+                else if (id == "false")
+                    tok->type = TokenType::False;
+                else
+                    tok->val = id;
                 isAccepted = true;
                 break;
             }

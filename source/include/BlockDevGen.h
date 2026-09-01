@@ -44,7 +44,7 @@ class BlockDevFactory
         return prefix + suffix;
     }
 
-    std::string operator() (int index)
+    std::string operator[] (int index)
     {
         char suffix = 'a' + index;
         return prefix + suffix;

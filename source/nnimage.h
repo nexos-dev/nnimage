@@ -26,13 +26,11 @@
 #include "include/ConfParser.h"
 #include "include/Dispatch.h"
 #include "include/Action.h"
-/*#include "include/Task.h"
 #include "include/Image.h"
 #include "include/Backend.h"
+/*#include "include/Task.h"
 #include "include/ActionTable.h"
-#include "include/ImageTypes.h"
-#include "include/EnumArray.h"
-#include "include/Option.h"*/
+#include "include/ImageTypes.h"*/
 
 // Test driver function
 bool TestDriver (int argc, char** argv);

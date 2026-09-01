@@ -22,6 +22,7 @@
 #include "include/EnumArray.h"
 #include "include/SimpleLexer.h"
 #include "include/LockFile.h"
+#include "include/Timestamp.h"
 #include "include/ConfParser.h"
 #include "config.h"
 
@@ -61,35 +62,32 @@ using LogStream = int;
 class Log
 {
   public:
-    void LogAt (const std::string& message, LogLevel level, LogTime time = LogTime{}) noexcept;
+    void LogAt (const std::string& message, LogLevel level, LogTime time = LogTime{});
     // Only log message to sinks with the given tag. If no sinks have that tag, nothing will be
     // logged
-    void LogWithTag (SinkType type,
-                     const std::string& message,
-                     LogLevel level,
-                     LogTime time = LogTime{}) noexcept;
+    void LogWithTag (SinkType type, const std::string& message, LogLevel level, LogTime time = LogTime{});
 
-    void Fatal (const std::string& message) noexcept
+    void Fatal (const std::string& message)
     {
         LogAt (message, LogLevel::Fatal);
     }
-    void Error (const std::string& message) noexcept
+    void Error (const std::string& message)
     {
         LogAt (message, LogLevel::Error);
     }
-    void Warning (const std::string& message) noexcept
+    void Warning (const std::string& message)
     {
         LogAt (message, LogLevel::Warning);
     }
-    void Info (const std::string& message) noexcept
+    void Info (const std::string& message)
     {
         LogAt (message, LogLevel::Info);
     }
-    void Status (const std::string& message) noexcept
+    void Status (const std::string& message)
     {
         LogAt (message, LogLevel::Status);
     }
-    void Debug (const std::string& message) noexcept
+    void Debug (const std::string& message)
     {
         LogAt (message, LogLevel::Debug);
     }
@@ -105,8 +103,8 @@ class Log
     // Sets up a stream for all sinks with the specified type. All messages written to stream will
     // be logged to those sinks. Returns file descriptor for write end of the pipe
     Result<LogStream> StreamIntoSink (SinkType type,
-                                      const std::string& msgPrefix,
-                                      LogLevel level = LogLevel::Debug);
+        const std::string& msgPrefix,
+        LogLevel level = LogLevel::Debug);
 
     ResNone AddFileSink (LogSinkInfo& info, const std::string& filename);
     ResNone AddConsoleSink (LogSinkInfo& info, const char* progName, std::ostream& out);
@@ -135,7 +133,7 @@ class LogSink
     LogSink() = default;
     virtual ~LogSink() = default;
 
-    virtual void Log (const std::string& message, LogLevel level, LogTime time) noexcept = 0;
+    virtual void Log (const std::string& message, LogLevel level, LogTime time) = 0;
     std::unique_lock<std::mutex> LockSink()
     {
         return std::unique_lock<std::mutex> (sinkMtx);
@@ -160,7 +158,7 @@ class ConsoleLogSink : public LogSink
   public:
     ConsoleLogSink (const char* progName, std::ostream& out);
 
-    void Log (const std::string& message, LogLevel level, LogTime time) noexcept override;
+    void Log (const std::string& message, LogLevel level, LogTime time) override;
 
   private:
     bool checkIsOutColor() const;
@@ -176,7 +174,7 @@ class ConsoleLogSink : public LogSink
         {LogLevel::Status, {"", "", false}},
         {LogLevel::Warning, {"warning: ", ANSI_CODE_WARN, true}},
         {LogLevel::Error, {"error: ", ANSI_CODE_ERROR, true}},
-        {LogLevel::Fatal, {"fatal error: ", ANSI_CODE_ERROR, true}}};
+        {LogLevel::Fatal, {"fatal: ", ANSI_CODE_ERROR, true}}};
 };
 
 class FileLogSink : public LogSink
@@ -185,7 +183,7 @@ class FileLogSink : public LogSink
     FileLogSink (const std::string& filename);
     ~FileLogSink() override;
 
-    void Log (const std::string& message, LogLevel level, LogTime time) noexcept override;
+    void Log (const std::string& message, LogLevel level, LogTime time) override;
 
   private:
     std::ofstream file;
@@ -196,7 +194,7 @@ class FileLogSink : public LogSink
         {LogLevel::Status, ""},
         {LogLevel::Warning, "warning: "},
         {LogLevel::Error, "error: "},
-        {LogLevel::Fatal, "fatal error: "}};
+        {LogLevel::Fatal, "fatal: "}};
 };
 
 // Managed log controller. Represents the file nnimage_logctrl
@@ -246,33 +244,20 @@ class ManagedLogSink : public LogSink
   public:
     ManagedLogSink (std::filesystem::path logDir);
     ResNone Prepare();
-    void Log (const std::string& message, LogLevel level, LogTime time) noexcept override;
+    void Log (const std::string& message, LogLevel level, LogTime time) override;
 
   private:
     std::string getLogName()
     {
-        const auto nowTime = std::chrono::system_clock::now();
-        const std::time_t now = std::chrono::system_clock::to_time_t (nowTime);
-        std::tm time;
-        localtime_r (&now, &time);
-
-        char buf[32];
-        std::strftime (buf, 32, "%Y%m%dT%H%M%S.", &time);
-
-        const auto microseconds =
-            std::chrono::duration_cast<std::chrono::microseconds> (nowTime.time_since_epoch()).count() %
-            1000000;
-
-        const auto fraction = microseconds / 100;
-        const std::string fractionString = std::to_string (fraction);
-        return filePrefix + buf + std::string (4 - fractionString.length(), '0') + fractionString;
+        Timestamp now = Timestamp::MakeTimestampNow();
+        return filePrefix + std::string (now);
     }
     static void logMaintWorker (ManagedLogSink& inst);
     static bool checkLog (const std::filesystem::path& log, int maxAge);
-    static bool openLogCtrl (ManagedLogSink& inst,
-                             const std::filesystem::path& ctrl,
-                             int& maxAge,
-                             int& maxLogs);
+    static ResNone openLogCtrl (ManagedLogSink& inst,
+        const std::filesystem::path& ctrl,
+        int& maxAge,
+        int& maxLogs);
     static void deleteOldestLogs (std::vector<std::filesystem::path>& files, int count);
 
     std::filesystem::path ctrlPath;

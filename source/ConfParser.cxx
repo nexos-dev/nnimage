@@ -186,7 +186,7 @@ ResNone ConfParser<Derived, ConfKey>::Set (ConfKey key, const ConfValue& val, bo
     if (!overwrite && (ctrl.getter (derived()).index() < static_cast<size_t> (ConfType::Max)))
     {
         return Error ({ErrorDomain::Log, ErrorCode::ParseError},
-                      "Attempt to write key \"%s\" and overwrite is not enabled",
+                      "Attempt to write key \"{}\" and overwrite is not enabled",
                       nameFromKey (key));
     }
 
@@ -194,7 +194,7 @@ ResNone ConfParser<Derived, ConfKey>::Set (ConfKey key, const ConfValue& val, bo
     if (type != ctrl.type)
     {
         return Error ({ErrorDomain::Log, ErrorCode::ParseError},
-                      "Type mismatch on key \"%s\"",
+                      "Type mismatch on key \"{}\"",
                       nameFromKey (key));
     }
 

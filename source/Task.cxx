@@ -200,7 +200,7 @@ void TaskGraph::addReadyTask (TaskId task)
 {
     if (!taskExists (task))
     {
-        _log->Verbose ("attempted to add non-existant task " + std::to_string (task) + " to ready queue");
+        _log->Debug ("attempted to add non-existant task " + std::to_string (task) + " to ready queue");
         return;    // It's perfectly harmless to attempt to add a non-existant task to the ready
                    // queue, so we just ignore it
                    // I still log it for debugging purposes, but it causes no side effects
@@ -303,7 +303,7 @@ bool TaskGraph::RunTasks()
         return true;
     else if (succeeded > 0)
     {
-        _log->Warn ("not all tasks completed successfully");
+        _log->Warning ("not all tasks completed successfully");
         return false;
     }
     else

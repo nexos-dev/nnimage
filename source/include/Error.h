@@ -20,6 +20,8 @@
 
 #include "ErrorCode.h"
 
+#include <format>
+
 enum class ErrorDomain
 {
     None,
@@ -28,6 +30,8 @@ enum class ErrorDomain
     Action,
     Task,
     Option,
+    Operation,
+    ImageConf,
     Backend
 };
 
@@ -64,8 +68,6 @@ struct ErrorInfo
     ErrorSeverity severity = ErrorSeverity::Error;
 };
 
-// NOTE: I hear people saying, why are you using printf formatting?
-// Well, because I am old school and prefer it. Bad reasoning? Yes. Do I care? no.
 class Error
 {
   public:
@@ -73,7 +75,7 @@ class Error
     {}
     Error (const ErrorInfo& info, const std::string& msg)
     {
-        ErrorFrame frame (info.domain, info.code, std::move (msg), info.log);
+        ErrorFrame frame (info.domain, info.code, msg, info.log);
         this->severity = info.severity;
         frames.push_back (frame);
     }
@@ -97,10 +99,11 @@ class Error
     }
     Error (Error&&) = default;
     Error& operator= (Error&&) = default;
+    virtual ~Error() = default;
 
-    Error& Add (const ErrorInfo& info, const std::string& msg)
+    virtual Error& Add (const ErrorInfo& info, const std::string& msg)
     {
-        ErrorFrame frame (info.domain, info.code, std::move (msg), info.log);
+        ErrorFrame frame (info.domain, info.code, msg, info.log);
         // Never downgrade from fatal, but we can downgrade from error to warning
         if (this->severity != ErrorSeverity::Fatal)
             this->severity = info.severity;
@@ -111,6 +114,15 @@ class Error
     Error& Add (const ErrorInfo& info, const std::string& fmt, const Args&... args)
     {
         return Add (info, formatMessage (fmt, args...));
+    }
+    // Used mostly so we can pass on overrided class to Add. Parameter must be rvalue
+    // TODO: maybe we should allow lvalues?
+    Error& Add (const Error&& err)
+    {
+        if (err.severity != ErrorSeverity::Fatal)
+            this->severity = err.severity;
+        frames.push_back (err.frames[0]);
+        return *this;
     }
 
     // Helper to add an error based strictly off of a code
@@ -124,7 +136,7 @@ class Error
 
     // These functions are for error chaining. This is where one error creates a whole new error that is
     // seperate from the original
-    Error Chain (const ErrorInfo& info, const std::string& msg)
+    virtual Error Chain (const ErrorInfo& info, const std::string& msg)
     {
         Error err = Error (info, msg);
         err.cause = std::make_unique<Error> (std::move (*this));
@@ -165,37 +177,42 @@ class Error
         return *cause;
     }
 
-  private:
-    // Wrappers so std::string in a va_args list is implicitly converted to a C string
-    // I know I know, I should just use std::format but I really don't want to
-    template <typename T>
-    static const T& treatString (const T& arg)
+    // Takes the casual chain, and turns it into an array
+    static std::deque<Error> GetChain (const Error& err)
     {
-        return arg;
+        std::deque<Error> chain;
+        chain.push_front (err);
+        Error* cur = err.cause.get();
+        while (cur)
+        {
+            chain.push_front (*cur);
+            cur = cur->cause.get();
+        }
+        return chain;
     }
-    inline static const char* treatString (const std::string& arg)
-    {
-        return arg.c_str();
-    }
-    template <typename... Args>
-    static std::string formatMessage (const std::string& fmt, const Args&... args)
-    {
-        if (fmt.empty())
-            return {};
-        int size = std::snprintf (nullptr, 0, fmt.c_str(), treatString (args)...);
-        if (size < 0)
-            return std::string (fmt);
-        std::string msg (size + 1, 0);
-        std::snprintf (msg.data(), msg.size(), fmt.c_str(), treatString (args)...);
-        msg.resize (size);
-        return msg;
-    }
+
+  protected:
     // Severity is not frame specific, this is because we want the whole error to be treated as a
     // single severity. For example, if say one image fails to write, but there are still other
     // images, its not fatal. If it's the only one then from the user's perspective, it is fatal
     ErrorSeverity severity;
     std::vector<ErrorFrame> frames;
-    std::unique_ptr<Error> cause;    // For casual chaining, so one error has multiple messages
+    std::unique_ptr<Error> cause = nullptr;    // For casual chaining, so one error has multiple messages
+  private:
+    template <typename... Args>
+    static std::string formatMessage (const std::string& fmt, const Args&... args)
+    {
+        if (fmt.empty())
+            return {};
+        try
+        {
+            return std::vformat (fmt, std::make_format_args (args...));
+        }
+        catch (const std::format_error&)
+        {
+            return fmt;
+        }
+    }
     // Used when there are no frames to report
     inline static const ErrorFrame emptyFrame{ErrorDomain::None, ErrorCode::None, ""};
 };
@@ -223,49 +240,51 @@ class ErrorException : public std::exception
     Error error;
 };
 
-// Rudimentary Result class. Gives Result<T,E> without the E
-template <typename T>
-class Result
+// Rudimentary Result class
+template <typename T, class E>
+class ResCustom
 {
   public:
-    Result (T val) : error (std::nullopt), ok (true), value (std::move (val))
+    ResCustom (T val) : error (std::nullopt), ok (true), value (std::move (val))
     {}
-    Result (Error error) : error (std::move (error)), ok (false), value (std::nullopt)
-    {}
+    ResCustom (E error) : error (std::move (error)), ok (false), value (std::nullopt)
+    {
+        static_assert (std::is_base_of_v<Error, E>, "Result<E> type must inherit from Error");
+    }
     bool IsOk() const
     {
         return ok;
     }
     T& GetValue()
     {
-        if (!value.has_value())
-            throw std::runtime_error ("Result does not contain a value");
+        assert (value.has_value());
         return *value;
     }
-    Error& GetError()
+    E& GetError()
     {
-        if (!error.has_value())
-            throw std::runtime_error ("Result is in an invalid state");
+        assert (error.has_value());
         return *error;
     }
-    const Error& GetError() const
+    const E& GetError() const
     {
-        if (!error.has_value())
-            throw std::runtime_error ("Result is in an invalid state");
+        assert (error.has_value());
         return *error;
     }
 
   private:
     std::optional<T> value;
     bool ok = true;
-    std::optional<Error> error;
+    std::optional<E> error;
 };
 
+template <typename T>
+using Result = ResCustom<T, Error>;
+
 // A little helper to make the fact that a result object contains no result clearer
+using NoResult = std::monostate;
 using ResNone = Result<std::monostate>;
 using Success = std::monostate;
 
-// Base class for formatting errors for output
 class ErrorFormatter
 {
   public:
@@ -273,24 +292,90 @@ class ErrorFormatter
     virtual std::string Format (const Error& err) = 0;
 };
 
+class ErrorSink
+{
+  public:
+    ErrorSink (std::unique_ptr<ErrorFormatter> fmt) : fmt{std::move (fmt)}
+    {}
+    virtual ~ErrorSink() = default;
+    virtual void Output (const Error& err) = 0;
+
+  protected:
+    std::unique_ptr<ErrorFormatter> fmt;
+};
+
 // NOTE: this is and must be a singleton
 class ErrorOutput
 {
   public:
-    void AddFormatter (std::unique_ptr<ErrorFormatter> fmt)
+    void AddSink (std::unique_ptr<ErrorSink> sink)
     {
-        formats.push_back (std::move (fmt));
+        sinks.push_back (std::move (sink));
     }
     void Report (const Error& err)
     {
-        for (const auto& fmt : formats)
-            fmt->Format (err);
+        for (auto& sink : sinks)
+            sink->Output (err);
+    }
+
+    static ErrorOutput* The()
+    {
+        static ErrorOutput the;
+        return &the;
     }
 
   private:
-    std::vector<std::unique_ptr<ErrorFormatter>> formats;
+    ErrorOutput() = default;
+    std::vector<std::unique_ptr<ErrorSink>> sinks;
 };
 
-extern std::unique_ptr<ErrorOutput> _errOut;
+class LogErrorSink : public ErrorSink
+{
+  public:
+    LogErrorSink (std::unique_ptr<ErrorFormatter> fmt) : ErrorSink{std::move (fmt)}
+    {}
+    void Output (const Error& err);
+};
+
+class FileErrorSink : public ErrorSink
+{
+  public:
+    FileErrorSink (const std::string& file, std::unique_ptr<ErrorFormatter> fmt)
+        : file{file}, ErrorSink{std::move (fmt)}
+    {
+        if (!this->file.is_open())
+        {
+            Error e;
+            if (!std::filesystem::exists (file))
+                e = e.Add ({ErrorDomain::None, ErrorCode::FileError}, "No such file or directory");
+            e = e.Add ({ErrorDomain::None, ErrorCode::FileError},
+                "Unable to open error reporting file \"{}\"",
+                file);
+            throw ErrorException (e);
+        }
+    }
+    void Output (const Error& err);
+
+  private:
+    std::ofstream file;
+    std::mutex lock;
+};
+
+class UserErrorFormatter : public ErrorFormatter
+{
+  public:
+    UserErrorFormatter (bool verbose = false) : verbose{verbose}
+    {}
+    std::string Format (const Error& err);
+
+  private:
+    bool verbose = false;
+};
+
+class TraceErrorFormatter : public ErrorFormatter
+{
+  public:
+    std::string Format (const Error& err);
+};
 
 #endif

@@ -109,7 +109,7 @@ foreach(BACKEND ${NNIMAGE_ENABLED_BACKENDS})
             endif()
             if(BACKEND_ENABLED)
                 list(APPEND NNIMAGE_USABLE_BACKENDS ${BACKEND_NAME})
-                #list(APPEND NNIMAGE_SOURCES ${BACKEND_SOURCE})
+                list(APPEND NNIMAGE_SOURCES ${BACKEND_SOURCE})
             else()
                 message(WARNING "Backend ${BACKEND} is not supported on this system")
             endif()
@@ -160,12 +160,10 @@ list(APPEND NNIMAGE_SOURCES source/main.cxx
                             source/Dispatch.cxx
                             source/Action.cxx
                             source/ErrorFormat.cxx
-#                         source/Conf.cxx
-#                         source/ConfParser.cxx
-#                         source/Image.cxx
-#                         source/Task.cxx
-#                         source/backend/Backend.cxx
-                         external/MemoryMapped.cpp)
+                            source/Backend.cxx
+                            source/Image.cxx
+                            source/Task.cxx
+                            external/MemoryMapped.cpp)
 
 if(NNIMAGE_ENABLE_TESTS)
     list(APPEND NNIMAGE_SOURCES tests/TestDriver.cxx)

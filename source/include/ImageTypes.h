@@ -24,11 +24,11 @@
 class MbrImage : public Image
 {
   public:
-    MbrImage (const std::string& name) : Image (name, ImageType::Mbr)
+    MbrImage (const std::string& name) : Image (name, ImgType::Mbr)
     {}
 
   protected:
-    const std::unordered_map<ImgProp, ImgConfItem>& getRegistry()
+    const ImgConfRegistry& getRegistry() const
     {
         return registry;
     }
@@ -38,26 +38,23 @@ class MbrImage : public Image
     }
 
   private:
-    // Gets numeric boot mode from string boot mode
-    BootMode getBootMode (const std::string& modeStr);
-    // List of valid boot modes for image
-    const static std::unordered_map<std::string, BootMode> validBootModes;
-    // Registry of configuration keys
-    const static std::unordered_map<ImgProp, ImgConfItem> registry;
-    // Valid backends
-    const std::vector<BackendType> validBackends = {BackendType::Krun,
-                                                    BackendType::Loopback,
-                                                    BackendType::Guestfs};
+    std::string mbrFile{};
+    std::string vbrFile{};
+
+    const static ImgConfRegistry registry;
+    inline const static std::vector<BackendType> validBackends = {BackendType::Krun,
+        BackendType::Loopback,
+        BackendType::Guestfs};
 };
 
 class GptImage : public Image
 {
   public:
-    GptImage (const std::string& name) : Image (name, ImageType::Gpt)
+    GptImage (const std::string& name) : Image (name, ImgType::Gpt)
     {}
 
   protected:
-    const std::unordered_map<ImgProp, ImgConfItem>& getRegistry()
+    const ImgConfRegistry& getRegistry() const
     {
         return registry;
     }
@@ -67,16 +64,13 @@ class GptImage : public Image
     }
 
   private:
-    // Gets numeric boot mode from string boot mode
-    BootMode getBootMode (const std::string& modeStr);
-    // List of valid boot modes for image
-    const static std::unordered_map<std::string, BootMode> validBootModes;
-    // Registry of configuration keys
-    const static std::unordered_map<ImgProp, ImgConfItem> registry;
-    // Valid backends
-    const std::vector<BackendType> validBackends = {BackendType::Krun,
-                                                    BackendType::Loopback,
-                                                    BackendType::Guestfs};
+    std::string mbrFile{};
+    std::string vbrFile{};
+
+    const static ImgConfRegistry registry;
+    inline const static std::vector<BackendType> validBackends = {BackendType::Krun,
+        BackendType::Loopback,
+        BackendType::Guestfs};
 };
 
 // Boot emulation
@@ -84,19 +78,21 @@ enum class IsoBootEmu
 {
     Noemu,
     Hdd,
-    Fdd
+    Fdd,
+    Max
 };
 
 class IsoImage : public Image
 {
   public:
-    IsoImage (const std::string& name) : Image (name, ImageType::Iso9660)
+    IsoImage (const std::string& name) : Image (name, ImgType::Iso9660)
     {
         spec.fileExt = ".iso";    // Ensure extension is .iso
     }
+    ImageResult Validate() override;
 
   protected:
-    const std::unordered_map<ImgProp, ImgConfItem>& getRegistry()
+    const ImgConfRegistry& getRegistry() const
     {
         return registry;
     }
@@ -104,57 +100,47 @@ class IsoImage : public Image
     {
         return validBackends;
     }
-    bool Validate() override;
 
   private:
-    // Gets numeric boot mode from string boot mode
-    BootMode getBootMode (const std::string& modeStr);
-    // List of valid boot modes for image
-    const static std::unordered_map<std::string, BootMode> validBootModes;
-    // Registry of configuration keys
-    const static std::unordered_map<ImgProp, ImgConfItem> registry;
-    // Data fields
-    IsoBootEmu bootEmu = IsoBootEmu::Noemu;    // Selected boot emulation
-    std::string bootImageName;                 // Boot image file name for hdd and fdd emus
-    Image* bootImage;
-    // Valid boot emulations
-    const static std::unordered_map<std::string, IsoBootEmu> bootEmus;
-    // Boot emulation to boot image type mapping
-    const static std::unordered_map<IsoBootEmu, ImageType> bootEmuModes;
-    // Valid backends
+    std::string bootImageName;
+    IsoBootEmu bootEmu = IsoBootEmu::Noemu;
+    Image* bootImage = nullptr;
+
+    const static ImgConfRegistry registry;
+
+    const static NameRegistry<IsoBootEmu> bootEmus;
+    const static EnumArray<IsoBootEmu, ImgType, IsoBootEmu::Max> bootEmuModes;
     const std::vector<BackendType> validBackends = {BackendType::Xorriso};
 };
 
 class FloppyImage : public Image
 {
   public:
-    FloppyImage (const std::string& name) : Image (name, ImageType::Floppy)
+    FloppyImage (const std::string& name) : Image (name, ImgType::Floppy)
     {}
+    ImageResult Validate() override;
 
   protected:
-    const std::unordered_map<ImgProp, ImgConfItem>& getRegistry()
+    const ImgConfRegistry& getRegistry() const
     {
         return registry;
     }
+
     const std::vector<BackendType> getValidBackends() const
     {
         return validBackends;
     }
-    bool Validate() override;
 
   private:
-    // Gets numeric boot mode from string boot mode
-    BootMode getBootMode (const std::string& modeStr);
-    // List of valid boot modes for image
-    const static std::unordered_map<std::string, BootMode> validBootModes;
-    // Registry of configuration keys
-    const static std::unordered_map<ImgProp, ImgConfItem> registry;
-    // Valid sizes for a floppy image
-    const static std::vector<int> validSizes;
-    // Valid backends
-    const std::vector<BackendType> validBackends = {BackendType::Krun,
-                                                    BackendType::Loopback,
-                                                    BackendType::Guestfs};
+    std::string mbrFile{};
+
+    const static ImgConfRegistry registry;
+
+    inline const static std::vector<int> validSizes = {720, 1440, 2880};
+
+    inline const static std::vector<BackendType> validBackends = {BackendType::Krun,
+        BackendType::Loopback,
+        BackendType::Guestfs};
 };
 
 #endif

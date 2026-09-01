@@ -33,9 +33,9 @@ class TextReader
         if (!handle.open (file.c_str()))
         {
             throw ErrorException (Error ({ErrorDomain::None, ErrorCode::FileError},
-                                         "%s: %s",
-                                         std::string (file.filename()),
-                                         handle.getError()));
+                "{}: {}",
+                file.filename().string(),
+                handle.getError()));
         }
     }
     TextReader (const std::string& file, const std::string& forceEnc = "")
@@ -45,10 +45,8 @@ class TextReader
     {
         // Make sure handle is valid
         if (!handle.isValid())
-        {
-            throw ErrorException (
-                Error ({ErrorDomain::None, ErrorCode::Internal}, "attempt to read from unopened file"));
-        }
+            throw std::runtime_error ("attempt to read from unopened file");
+
         // Grab data
         const std::string_view data = std::string_view (reinterpret_cast<const char*> (handle.getData()));
         // Prepare encoding detection
@@ -66,17 +64,21 @@ class TextReader
                 {
                     // If chardet couldn't detect the encoding and the user didn't specify one, warn the user
                     // and force ASCII
-                    // TODO: error output class isn't made yet
+                    Error err = Error (
+                        {ErrorDomain::None, ErrorCode::EncMismatch, ErrorLog::Normal, ErrorSeverity::Warning},
+                        "unable to detect character set for file {}, assuming ASCII",
+                        file.string());
+                    ErrorOutput::The()->Report (err);
+
                     enc = "ASCII";
                     confidence = 1.0;    // Force it as ASCII is compatible with everything
                 }
                 else
                 {
-                    // If the user didn't want us to force the encoding, then their crazy but
-                    // we'll just do as they say
+                    // If the user didn't want us to force the encoding, then just do as they say
                     return Error ({ErrorDomain::None, ErrorCode::EncMismatch},
-                                  "Unable to detect character encoding of file \"%s\"",
-                                  file.filename());
+                        "Unable to detect character encoding of file \"{}\"",
+                        file.filename().string());
                 }
             }
         }
@@ -86,8 +88,8 @@ class TextReader
         if (!conv.Convert (data, buf))
         {
             return Error ({ErrorDomain::None, ErrorCode::SysFailure},
-                          "failed to convert file: %s",
-                          strerror (errno));
+                "failed to convert file: {}",
+                strerror (errno));
         }
         // We are done as iconv put it in the output buffer for us
         return Success();

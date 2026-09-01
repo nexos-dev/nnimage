@@ -23,8 +23,6 @@
 #include "MemoryMapped.h"
 
 // NOTE: MUST BE SYNCED WITH ORDER OF ConfValue
-// I know this is the C programmer coming out in me, but this trickery is the cleanest way to do
-// this without a lot of template boilerplate
 enum class ConfType
 {
     Int,
@@ -131,7 +129,7 @@ class ConfParser
     Error unexpectedToken (TokenType type)
     {
         return Error ({ErrorDomain::Log, ErrorCode::ParseError},
-                      "Unexpected token \"%s\"",
+                      "Unexpected token \"{}\"",
                       lexer.NameFromToken (type));
     }
 

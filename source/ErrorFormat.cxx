@@ -16,3 +16,73 @@
 */
 
 #include "nnimage.h"
+#include "include/Timestamp.h"
+
+void FileErrorSink::Output (const Error& err)
+{
+    auto errors = Error::GetChain (err);
+    for (const auto& err : errors)
+    {
+        std::lock_guard<std::mutex> guard (lock);
+        file << fmt->Format (err) << "\n";
+    }
+    file.flush();
+}
+
+void LogErrorSink::Output (const Error& err)
+{
+    auto errors = Error::GetChain (err);
+    for (const auto& err : errors)
+    {
+        std::string errorMsg = fmt->Format (err);
+        switch (err.GetSeverity())
+        {
+            case ErrorSeverity::Warning:
+                _log->Warning (errorMsg);
+                break;
+            case ErrorSeverity::Error:
+                _log->Error (errorMsg);
+                break;
+            case ErrorSeverity::Fatal:
+                _log->Fatal (errorMsg);
+                break;
+        }
+    }
+}
+
+std::string UserErrorFormatter::Format (const Error& err)
+{
+    // Start with last message
+    std::stringstream out;
+    const ErrorFrame& lastFrame = err.LastFrame();
+    out << lastFrame.msg;
+
+    // Now add the others
+    const auto& frames = err.GetFrames();
+    int i = frames.size() - 2;
+    for (; i >= 0; i--)
+    {
+        const ErrorFrame& frame = frames[i];
+        if (frame.log == ErrorLog::Normal || verbose)
+            out << ": " << frame.msg;
+    }
+    return out.str();
+}
+
+std::string TraceErrorFormatter::Format (const Error& err)
+{
+    // Start with last message
+    std::stringstream out;
+    const ErrorFrame& lastFrame = err.LastFrame();
+    out << lastFrame.msg;
+
+    // Now add the others
+    const auto& frames = err.GetFrames();
+    int i = frames.size() - 2;
+    for (; i >= 0; i--)
+    {
+        const ErrorFrame& frame = frames[i];
+        out << "\n    -> " << frame.msg;
+    }
+    return out.str();
+}

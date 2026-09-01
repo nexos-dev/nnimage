@@ -36,7 +36,7 @@ struct DispatchOptions
     bool traceErrors = false;
     std::string defaultBackend = "";
     std::string operation = "";
-    std::vector<std::string> logFiles;
+    std::vector<std::string> logFiles{};
 };
 
 class Dispatch
@@ -50,6 +50,7 @@ class Dispatch
 
   private:
     ResNone setupLogs();
+    ResNone setupError();
     Result<std::filesystem::path> getLogDir();
 
     std::filesystem::path getConfigDir()
@@ -59,6 +60,14 @@ class Dispatch
         assert (home);
         std::filesystem::path dir = std::filesystem::path (home) / ".config" / "nnimage";
         return dir;
+    }
+    // This function is the end of the line for most errors that occur in this program
+    void dispatchFail (Error& err)
+    {
+        err =
+            err.Chain ({ErrorDomain::Operation, ErrorCode::OpFailed, ErrorLog::Normal, ErrorSeverity::Fatal},
+                "Operation aborted");
+        ErrorOutput::The()->Report (err);
     }
     // Helper for reporting option validation errors
     Error makeOptionError (const std::string& msg)

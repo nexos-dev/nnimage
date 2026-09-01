@@ -16,459 +16,394 @@
 */
 
 #include "nnimage.h"
+#include "include/ImageTypes.h"
 
-// TODO: move most of these tables to ImageTypes.h
-
-// clang-format off
-
-// Property name registry
-// NOTE: this contains the registry for all image types
-// Maybe this should be changed?
-const std::unordered_map<std::string, ImgProp> Image::nameRegistry = {
-    {"size", ImgProp::Size},
-    {"bootmode", ImgProp::BootMode},
-    // ISO9660
-    {"bootimage", ImgProp::BootImage},
-    {"bootemu", ImgProp::BootEmu}
-};
-
-// Image registration table
-const std::unordered_map<ImgProp, ImgConfItem> Image::baseRegistry = {
-    {ImgProp::Size, {ConfType::NumId,
-     [] (Image& img, const ConfVal& val, ConfErrorType& e) {
-        int64_t size = Image::NormalizeNumId (val.GetNumId());
-        if (size == -1)
-            e = ConfErrorType::BadNumId;
-        else
-            img.spec.size = size;
-      }
-    }},
-
-    {ImgProp::BootMode, {ConfType::Id, 
-     [] (Image& img, const ConfVal& val, ConfErrorType& e) {
-        const std::string& modeName = val.GetString();
-        img.spec.bootMode = img.getBootMode (modeName);
-        if (img.spec.bootMode == BootMode::Error)
-            e = ConfErrorType::UnrecognizedId;
-      }
-    }}
-};
-// clang-format on
-
-std::unique_ptr<Image> Image::ImageFactory (const std::string& type, const std::string& name)
+ResCustom<std::unique_ptr<Image>, ImageError> Image::ImageFactory (ImgType type, const std::string& name)
 {
-    // Figure out what kind of image this is
-    // TODO: maybe we should use a registry table of some sort?
-    if (type == "mbr")
-        return std::make_unique<MbrImage> (name);
-    else if (type == "gpt")
-        return std::make_unique<GptImage> (name);
-    else if (type == "iso9660")
-        return std::make_unique<IsoImage> (name);
-    else if (type == "floppy")
-        return std::make_unique<FloppyImage> (name);
-    return nullptr;
+    assert (type < ImgType::Max);
+    return factory[type](name);
 }
 
-// TODO use a table
-int64_t Image::NormalizeNumId (const ConfNumId& numId)
+ResCustom<std::unique_ptr<Image>, ImageError> Image::ImageFactory (const std::string& type,
+    const std::string& name)
 {
-    // Figure out the multipler
-    if (numId.id == "B")
-        return numId.num;
-    else if (numId.id == "KiB")
-        return numId.num * 1024;
-    else if (numId.id == "MiB")
-        return numId.num * (1024 * 1024);
-    else if (numId.id == "GiB")
-        return numId.num * (1024 * 1024 * 1024);
-    else if (numId.id == "TiB")
-        return numId.num * ((int64_t) 1024 * 1024 * 1024 * 1024);
-    return -1;
-}
-
-void Image::SetConf (const std::string& name, const ConfVal& val, ConfError& e)
-{
-    // Try to find property
-    ImgProp prop = ResolveProp (name);
-    if (prop == ImgProp::None)
-    {
-        e = ConfError (ConfErrorType::BadProp, name, val.GetLine());
-        return;
-    }
-    SetConf (prop, val, e);
-}
-
-void Image::SetConf (ImgProp key, const ConfVal& val, ConfError& e)
-{
-    // Find in sub registry first
-    auto it = getRegistry().find (key);
-    if (it == getRegistry().end())
-    {
-        // Now look in base registry if non-existant in sub registry
-        it = baseRegistry.find (key);
-        if (it == baseRegistry.end())
-        {
-            e = ConfError (ConfErrorType::BadProp, getPropName (key), val.GetLine());
-            return;
-        }
-    }
-    ConfErrorType result = ConfErrorType::Ok;
-    // Check the type
-    if (!val.IsType (it->second.type))
-    {
-        e = ConfError (ConfErrorType::WrongType, getPropName (key), val.GetLine());
-        return;
-    }
-    it->second.setter (*this, val, result);
-    if (result != ConfErrorType::Ok)
-    {
-        // Generally, the error message is the property name
-        // But for UnrecognizedId, its the value
-        // TODO: maybe move this to setters?
-        if (result == ConfErrorType::UnrecognizedId)
-            e = ConfError (result, val.GetString(), val.GetLine());
-        else
-            e = ConfError (result, getPropName (key), val.GetLine());
-    }
-}
-
-ImgProp Image::ResolveProp (const std::string& name)
-{
-    ImgProp prop = ImgProp::None;
-    auto it = Image::nameRegistry.find (name);
-    if (it != Image::nameRegistry.end())
-        prop = it->second;
-    return prop;
-}
-
-// TODO: use a lookup table for image type number-to-name
-const std::string Image::GetTypeName (ImageType type)
-{
-    switch (type)
-    {
-        case ImageType::Floppy:
-            return "floppy";
-        case ImageType::Mbr:
-            return "mbr";
-        case ImageType::Gpt:
-            return "gpt";
-        case ImageType::Iso9660:
-            return "iso9660";
-        default:
-            return "";
-    }
-}
-
-// Use sparingly, has poor performance
-const std::string Image::getPropName (ImgProp prop)
-{
-    // Use find_if to find
-    auto it =
-        std::find_if (Image::nameRegistry.begin(),
-                      Image::nameRegistry.end(),
-                      [&prop] (const std::pair<std::string, ImgProp> pair) { return pair.second == prop; });
-    if (it == Image::nameRegistry.end())
-        return "";
-    return it->first;
-}
-
-bool Image::ResolvePartitions (ConfError& e)
-{
-    // Go through every partiiton reference and resolve it
-    for (const PartRef& partRef : partitionNames)
-    {
-        auto part = GetAction()->GetPartition (partRef.GetName());
-        if (!part)
-        {
-            e = ConfError (ConfErrorType::UnrecognizedId, partRef.GetName(), partRef.GetLine());
-            return false;
-        }
-        AddPartition (std::move (part));
-    }
-    return true;
-}
-
-bool Image::Validate()
-{
-    // Make sure a size was passed
-    if (spec.size == -1)
-    {
-        _log->Error ("image \"" + spec.name + "\" missing required property \"size\"");
-        return false;
-    }
-    // Ensure there is a name
-    if (spec.name.empty())
-        spec.name = "nndisk";
-    return true;
+    ImgType imageType = ResolveType (type);
+    if (imageType == ImgType::Max)
+        return ImageError (ErrorCode::InvalidImgType, {{"type", type}, {"name", name}});
+    return ImageFactory (imageType, name);
 }
 
 BackendType Image::GetBackendType (BackendType suggestion) const
 {
-    // First check the suggestion
+    // We prefer to use the suggestion, then the default, and if all else fails, use the first valid and
+    // enabled backend
     if (checkBackendForImage (suggestion))
         return suggestion;
-    // Now check the default
     if (checkBackendForImage (BACKEND_DEFAULT))
         return BACKEND_DEFAULT;
-    // Now just get the first valid backend
-    // If we can't find one, it will return BackendType::None
     return firstAvailBackend();
 }
 
-// MBR image implementation
-
-// MBR registry table
-const std::unordered_map<ImgProp, ImgConfItem> MbrImage::registry = {};
-
-// Defined boot modes
-const std::unordered_map<std::string, BootMode> MbrImage::validBootModes = {{"none", BootMode::None},
-                                                                            {"bios", BootMode::Bios}};
-
-BootMode MbrImage::getBootMode (const std::string& modeStr)
+ImageResult Image::Set (const std::string& name, const ImageVal& val)
 {
-    auto it = validBootModes.find (modeStr);
-    if (it == validBootModes.end())
-        return BootMode::Error;
-    return it->second;
+    ImgProp prop = ResolveProp (name);
+    if (prop == ImgProp::Max)
+        return ImageError (ErrorCode::InvalidImgProp, {{"prop_name", name}, {"name", spec.name}});
+    return Set (prop, val);
 }
 
-// GPT image implementation
-
-// GPT registry table
-const std::unordered_map<ImgProp, ImgConfItem> GptImage::registry = {};
-
-// Defined boot modes
-const std::unordered_map<std::string, BootMode> GptImage::validBootModes = {{"none", BootMode::None},
-                                                                            {"bios", BootMode::Bios},
-                                                                            {"efi", BootMode::Efi}};
-
-BootMode GptImage::getBootMode (const std::string& modeStr)
+ImageResult Image::Set (ImgProp prop, const ImageVal& val)
 {
-    auto it = validBootModes.find (modeStr);
-    if (it == validBootModes.end())
-        return BootMode::Error;
-    return it->second;
-}
-
-// ISO image implementation
-
-const std::unordered_map<std::string, IsoBootEmu> IsoImage::bootEmus = {{"noemu", IsoBootEmu::Noemu},
-                                                                        {"hdd", IsoBootEmu::Hdd},
-                                                                        {"fdd", IsoBootEmu::Fdd}};
-
-const std::unordered_map<IsoBootEmu, ImageType> IsoImage::bootEmuModes = {
-    {IsoBootEmu::Noemu, ImageType::Error},
-    {IsoBootEmu::Fdd, ImageType::Floppy},
-    {IsoBootEmu::Hdd, ImageType::Mbr}};
-
-// clang-format off
-// ISO registry table
-const std::unordered_map<ImgProp, ImgConfItem> IsoImage::registry = {
-    {ImgProp::BootEmu, {ConfType::Id, 
-     [] (Image& img, const ConfVal& val, ConfErrorType& e) {
-        // Get img as IsoImage
-        IsoImage& isoImg = dynamic_cast<IsoImage&> (img);
-        // Get number from string
-        auto it = bootEmus.find (val.GetString());
-        if (it == bootEmus.end())
+    const auto& registry = getRegistry();
+    auto it = registry.find (prop);
+    if (it == registry.end())
+    {
+        it = baseRegistry.find (prop);
+        if (it == baseRegistry.end())
         {
-            e = ConfErrorType::UnrecognizedVal;
-            return;
+            // Usually this would occur if a user wants a property not available on a specific image type,
+            // e.g., boot emulation on a GPT image
+            return ImageError (ErrorCode::InvalidImgProp,
+                {{"prop_name", GetPropName (prop)}, {"name", spec.name}});
         }
-        isoImg.bootEmu = it->second;
-      }
-    }},
-    {ImgProp::BootImage, {ConfType::Id,
-     [] (Image& img, const ConfVal& val, ConfErrorType& e) {
-        // Set it
-        IsoImage& isoImg = dynamic_cast<IsoImage&> (img);
-        isoImg.bootImageName = val.GetString();
-      }
-    }}
-};
-// clang-format on
+    }
+    assert (it->second.setter);
 
-// Defined boot modes
-const std::unordered_map<std::string, BootMode> IsoImage::validBootModes = {{"none", BootMode::None},
-                                                                            {"bios", BootMode::Bios},
-                                                                            {"efi", BootMode::Efi}};
+    // Check the type
+    const ImgConfItem& propReg = it->second;
+    if (propReg.inputType != val.GetType())
+    {
+        // TODO: report the expected and found types. We just don't have a good way to get the type in string
+        // form
+        return ImageError (ErrorCode::PropTypeMismatch,
+            {{"prop_name", GetPropName (prop)}, {"name", spec.name}});
+    }
 
-BootMode IsoImage::getBootMode (const std::string& modeStr)
-{
-    auto it = validBootModes.find (modeStr);
-    if (it == validBootModes.end())
-        return BootMode::Error;
-    return it->second;
+    return propReg.setter (*this, val);
 }
 
-bool IsoImage::Validate()
+ImageResult Image::Validate()
 {
-    // Make sure a boot image was passed
+    if (spec.size < 0)
+    {
+        return ImageError (ErrorCode::MissingRequiredProp,
+            {{"prop", ImgProp::Size}, {"image_ptr", this}, {"name", spec.name}});
+    }
+
+    if (spec.name.empty())
+        spec.name = "nndisk";
+
+    return Success();
+}
+
+ImageResult IsoImage::Validate()
+{
+    // Check for a boot image on emulated discs
     if (bootEmu != IsoBootEmu::Noemu)
     {
         if (bootImageName.empty())
+            return ImageError (ErrorCode::ImgInvalid,
+                "No boot image specified on image \"" + spec.name + "\"");
+        // Ensure that the boot image is compatible
+        assert (bootImage);
+        if (bootImage->GetType() != bootEmuModes[bootEmu])
         {
-            _log->Error ("image \"" + spec.name + "\" missing required property \"bootimage\"");
-            return false;
+            // TODO: print expected emulation
+            return ImageError (ErrorCode::ImgInvalid,
+                "Invalid boot emulation specified on image \"" + spec.name + "\"");
         }
-        // Resolve it
-        bootImage = GetAction()->FindImage (bootImageName);
-        if (bootImage == nullptr)
-        {
-            _log->Error ("non-existant image \"" + bootImageName + "\" given as boot image on image \"" +
-                         spec.name + "\"");
-            return false;
-        }
-        // Get the type
-        ImageType type = IsoImage::bootEmuModes.find (bootEmu)->second;
-        if (bootImage->GetType() != type)
-        {
-            _log->Error ("image \"" + spec.name + "\" requires image type \"" + Image::GetTypeName (type) +
-                         "\" for boot image");
-            return false;
-        }
-    }
-    // Make a default name
-    if (spec.name.empty())
-        spec.name = "nncdrom";
-    return Image::Validate();
-}
-
-// Floppy image implementation
-
-// Floppy registry table
-const std::unordered_map<ImgProp, ImgConfItem> FloppyImage::registry = {};
-
-// Defined boot modes
-const std::unordered_map<std::string, BootMode> FloppyImage::validBootModes = {{"none", BootMode::None},
-                                                                               {"bios", BootMode::Bios}};
-
-// Valid sizes for a floppy image
-const std::vector<int> FloppyImage::validSizes = {720, 1440, 2880};
-
-BootMode FloppyImage::getBootMode (const std::string& modeStr)
-{
-    auto it = validBootModes.find (modeStr);
-    if (it == validBootModes.end())
-        return BootMode::Error;
-    return it->second;
-}
-
-bool FloppyImage::Validate()
-{
-    // Make sure this is a valid floppy disk size
-    auto it = std::find (FloppyImage::validSizes.begin(), FloppyImage::validSizes.end(), spec.size / 1024);
-    if (it == FloppyImage::validSizes.end())
-    {
-        _log->Error ("floppy image must be of size 720K, 1440K, or 2880K");
-        return false;
     }
     return Image::Validate();
 }
 
-// Partition class
-// clang-format off
-const std::unordered_map<std::string, PartProp> Partition::nameRegistry = {
-    {"format", PartProp::Format},
-    {"prefix", PartProp::Prefix},
-    {"start", PartProp::Start},
-    {"size", PartProp::Size},
-    {"isboot", PartProp::IsBoot}
-};
-
-const std::unordered_map<PartProp, PartConfItem> Partition::registry = {
-    {PartProp::Format, {ConfType::String,
-     [] (Partition& part, const ConfVal& val, ConfErrorType& e) 
-        { part.spec.fs = val.GetString(); }
-    }},
-
-    {PartProp::Prefix, {ConfType::String,
-     [] (Partition& part, const ConfVal& val, ConfErrorType& e) 
-        { part.spec.prefix = val.GetString(); }
-    }},
-
-    {PartProp::Start, {ConfType::NumId,
-     [] (Partition& part, const ConfVal& val, ConfErrorType& e) {
-        const ConfNumId& start = val.GetNumId();
-        part.spec.start = Image::NormalizeNumId (start);
-        if (part.spec.start == -1)
-            e = ConfErrorType::BadNumId;
-      }
-    }},
-
-    {PartProp::Size, {ConfType::NumId,
-     [] (Partition& part, const ConfVal& val, ConfErrorType& e) {
-        const ConfNumId& size = val.GetNumId();
-        part.spec.size = Image::NormalizeNumId (size);
-        if (part.spec.size == -1)
-            e = ConfErrorType::BadNumId;
-       }
-    }},
-
-    {PartProp::IsBoot, {ConfType::Id,
-     [] (Partition& part, const ConfVal& val, ConfErrorType& e) {
-        if (!val.IsBool())
-        {
-            e = ConfErrorType::WrongType;
-            return;
-        }
-        part.spec.isBoot = val.GetBoolean();
-      }
-    }}
-};
-// clang-format on
-
-const std::string Partition::getPropName (PartProp prop)
+ImageResult FloppyImage::Validate()
 {
-    // Use find_if to find
-    auto it =
-        std::find_if (Partition::nameRegistry.begin(),
-                      Partition::nameRegistry.end(),
-                      [&prop] (const std::pair<std::string, PartProp> pair) { return pair.second == prop; });
-    if (it == Partition::nameRegistry.end())
-        return "";
-    return it->first;
+    auto it = std::find (validSizes.begin(), validSizes.end(), spec.size);
+    if (it == validSizes.end())
+        return ImageError (ErrorCode::BadFloppySize, {{"name", spec.name}});
+    return Image::Validate();
 }
 
-PartProp Partition::ResolveName (const std::string& name)
+ImageResult Partition::Set (const std::string& name, const ImageVal& val)
 {
-    // Find the name
-    auto it = Partition::nameRegistry.find (name);
-    if (it == Partition::nameRegistry.end())
-        return PartProp::None;
-    return it->second;
-}
-
-void Partition::SetConf (const std::string& name, const ConfVal& val, ConfError& e)
-{
-    // Find name
     PartProp prop = ResolveName (name);
-    if (prop == PartProp::None)
-    {
-        e = ConfError (ConfErrorType::BadProp, name, val.GetLine());
-        return;
-    }
-    SetConf (prop, val, e);
+    if (prop == PartProp::Max)
+        return ImageError (ErrorCode::InvalidPartProp, {{"prop_name", name}, {"name", spec.name}});
+    return Set (prop, val);
 }
 
-void Partition::SetConf (PartProp key, const ConfVal& val, ConfError& e)
+ImageResult Partition::Set (PartProp prop, const ImageVal& val)
 {
-    auto it = registry.find (key);
+    auto it = registry.find (prop);
     if (it == registry.end())
     {
-        e = ConfError (ConfErrorType::BadProp, getPropName (key), val.GetLine());
-        return;
+        return ImageError (ErrorCode::InvalidPartProp,
+            {{"prop_name", GetPropName (prop)}, {"name", spec.name}});
     }
 
-    ConfErrorType result;
-    // Check type
-    if (!val.IsType (it->second.type))
-    {
-        e = ConfError (ConfErrorType::WrongType, getPropName (key), val.GetLine());
-        return;
-    }
-    it->second.setter (*this, val, result);
-    if (result != ConfErrorType::Ok)
-        e = ConfError (result, getPropName (key), val.GetLine());
+    if (it->second.inputType != val.GetType())
+        return ImageError (ErrorCode::PropTypeMismatch, {{"prop_name", GetPropName (prop)}});
+
+    return it->second.setter (*this, val);
 }
+
+void ImageError::makeMessage (ErrorFrame& frame)
+{
+    std::stringstream msg;
+    // Check if we have a file/line
+    if (auto it = keys.find ("file"); it != keys.end())
+        msg << getString (it) << ":";
+    if (auto it = keys.find ("line"); it != keys.end())
+        msg << getString (it) << ": ";
+    else
+        msg << " ";    // In case we have a file by itself with no line, it will still have a space at the end
+                       // of it
+
+    switch (frame.code)
+    {
+        case ErrorCode::NameMissing:
+            assertKeys ({"block_type"});
+            msg << "Name required for block type \"" << getString ("block_type") << "\"";
+            break;
+        case ErrorCode::InvalidImgType:
+            assertKeys ({"type", "name"});
+            msg << "Invalid image type \"" << getString ("type") << "\" specified on image \""
+                << getString ("name") << "\"";
+            break;
+        case ErrorCode::MissingRequiredProp: {
+            assertKeys ({"prop", "name", "image_ptr"});
+            // HACK ALERT
+            Image* img = getValue<Image*> ("image_ptr");
+            assert (img);
+            msg << "Missing required property \"" << img->GetPropName (getValue<ImgProp> ("prop"))
+                << "\" on image \"" << getString ("name") << "\"";
+            break;
+        }
+        case ErrorCode::InvalidImgProp:
+            assertKeys ({"prop_name", "name"});
+            msg << "Unrecognized property \"" << getString ("prop_name") << "\" specified on image \""
+                << getString ("name") << "\"";
+            break;
+        case ErrorCode::BadFloppySize:
+            assertKeys ({"name"});
+            msg << "Floppy disc \"" << getString ("name") << "\" must have size 720K, 1.44M, or 2.88M";
+            break;
+        case ErrorCode::InvalidPartProp:
+            assertKeys ({"prop_name", "name"});
+            msg << "Unrecognized property \"" << getString ("prop_name") << "\" specified on partition \""
+                << getString ("name") << "\"";
+            break;
+        case ErrorCode::PropTypeMismatch:
+            assertKeys ({"prop_name"});
+            msg << "Invalid type specified on property \"" << getString ("prop_name") << "\"";
+            break;
+        default:
+            msg << frame.msg;
+    }
+    frame.msg = msg.str();
+}
+
+// Now begins the all-important registries
+
+const NameRegistry<ImgProp> Image::nameRegistry = {{"size", ImgProp::Size},
+    {"boot_mode", ImgProp::BootMode},
+    // MBR/GPT
+    {"mbr_file", ImgProp::MbrFile},
+    {"vbr_file", ImgProp::VbrFile},
+    // ISO9660
+    {"boot_emu", ImgProp::BootEmu},
+    {"boot_image", ImgProp::BootImage}};
+
+const EnumArray<ImgType, ImgConstruct, ImgType::Max> Image::factory = {
+    {ImgType::Mbr, [] (auto& name) { return std::make_unique<MbrImage> (name); }},
+    {ImgType::Gpt, [] (auto& name) { return std::make_unique<GptImage> (name); }},
+    {ImgType::Iso9660, [] (auto& name) { return std::make_unique<IsoImage> (name); }},
+    {ImgType::Floppy, [] (auto& name) { return std::make_unique<FloppyImage> (name); }}};
+
+const NameRegistry<ImgType> Image::typeNames = {{"mbr", ImgType::Mbr},
+    {"gpt", ImgType::Gpt},
+    {"iso9660", ImgType::Iso9660},
+    {"floppy", ImgType::Floppy}};
+
+const NameRegistry<BootMode> Image::bootModes = {{"none", BootMode::None},
+    {"bios", BootMode::Bios},
+    {"efi", BootMode::Efi}};
+
+// clang-format off
+const ImgConfRegistry Image::baseRegistry = {
+    {ImgProp::Size, {typeid (ImageNumId),
+        [] (Image& img, const ImageVal& val) -> ImageResult {
+            img.spec.size = (*val.Get<ImageNumId>()).Get();
+            return Success();
+        },
+        [] (Image& img) {
+            return img.spec.size;
+        }
+    }},
+    {ImgProp::BootMode, {typeid (ImageId), 
+        [] (Image& img, const ImageVal& val) -> ImageResult {
+
+            std::string id = std::string(*val.Get<ImageId>());
+            auto mode = resolveBootMode (id);
+
+            if (mode == BootMode::Max)
+                return invalidId (img, id);
+
+            img.spec.bootMode = mode;
+            return Success();
+        },
+        [] (Image& img) {
+            return img.spec.bootMode;
+        }
+    }}
+};
+
+// Image type-specific registrys
+
+const ImgConfRegistry MbrImage::registry = {
+    {ImgProp::VbrFile, {typeid (std::string),
+        [] (Image& img, const ImageVal& val) -> ImageResult {
+            static_cast<MbrImage&> (img).vbrFile = *val.Get<std::string>();
+            return Success();
+        },
+        [] (Image& img) {
+            return static_cast<MbrImage&> (img).vbrFile;
+        }
+    }},
+    {ImgProp::MbrFile, {typeid (std::string),
+        [] (Image& img, const ImageVal& val) -> ImageResult {
+            static_cast<MbrImage&> (img).mbrFile = *val.Get<std::string>();
+            return Success();
+        },
+        [] (Image& img) {
+            return static_cast<MbrImage&> (img).mbrFile;
+        }
+    }}
+};
+
+const ImgConfRegistry GptImage::registry = {
+    {ImgProp::VbrFile, {typeid (std::string),
+        [] (Image& img, const ImageVal& val) -> ImageResult {
+            static_cast<GptImage&> (img).vbrFile = *val.Get<std::string>();
+            return Success();
+        },
+        [] (Image& img) {
+            return static_cast<GptImage&> (img).vbrFile;
+        }
+    }},
+    {ImgProp::MbrFile, {typeid (std::string),
+        [] (Image& img, const ImageVal& val) -> ImageResult {
+            static_cast<GptImage&> (img).mbrFile = *val.Get<std::string>();
+            return Success();
+        },
+        [] (Image& img) {
+            return static_cast<GptImage&> (img).mbrFile;
+        }
+    }}
+};
+
+const ImgConfRegistry IsoImage::registry = {
+    {ImgProp::BootImage, {typeid (std::string),
+        [] (Image& img, const ImageVal& val) -> ImageResult {
+            static_cast<IsoImage&> (img).bootImageName = *val.Get<std::string>();
+            return Success();
+        },
+        [] (Image& img) {
+            return static_cast<IsoImage&> (img).bootImageName;
+        }
+    }},
+    {ImgProp::BootEmu, {typeid (ImageId),
+        [] (Image& img, const ImageVal& val) -> ImageResult {
+            std::string id = std::string(*val.Get<ImageId>());
+            IsoBootEmu bootEmu = IsoImage::bootEmus.Resolve (id);
+            if (bootEmu == IsoBootEmu::Max)
+                return invalidId (img, id);
+
+            static_cast<IsoImage&> (img).bootEmu = bootEmu;
+            return Success();
+        },
+        [] (Image& img) {
+            return static_cast<IsoImage&> (img).bootEmu;
+        }
+    }}
+};
+
+const ImgConfRegistry FloppyImage::registry = {
+    {ImgProp::MbrFile, {typeid (std::string),
+        [] (Image& img, const ImageVal& val) -> ImageResult {
+            static_cast<FloppyImage&> (img).mbrFile = *val.Get<std::string>();
+            return Success();
+        },
+        [] (Image& img) {
+            return static_cast<FloppyImage&> (img).mbrFile;
+        }
+    }}
+};
+
+const EnumArray<IsoBootEmu, ImgType, IsoBootEmu::Max> IsoImage::bootEmuModes = {{IsoBootEmu::Noemu, ImgType::Max},
+    {IsoBootEmu::Hdd, ImgType::Mbr},    // NOTE: A GPT image is technically valid, but we don't have a clean
+                                        // way to represent that and if someone is dumb enough to use HDD
+                                        // emulation that I'm not responsible for their descisions
+    {IsoBootEmu::Fdd, ImgType::Floppy}};
+
+const NameRegistry<IsoBootEmu> IsoImage::bootEmus = {
+    {"noemu", IsoBootEmu::Noemu},
+    {"fdd", IsoBootEmu::Fdd},
+    {"hdd", IsoBootEmu::Hdd}
+};
+
+// Partition types registry
+
+const NameRegistry<PartProp> Partition::nameRegistry = {{"start", PartProp::Start},
+    {"size", PartProp::Size},
+    {"format", PartProp::Format},
+    {"prefix", PartProp::Prefix},
+    {"is_boot", PartProp::IsBoot}};
+
+const PartConfRegistry Partition::registry = {
+    {PartProp::Start, {typeid (ImageNumId),
+        [] (Partition& part, const ImageVal& val) -> ImageResult {
+            part.spec.start = (*val.Get<ImageNumId>()).Get();
+            return Success();
+        },
+        [] (Partition& part) {
+            return part.spec.start;
+        }
+    }},
+    {PartProp::Size, {typeid (ImageNumId),
+        [] (Partition& part, const ImageVal& val) -> ImageResult {
+            part.spec.size = (*val.Get<ImageNumId>()).Get();
+            return Success();
+        },
+        [] (Partition& part) {
+            return part.spec.size;
+        }
+    }},
+    {PartProp::Format, {typeid (std::string),
+        [] (Partition& part, const ImageVal& val) -> ImageResult {
+            part.spec.format = *val.Get<std::string>();
+            return Success();
+        },
+        [] (Partition& part) {
+            return part.spec.format;
+        }
+    }},
+    {PartProp::Prefix, {typeid (std::string),
+        [] (Partition& part, const ImageVal& val) -> ImageResult {
+            part.spec.prefix = *val.Get<std::string>();
+            return Success();
+        },
+        [] (Partition& part) {
+            return part.spec.prefix;
+        }
+    }},
+    {PartProp::IsBoot, {typeid (bool),
+        [] (Partition& part, const ImageVal& val) -> ImageResult {
+            part.spec.isBoot = *val.Get<bool>();
+            return Success();
+        },
+        [] (Partition& part) {
+            return part.spec.isBoot;
+        }
+    }}
+};
