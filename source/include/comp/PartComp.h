@@ -1,5 +1,5 @@
-#[[
-    Util.cmake - contains utility functions for the build system
+/*
+    PartComp.h - contains partition layout components
     Copyright 2026 Jedidiah Thompson
 
     Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,13 +13,31 @@
     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
     See the License for the specific language governing permissions and
     limitations under the License.
-]]
+*/
 
-function(ConvertBackendNameToType backendName outputVar)
-    # Just capitalize the first letter of the backend name and use that as the enum value
-    string(SUBSTRING "${backendName}" 0 1 firstLetter)
-    string(TOUPPER "${firstLetter}" firstLetterUpper)
-    string(SUBSTRING "${backendName}" 1 -1 restOfName)
-    string(CONCAT backendTypeName "${firstLetterUpper}${restOfName}")
-    set(${outputVar} "${backendTypeName}" PARENT_SCOPE)
-endfunction()
+#ifndef PARTCOMP_H
+#define PARTCOMP_H
+
+#include "include/ImgComponent.h"
+
+class MbrPartComp final : public PartTypeComp
+{
+  public:
+    MbrPartComp (Image& img) : PartTypeComp{PartType::Mbr, img}
+    {}
+
+  protected:
+    const CompConfRegistry& getSubRegistry() const;
+};
+
+class GptPartComp final : public PartTypeComp
+{
+  public:
+    GptPartComp (Image& img) : PartTypeComp{PartType::Gpt, img}
+    {}
+
+  protected:
+    const CompConfRegistry& getSubRegistry() const;
+};
+
+#endif

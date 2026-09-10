@@ -15,11 +15,13 @@
     limitations under the License.
 */
 
-#include "nnimage.h"
 #include "backend/KrunBackend.h"
 #include "include/SysMemory.h"
 #include <libkrun.h>
 #include <string.h>
+
+#include <algorithm>
+#include <thread>
 
 KrunBackend::KrunBackend()
 {

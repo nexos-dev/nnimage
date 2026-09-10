@@ -20,7 +20,13 @@
 
 #include "include/Action.h"
 #include "include/Error.h"
+#include "include/EnumArray.h"
 #include "include/Frontend.h"
+
+#include <cstdlib>
+#include <filesystem>
+#include <string>
+#include <vector>
 
 struct ActionReg
 {
@@ -65,9 +71,8 @@ class Dispatch
     // This function is the end of the line for most errors that occur in this program
     void dispatchFail (Error& err)
     {
-        err =
-            err.Chain ({ErrorDomain::Operation, ErrorCode::OpFailed, ErrorLog::Normal, ErrorSeverity::Fatal},
-                "Operation aborted");
+        err = err.Chain ({ErrorDomain::Operation, ErrorCode::OpFailed, ErrorLog::Normal, ErrorSeverity::Fatal},
+            "Operation aborted");
         ErrorOutput::The()->Report (err);
     }
     // Helper for reporting option validation errors

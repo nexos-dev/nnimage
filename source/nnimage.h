@@ -30,6 +30,7 @@
 #include "include/Backend.h"
 #include "include/Frontend.h"
 #include "include/Task.h"
+#include "include/ImgComponent.h"
 
 // Test driver function
 bool TestDriver (int argc, char** argv);

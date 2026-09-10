@@ -20,6 +20,16 @@
 
 #include "include/Log.h"
 
+#include <atomic>
+#include <condition_variable>
+#include <deque>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <queue>
+#include <string>
+#include <vector>
+
 using TaskFunc = std::function<bool()>;
 typedef int TaskId;
 

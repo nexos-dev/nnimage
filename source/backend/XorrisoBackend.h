@@ -19,7 +19,6 @@
 #define XORRISOBACKEND_H
 
 #include "include/Backend.h"
-#include "backend/XorrisoBackend.h"
 
 class XorrisoBackend : public Backend
 {

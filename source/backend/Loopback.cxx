@@ -15,7 +15,6 @@
     limitations under the License.
 */
 
-#include "nnimage.h"
 #include "backend/LoopbackBackend.h"
 
 LoopbackBackend::LoopbackBackend()

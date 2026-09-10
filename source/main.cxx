@@ -15,7 +15,21 @@
     limitations under the License.
 */
 
-#include "nnimage.h"
+#include "include/Dispatch.h"
+#include "include/Log.h"
+#include "config.h"
+#include "cxxopts.hpp"
+
+#include <cstdlib>
+#include <iostream>
+#include <libgen.h>
+#include <memory>
+#include <string>
+
+#ifdef NNIMAGE_ENABLE_TESTS
+// Test driver function, only linked in when tests are enabled
+bool TestDriver (int argc, char** argv);
+#endif
 
 // Global log instance
 std::unique_ptr<Log> _log;
@@ -52,10 +66,9 @@ static void help (cxxopts::Options& opts)
 static void prepareOpts (cxxopts::Options& opts)
 {
     opts.custom_help ("<operation> [-f conf_file] [-i image] [-o output] [options]");
-    opts.positional_help (
-        "\nTakes configuration found in conf_file, or configuration specified on the command "
-        "line and outputs it into specified output file.\nFor mult-image configurations, "
-        "use -i to specify which images to generate");
+    opts.positional_help ("\nTakes configuration found in conf_file, or configuration specified on the command "
+                          "line and outputs it into specified output file.\nFor mult-image configurations, "
+                          "use -i to specify which images to generate");
     opts.set_width (90);
     // clang-format off
     opts.add_options("Global")
@@ -73,8 +86,8 @@ static cxxopts::ParseResult parseOpts (cxxopts::Options& opts, int argc, char** 
         if (!res.unmatched().empty())
         {
             // Only print the first one out to avoid being too verbose
-            _log->Error ("Unexpected extra argument \"" + res.unmatched().front() + "\"\nRun " + argv[0] +
-                         " --help for usage");
+            _log->Error (
+                "Unexpected extra argument \"" + res.unmatched().front() + "\"\nRun " + argv[0] + " --help for usage");
             std::exit (1);
         }
         return res;

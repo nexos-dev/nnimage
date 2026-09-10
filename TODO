@@ -1,4 +1,5 @@
-Audit partition handling
-Add backend command line options
-Make error handling more consistent
-Maybe move image property lists into a header?
+Implement component base
+Implement partition type component and registry
+Implement validation
+Implement deffered property setting
+Consider templating all registry/setter/getter stuff into its own class

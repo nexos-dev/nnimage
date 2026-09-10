@@ -23,6 +23,10 @@
 #include <unistd.h>
 #include <fcntl.h>
 
+#include <filesystem>
+#include <optional>
+#include <string>
+
 class LockFile
 {
   public:
@@ -33,8 +37,7 @@ class LockFile
         fd = open (path.c_str(), O_CREAT | O_RDWR, 0666);
         if (fd == -1)
         {
-            throw ErrorException (
-                Error ({ErrorDomain::None, ErrorCode::FileError}, "Failed to open lock file: " + path)
+            throw ErrorException (Error ({ErrorDomain::None, ErrorCode::FileError}, "Failed to open lock file: " + path)
                     .AddByCode ({ErrorDomain::None, ErrorCode::FileError, ErrorLog::Debug}, true));
         }
     }
@@ -111,9 +114,7 @@ class LockFile
             if (errno == EACCES || errno == EAGAIN)
                 return false;
             throw ErrorException (
-                Error ({ErrorDomain::Log, ErrorCode::FileError},
-                       "Failed to acquire lock on file \"{}\": ",
-                       path)
+                Error ({ErrorDomain::Log, ErrorCode::FileError}, "Failed to acquire lock on file \"{}\": ", path)
                     .AddByCode ({ErrorDomain::Log, ErrorCode::FileError, ErrorLog::Debug}, true));
         }
         return true;

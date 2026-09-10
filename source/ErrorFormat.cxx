@@ -15,8 +15,10 @@
     limitations under the License.
 */
 
-#include "nnimage.h"
-#include "include/Timestamp.h"
+#include "include/Error.h"
+#include "include/Log.h"
+
+#include <sstream>
 
 void FileErrorSink::Output (const Error& err)
 {

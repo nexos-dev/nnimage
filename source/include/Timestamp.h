@@ -18,6 +18,13 @@
 #ifndef TIMESTAMP_H
 #define TIMESTAMP_H
 
+#include <chrono>
+#include <cstdio>
+#include <ctime>
+#include <format>
+#include <string>
+#include <string_view>
+
 class Timestamp
 {
   public:
@@ -35,18 +42,20 @@ class Timestamp
 
         // Add microseconds to it
         auto microseconds =
-            std::chrono::duration_cast<std::chrono::microseconds> (time.timePoint.time_since_epoch())
-                .count() %
-            1000000;
+            std::chrono::duration_cast<std::chrono::microseconds> (time.timePoint.time_since_epoch()).count() % 1000000;
 
         auto fraction = microseconds / 100;
-        std::string fractionString = std::to_string (fraction);
-        time.timeStr = std::string (buf) + std::string (4 - fractionString.length(), '0') + fractionString;
+        time.timeStr = buf;
+        time.timeStr += std::format ("{:04}", fraction);
 
         return time;
     }
 
     explicit operator std::string() const
+    {
+        return timeStr;
+    }
+    std::string_view View() const noexcept
     {
         return timeStr;
     }

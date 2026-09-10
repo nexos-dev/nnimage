@@ -18,6 +18,8 @@
 #ifndef BLOCKDEVSTR_H
 #define BLOCKDEVSTR_H
 
+#include <string>
+
 class BlockDevFactory
 {
   public:

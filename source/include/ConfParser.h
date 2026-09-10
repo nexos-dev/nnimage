@@ -19,8 +19,19 @@
 #define CONFPARSER_H
 
 #include "include/Error.h"
+#include "include/EnumArray.h"
 #include "include/SimpleLexer.h"
 #include "MemoryMapped.h"
+
+#include <algorithm>
+#include <functional>
+#include <memory>
+#include <shared_mutex>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <variant>
+#include <vector>
 
 // NOTE: MUST BE SYNCED WITH ORDER OF ConfValue
 enum class ConfType
@@ -64,7 +75,7 @@ class ConfParser
 {
   public:
     ConfParser() = default;
-    ConfParser (const std::string& fileName, std::string data) : lexer (fileName, data), fileName (fileName)
+    ConfParser (const std::string& fileName, std::string data) : lexer (fileName, std::move (data)), fileName (fileName)
     {}
     virtual ~ConfParser() = default;
 
@@ -128,9 +139,7 @@ class ConfParser
 
     Error unexpectedToken (TokenType type)
     {
-        return Error ({ErrorDomain::Log, ErrorCode::ParseError},
-                      "Unexpected token \"{}\"",
-                      lexer.NameFromToken (type));
+        return Error ({ErrorDomain::Log, ErrorCode::ParseError}, "Unexpected token \"{}\"", lexer.NameFromToken (type));
     }
 
     ConfKey getPropKey (const std::string& name)
@@ -145,9 +154,8 @@ class ConfParser
     const std::string& nameFromKey (ConfKey key)
     {
         auto& nameToKey = getNameToKey();
-        auto it = std::find_if (nameToKey.begin(), nameToKey.end(), [&key] (const auto& pair) {
-            return pair.second == key;
-        });
+        auto it =
+            std::find_if (nameToKey.begin(), nameToKey.end(), [&key] (const auto& pair) { return pair.second == key; });
         if (it == nameToKey.end())
         {
             throw ErrorException (

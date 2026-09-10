@@ -23,6 +23,10 @@
 #include "include/Error.h"
 #include "MemoryMapped.h"
 
+#include <filesystem>
+#include <string>
+#include <string_view>
+
 // This class is designed solely for reading in whole text files at once
 class TextReader
 {
@@ -48,7 +52,7 @@ class TextReader
             throw std::runtime_error ("attempt to read from unopened file");
 
         // Grab data
-        const std::string_view data = std::string_view (reinterpret_cast<const char*> (handle.getData()));
+        const std::string_view data (reinterpret_cast<const char*> (handle.getData()), handle.mappedSize());
         // Prepare encoding detection
         Chardet chardet;
         std::string enc = "";
@@ -64,10 +68,10 @@ class TextReader
                 {
                     // If chardet couldn't detect the encoding and the user didn't specify one, warn the user
                     // and force ASCII
-                    Error err = Error (
-                        {ErrorDomain::None, ErrorCode::EncMismatch, ErrorLog::Normal, ErrorSeverity::Warning},
-                        "unable to detect character set for file {}, assuming ASCII",
-                        file.string());
+                    Error err =
+                        Error ({ErrorDomain::None, ErrorCode::EncMismatch, ErrorLog::Normal, ErrorSeverity::Warning},
+                            "unable to detect character set for file {}, assuming ASCII",
+                            file.string());
                     ErrorOutput::The()->Report (err);
 
                     enc = "ASCII";
@@ -87,9 +91,7 @@ class TextReader
         Iconv conv (enc, "UTF-8");
         if (!conv.Convert (data, buf))
         {
-            return Error ({ErrorDomain::None, ErrorCode::SysFailure},
-                "failed to convert file: {}",
-                strerror (errno));
+            return Error ({ErrorDomain::None, ErrorCode::SysFailure}, "failed to convert file: {}", strerror (errno));
         }
         // We are done as iconv put it in the output buffer for us
         return Success();

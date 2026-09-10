@@ -20,7 +20,23 @@
 
 #include "ErrorCode.h"
 
+#include <cassert>
+#include <cerrno>
+#include <chrono>
+#include <cstring>
+#include <deque>
+#include <exception>
+#include <filesystem>
 #include <format>
+#include <fstream>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <variant>
+#include <vector>
 
 enum class ErrorDomain
 {
@@ -50,7 +66,7 @@ enum class ErrorLog
 
 struct ErrorFrame
 {
-    ErrorFrame (ErrorDomain domain, ErrorCode code, const std::string& msg, ErrorLog log = ErrorLog::Normal)
+    ErrorFrame (ErrorDomain domain, ErrorCode code, std::string_view msg, ErrorLog log = ErrorLog::Normal)
         : domain (domain), code (code), log (log), msg (msg), timestamp (std::chrono::system_clock::now())
     {}
     ErrorDomain domain;
@@ -73,14 +89,13 @@ class Error
   public:
     Error() : severity (ErrorSeverity::Error)
     {}
-    Error (const ErrorInfo& info, const std::string& msg)
+    Error (const ErrorInfo& info, std::string_view msg) : severity (info.severity)
     {
-        ErrorFrame frame (info.domain, info.code, msg, info.log);
-        this->severity = info.severity;
-        frames.push_back (frame);
+        frames.emplace_back (info.domain, info.code, msg, info.log);
     }
     template <typename... Args>
-    Error (const ErrorInfo& info, const std::string& fmt, const Args&... args)
+        requires (sizeof...(Args) > 0)
+    Error (const ErrorInfo& info, std::string_view fmt, const Args&... args)
         : Error (info, formatMessage (fmt, args...))
     {}
     Error (const Error& other)
@@ -101,17 +116,17 @@ class Error
     Error& operator= (Error&&) = default;
     virtual ~Error() = default;
 
-    virtual Error& Add (const ErrorInfo& info, const std::string& msg)
+    virtual Error& Add (const ErrorInfo& info, std::string_view msg)
     {
-        ErrorFrame frame (info.domain, info.code, msg, info.log);
         // Never downgrade from fatal, but we can downgrade from error to warning
         if (this->severity != ErrorSeverity::Fatal)
             this->severity = info.severity;
-        frames.push_back (frame);
+        frames.emplace_back (info.domain, info.code, msg, info.log);
         return *this;
     }
     template <typename... Args>
-    Error& Add (const ErrorInfo& info, const std::string& fmt, const Args&... args)
+        requires (sizeof...(Args) > 0)
+    Error& Add (const ErrorInfo& info, std::string_view fmt, const Args&... args)
     {
         return Add (info, formatMessage (fmt, args...));
     }
@@ -136,14 +151,15 @@ class Error
 
     // These functions are for error chaining. This is where one error creates a whole new error that is
     // seperate from the original
-    virtual Error Chain (const ErrorInfo& info, const std::string& msg)
+    virtual Error Chain (const ErrorInfo& info, std::string_view msg)
     {
         Error err = Error (info, msg);
         err.cause = std::make_unique<Error> (std::move (*this));
         return err;
     }
     template <typename... Args>
-    Error Chain (const ErrorInfo& info, const std::string& fmt, const Args&... args)
+        requires (sizeof...(Args) > 0)
+    Error Chain (const ErrorInfo& info, std::string_view fmt, const Args&... args)
     {
         return Chain (info, formatMessage (fmt, args...));
     }
@@ -200,7 +216,7 @@ class Error
     std::unique_ptr<Error> cause = nullptr;    // For casual chaining, so one error has multiple messages
   private:
     template <typename... Args>
-    static std::string formatMessage (const std::string& fmt, const Args&... args)
+    static std::string formatMessage (std::string_view fmt, const Args&... args)
     {
         if (fmt.empty())
             return {};
@@ -210,7 +226,7 @@ class Error
         }
         catch (const std::format_error&)
         {
-            return fmt;
+            return std::string (fmt);
         }
     }
     // Used when there are no frames to report
@@ -348,9 +364,9 @@ class FileErrorSink : public ErrorSink
             Error e;
             if (!std::filesystem::exists (file))
                 e = e.Add ({ErrorDomain::None, ErrorCode::FileError}, "No such file or directory");
-            e = e.Add ({ErrorDomain::None, ErrorCode::FileError},
-                "Unable to open error reporting file \"{}\"",
-                file);
+
+            e = e.Add ({ErrorDomain::None, ErrorCode::FileError}, "Unable to open error reporting file \"{}\"", file);
+
             throw ErrorException (e);
         }
     }

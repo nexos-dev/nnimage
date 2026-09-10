@@ -15,7 +15,11 @@
     limitations under the License.
 */
 
-#include "nnimage.h"
+#include "include/Frontend.h"
+#include "cxxopts.hpp"
+
+#include <istream>
+#include <string>
 
 // NOTE: cxxopts splits options into a vector by comma by default. However, we dont want that.
 // This is because a partition spec is supposed a set of comma-seperated key=value pairs.
@@ -38,6 +42,8 @@ void FrontendOptions::CollectOptions (cxxopts::Options& opts)
             cxxopts::value<std::string>(confEnc), "ENC")
         ("s,size", "Specifies size of image.\nMust be suffixed with multiplier (e.g., B, MiB, GB, etc)", 
             cxxopts::value<std::string>(imgSize), "SIZE")
+        ("t,type", "Specifies image partition type (mbr, gpt, iso9660, or floppy)", 
+            cxxopts::value<std::string>(imgType), "TYPE")
         ("bootmode", "Specifies boot mode of image (bios, efi, none)", 
             cxxopts::value<std::string>(bootMode), "MODE")
         ("imgprop", "Specifies an additional property of image.\n"
@@ -49,10 +55,37 @@ void FrontendOptions::CollectOptions (cxxopts::Options& opts)
 
 ResNone FrontendOptions::ValidateOptions()
 {
+    bool hasConfFile = !confFile.empty();
+    bool hasImgSize = !imgSize.empty();
+    bool hasPartitions = !partSpecs.values.empty();
+    bool hasImgSpec = hasPartitions || hasImgSize;
+
+    if (hasConfFile)
+    {
+        if (hasImgSpec)
+            return makeOptionError ("Only one of configuration file or image specification can be provided");
+
+        return Success();
+    }
+
+    if (!hasImgSize && !hasPartitions)
+        return makeOptionError ("No image specification provided");
+
+    if (!hasImgSize)
+        return makeOptionError ("No image size specified");
+
+    if (!hasPartitions)
+        return makeOptionError ("No partition specification provided");
+
     return Success();
 }
 
 std::unique_ptr<Frontend> FrontendOptions::CreateFrontend()
 {
-    return nullptr;
+    // If a configuration file was provided, this is a ImageConf instance.
+    // Other wise an ImageCmd
+    if (!confFile.empty())
+        return std::make_unique<ImageConf> (*this);
+
+    return std::make_unique<ImageCmd> (*this);
 }

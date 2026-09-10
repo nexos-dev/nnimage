@@ -15,7 +15,10 @@
     limitations under the License.
 */
 
-#include "nnimage.h"
+#include "include/Task.h"
+
+#include <algorithm>
+#include <thread>
 
 bool TaskGraph::pathExists (TaskId src, TaskId dest)
 {

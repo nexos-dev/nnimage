@@ -1,0 +1,5 @@
+# parttype.conf - partition type slot definiton
+ENUMNAME=PartType
+BASECLASS=PartTypeComp
+NAMEREGISTRY=nameRegistry
+FACTORYREGISTRY=factory

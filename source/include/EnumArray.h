@@ -18,6 +18,13 @@
 #ifndef ENUMARRAY_H
 #define ENUMARRAY_H
 
+#include <algorithm>
+#include <array>
+#include <cstddef>
+#include <initializer_list>
+#include <type_traits>
+#include <utility>
+
 template <typename EnumType, typename ValueType, EnumType Size>
 class EnumArray
 {

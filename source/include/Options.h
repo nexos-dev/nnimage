@@ -20,6 +20,11 @@
 
 #include "include/Error.h"
 
+namespace cxxopts
+{
+    class Options;
+}
+
 class Options
 {
   public:

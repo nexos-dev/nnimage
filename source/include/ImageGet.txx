@@ -16,63 +16,80 @@
 */
 
 #include "include/Image.h"
+#include "include/ImgComponent.h"
+
+#include <any>
+#include <optional>
 
 template <typename T>
-ResCustom<std::optional<T>, ImageError> Image::Get (const std::string& name)
+ResCustom<std::optional<T>, ImageError> Image::Get (std::string_view name)
 {
-    ImgProp prop = ResolveProp (name);
-    if (prop == ImgProp::Max)
-        return ImageError (ErrorCode::InvalidImgProp, {{"prop_name", name}, {"name", spec.name}});
-    return Get<T> (prop);
+    return dispatchByName (name, spec.name, [&] (ImgProp prop) { return Get<T> (prop); });
 }
 
 template <typename T>
 ResCustom<std::optional<T>, ImageError> Image::Get (ImgProp prop)
 {
-    const auto& registry = getRegistry();
-    auto it = registry.find (prop);
-    if (it == registry.end())
-    {
-        it = baseRegistry.find (prop);
-        if (it == baseRegistry.end())
-        {
-            return ImageError (ErrorCode::InvalidImgProp,
-                {{"prop_name", GetPropName (prop)}, {"name", spec.name}});
-        }
-    }
-    assert (it->second.getter);
+    auto compRes = resolveComponent (prop);
+    if (!compRes.IsOk())
+        return compRes.GetError();
 
-    auto val = it->second.getter (*this);
+    std::optional<std::any> val{};
+    auto comp = compRes.GetValue();
+
+    if (comp.has_value())
+    {
+        assert (*comp);
+
+        auto getRes = (*comp)->Get (prop);
+        if (!getRes.IsOk())
+            return getRes.GetError();
+
+        val = getRes.GetValue();
+    }
+    else
+        val = getBase (prop);
+
     if (!val)
         return std::optional<T>{};
+
     if (T* ptr = std::any_cast<T> (&*val))
         return std::optional<T> (*ptr);
+
     return ImageError (ErrorCode::PropTypeMismatch, {{"prop_name", GetPropName (prop)}, {"name", spec.name}});
+}
+
+template <typename T>
+ResCustom<T*, ImageError> Image::GetComponent (CompType type)
+{
+    // TODO: should assert or no?
+    assert (comps[type]);
+
+    T* component = dynamic_cast<T*> (comps[type].get());
+    if (!component)
+        return ImageError (ErrorCode::BadArgument, "Requested image component has an unexpected type");
+
+    return component;
 }
 
 template <typename T>
 ResCustom<std::optional<T>, ImageError> Partition::Get (const std::string& name)
 {
-    PartProp prop = ResolveName (name);
-    if (prop == PartProp::Max)
-        return ImageError (ErrorCode::InvalidPartProp, {{"prop_name", name}, {"name", spec.name}});
-    return Get<T> (prop);
+    return dispatchByName (name, spec.name, [&] (PartProp prop) { return Get<T> (prop); });
 }
 
 template <typename T>
 ResCustom<std::optional<T>, ImageError> Partition::Get (PartProp prop)
 {
-    auto it = registry.find (prop);
-    if (it == registry.end())
-    {
-        return ImageError (ErrorCode::InvalidPartProp,
-            {{"prop_name", GetPropName (prop)}, {"name", spec.name}});
-    }
-    assert (it->second.getter);
+    auto entryRes = resolveEntry (prop);
+    if (!entryRes.IsOk())
+        return entryRes.GetError();
 
-    auto val = it->second.getter (*this);
+    const auto& conf = entryRes.GetValue();
+    auto val = conf.getter (*this);
     if (!val)
         return std::optional<T>{};
+
     if (T* ptr = std::any_cast<T> (&*val))
         return std::optional<T> (*ptr);
     return ImageError (ErrorCode::PropTypeMismatch, {{"prop_name", GetPropName (prop)}, {"name", spec.name}});

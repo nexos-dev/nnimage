@@ -20,11 +20,22 @@
 
 #include "include/Error.h"
 #include "include/EnumArray.h"
-#include "include/SimpleLexer.h"
-#include "include/LockFile.h"
 #include "include/Timestamp.h"
 #include "include/ConfParser.h"
 #include "config.h"
+
+#include <atomic>
+#include <chrono>
+#include <fstream>
+#include <memory>
+#include <mutex>
+#include <ostream>
+#include <shared_mutex>
+#include <string>
+#include <thread>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 class LogSink;
 
@@ -102,9 +113,7 @@ class Log
 
     // Sets up a stream for all sinks with the specified type. All messages written to stream will
     // be logged to those sinks. Returns file descriptor for write end of the pipe
-    Result<LogStream> StreamIntoSink (SinkType type,
-        const std::string& msgPrefix,
-        LogLevel level = LogLevel::Debug);
+    Result<LogStream> StreamIntoSink (SinkType type, const std::string& msgPrefix, LogLevel level = LogLevel::Debug);
 
     ResNone AddFileSink (LogSinkInfo& info, const std::string& filename);
     ResNone AddConsoleSink (LogSinkInfo& info, const char* progName, std::ostream& out);
@@ -188,8 +197,7 @@ class FileLogSink : public LogSink
   private:
     std::ofstream file;
     // TODO: maybe dedupe this with ConsoleLogSink?
-    inline static const EnumArray<LogLevel, std::string, LogLevel::Max> logParams = {
-        {LogLevel::Debug, "note: "},
+    inline static const EnumArray<LogLevel, std::string, LogLevel::Max> logParams = {{LogLevel::Debug, "note: "},
         {LogLevel::Info, "info: "},
         {LogLevel::Status, ""},
         {LogLevel::Warning, "warning: "},
@@ -234,8 +242,7 @@ class ManagedLogCtrl : public ConfParser<ManagedLogCtrl, LogCtrlKey>
 
     static const EnumArray<LogCtrlKey, ConfInstance<ManagedLogCtrl, LogCtrlKey>, LogCtrlKey::Max> keys;
     // Table to convert property names to keys, so we can get to the setter
-    inline static const std::unordered_map<std::string, LogCtrlKey> nameToKey = {
-        {"max_file", LogCtrlKey::MaxFiles},
+    inline static const std::unordered_map<std::string, LogCtrlKey> nameToKey = {{"max_file", LogCtrlKey::MaxFiles},
         {"max_age", LogCtrlKey::MaxAge}};
 };
 
@@ -250,14 +257,13 @@ class ManagedLogSink : public LogSink
     std::string getLogName()
     {
         Timestamp now = Timestamp::MakeTimestampNow();
-        return filePrefix + std::string (now);
+        std::string name = filePrefix;
+        name += now.View();
+        return name;
     }
     static void logMaintWorker (ManagedLogSink& inst);
     static bool checkLog (const std::filesystem::path& log, int maxAge);
-    static ResNone openLogCtrl (ManagedLogSink& inst,
-        const std::filesystem::path& ctrl,
-        int& maxAge,
-        int& maxLogs);
+    static ResNone openLogCtrl (ManagedLogSink& inst, const std::filesystem::path& ctrl, int& maxAge, int& maxLogs);
     static void deleteOldestLogs (std::vector<std::filesystem::path>& files, int count);
 
     std::filesystem::path ctrlPath;
@@ -269,8 +275,7 @@ class ManagedLogSink : public LogSink
     std::jthread maintThread;
 
     inline static const std::string logCtrlFile = "nnimage_logctrl";
-    inline static const EnumArray<LogLevel, std::string, LogLevel::Max> logParams = {
-        {LogLevel::Debug, "[NOTE] "},
+    inline static const EnumArray<LogLevel, std::string, LogLevel::Max> logParams = {{LogLevel::Debug, "[NOTE] "},
         {LogLevel::Info, "[INFO] "},
         {LogLevel::Status, "[STATUS] "},
         {LogLevel::Warning, "[WARNING] "},

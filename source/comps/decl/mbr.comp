@@ -1,0 +1,5 @@
+# mbr.comp - describes the MBR partition type component
+NAME=mbr
+SLOT=parttype
+CLASS=MbrPartComp
+HEADER=include/comp/PartComp.h

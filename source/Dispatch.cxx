@@ -15,7 +15,12 @@
     limitations under the License.
 */
 
-#include "nnimage.h"
+#include "include/Dispatch.h"
+#include "include/Error.h"
+#include "include/Log.h"
+#include "cxxopts.hpp"
+
+#include <memory>
 
 Dispatch::Dispatch()
 {
@@ -104,29 +109,14 @@ bool Dispatch::Execute()
         return false;
     }
 
-    auto imgRes = Image::ImageFactory ("mbr", "test");
-    if (!imgRes.IsOk())
+    // Invoke the frontend
+    auto frontend = frontOpts.CreateFrontend();
+    auto resFront = frontend->Parse();
+    if (!resFront.IsOk())
     {
-        dispatchFail (imgRes.GetError());
+        dispatchFail (resFront.GetError());
         return false;
     }
-
-    auto img = std::move (imgRes.GetValue());
-    ImageNumId size = ImageNumId (512, "MiB");
-    size.Parse();
-    img->Set (ImgProp::Size, ImageVal (size));
-
-    auto resGet = img->Get<int64_t> (ImgProp::Size);
-    auto val = resGet.GetValue();
-    int64_t sizeM = (*val) / (1024 * 1024);
-
-    img->Set (ImgProp::BootMode, ImageVal (ImageId ("bios")));
-    auto resGet2 = img->Get<BootMode> (ImgProp::BootMode);
-    auto mode = *resGet2.GetValue();
-
-    img->Set (ImgProp::MbrFile, ImageVal ("testf"));
-    auto resGet3 = img->Get<std::string> (ImgProp::MbrFile);
-    auto file = *resGet3.GetValue();
 
     return true;
 }

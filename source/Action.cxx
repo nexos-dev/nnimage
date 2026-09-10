@@ -15,7 +15,6 @@
     limitations under the License.
 */
 
-#include "nnimage.h"
 #include "include/ActionTypes.h"
 
 std::unique_ptr<ActionOptions> ActionOptions::MakeActOptions (ActionType type)

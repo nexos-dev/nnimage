@@ -15,7 +15,6 @@
     limitations under the License.
 */
 
-#include "nnimage.h"
 #include "backend/XorrisoBackend.h"
 
 XorrisoBackend::XorrisoBackend()

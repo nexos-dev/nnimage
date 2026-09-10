@@ -15,285 +15,49 @@
     limitations under the License.
 */
 
-#ifndef NNIMAGE_IMAGE_H
-#define NNIMAGE_IMAGE_H
+#ifndef IMAGE_H
+#define IMAGE_H
 
 #include "include/ConfParser.h"
-#include "MemoryMapped.h"
-#include "config.h"
+#include "include/EnumArray.h"
+#include "include/ImgProp.h"
+#include "include/ImgBase.h"
+#include "include/ImgError.h"
+#include "include/ImgComponent.h"
 #include "BackendTypes.h"
 
-enum class ImgType
-{
-    Mbr,
-    Gpt,
-    Iso9660,
-    Floppy,
-    Max
-};
+#include <memory>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <vector>
 
-enum class BootMode
-{
-    None,
-    Bios,
-    Efi,
-    Max
-};
+class Image;
+class Partition;
 
-enum class ImgProp
-{
-    Size,
-    BootMode,
-    BootEmu,
-    BootImage,
-    MbrFile,
-    VbrFile,
-    Max
-};
+using ImgConfItem = ConfItem<Image>;
+using PartConfItem = ConfItem<Partition>;
 
-enum class PartProp
-{
-    Start,
-    Size,
-    Format,
-    Prefix,
-    IsBoot,
-    Max
-};
-
-template <typename Value>
-class NameRegistry
-{
-  public:
-    NameRegistry (std::initializer_list<std::pair<const std::string, Value>> values) : values{values}
-    {}
-
-    Value Resolve (const std::string& name) const
-    {
-        auto it = values.find (name);
-        if (it == values.end())
-            return Value::Max;
-        return it->second;
-    }
-
-    std::string GetName (Value value) const
-    {
-        auto it = std::find_if (values.begin(), values.end(), [value] (const auto& pair) {
-            return pair.second == value;
-        });
-        assert (it != values.end());
-        return it->first;
-    }
-
-  private:
-    std::unordered_map<std::string, Value> values;
-};
-
-// NOTE NOTE NOTE: this struct is in NO WAY copyable or movable and ALWAYS is const
-// If any code ever tries to copy or move it, many things would fail
-// It is STRICTLY NON COPYABLE
-// Do not attempt to do so. If you do, gcc/clang will find your home and make your life miserable
-struct ImgSpec
-{
-    std::string name;
-    std::string fileExt = ".img";
-    ImgType type = ImgType::Gpt;
-    int64_t size = -1;
-    BootMode bootMode = BootMode::None;
-    ImgSpec (const ImgSpec&) = delete;
-    ImgSpec& operator= (const ImgSpec&) = delete;
-    ImgSpec() = default;
-    ~ImgSpec() = default;
-};
+using ImgConfRegistry = ConfRegistry<ImgProp, Image>;
+using PartConfRegistry = ConfRegistry<PartProp, Partition>;
 
 // NOTE: this struct is in NO WAY copyable and ALWAYS is const
 struct PartSpec
 {
-    std::string name;
-    std::string format;
-    std::string prefix;
+    std::string name{};
+    std::string format{};
+    std::string prefix{};
     int64_t start = PartSpec::Default;
     int64_t size = PartSpec::Default;
-    bool isBoot = false;
+    std::optional<bool> isBoot = std::nullopt;
     static constexpr int64_t Default = -1;
+
     // Delete all copy constructors assignment operators
     PartSpec (const PartSpec&) = delete;
     PartSpec& operator= (const PartSpec&) = delete;
     PartSpec() = default;
     ~PartSpec() = default;
 };
-
-class ImageNumId
-{
-  public:
-    ImageNumId() = default;
-    ImageNumId (size_t num, const std::string& mul) : num{num}, mul{mul}
-    {}
-    bool Parse()
-    {
-        auto it = mulMap.find (mul);
-        if (it == mulMap.end())
-            return false;
-        if (__builtin_mul_overflow (num, it->second, &val))
-            return false;
-        valid = true;
-        return true;
-    }
-    int64_t Get() const
-    {
-        if (valid)
-            return val;
-        else
-            throw std::runtime_error ("Access to uninitialized numid");
-    }
-
-  private:
-    int64_t val = 0;
-    bool valid = false;
-    size_t num = 0;
-    std::string mul{};
-    inline static const std::unordered_map<std::string, size_t> mulMap = {{"B", 1},
-        {"KiB", 1024},
-        {"KB", 1000},
-        {"MiB", 1024 * 1024},
-        {"MB", 1000 * 1000},
-        {"GiB", 1024 * 1024 * 1024},
-        {"GB", 1000 * 1000 * 1000},
-        {"TiB", static_cast<size_t> (1024) * 1024 * 1024 * 1024},
-        {"TB", static_cast<size_t> (1000) * 1000 * 1000 * 1000}};
-};
-
-// HACK: used purely to differentiate between a quoted string and an ID in the variant
-struct ImageId
-{
-    ImageId() = default;
-    ImageId (const std::string& str) : id{str}
-    {}
-    std::string operator()() const
-    {
-        return id;
-    }
-    explicit operator std::string() const
-    {
-        return id;
-    }
-    std::string& Str()
-    {
-        return id;
-    }
-
-  private:
-    std::string id{};
-};
-
-using ImageList = std::vector<std::string>;
-using ImageValType = std::variant<int64_t, ImageId, std::string, ImageList, bool, ImageNumId, std::monostate>;
-
-class ImageVal
-{
-  public:
-    ImageVal() = default;
-    ImageVal (const ImageValType& val, int line = -1) : val{val}, line{line}
-    {}
-    bool IsEmpty() const
-    {
-        return std::holds_alternative<std::monostate> (val);
-    }
-    int GetLine() const
-    {
-        return line;
-    }
-    template <typename T>
-    std::optional<T> Get() const
-    {
-        if (!std::holds_alternative<T> (val))
-            return {};
-        return std::get<T> (val);
-    }
-    std::type_index GetType() const
-    {
-        return std::visit ([] (auto&& arg) -> std::type_index { return typeid (arg); }, val);
-    }
-
-  private:
-    const ImageValType val = std::monostate{};
-    int line = -1;
-};
-
-using ImageErrProp = std::pair<std::string, std::any>;
-
-class ImageError : public Error
-{
-  public:
-    ImageError() = default;
-    ImageError (ErrorCode code, std::initializer_list<ImageErrProp> args)
-        : Error ({ErrorDomain::ImageConf, code}, "")
-    {
-        frame = &frames[frames.size() - 1];
-        keys.insert (args.begin(), args.end());
-        makeMessage (*frame);
-    }
-    ImageError (ErrorCode code, std::string msg) : Error ({ErrorDomain::ImageConf, code}, msg)
-    {
-        frame = &frames[frames.size() - 1];
-    }
-    ImageError& AddKey (std::initializer_list<ImageErrProp> args)
-    {
-        keys.insert (args.begin(), args.end());
-        makeMessage (*frame);    // Reset the message
-        return *this;
-    }
-
-  private:
-    void makeMessage (ErrorFrame& frame);
-    void assertKeys (const std::vector<std::string>& keys)
-    {
-        for (const auto& key : keys)
-            assert (this->keys.find (key) != this->keys.end());
-    }
-    std::string getString (std::string key)
-    {
-        return std::any_cast<std::string> (keys[key]);
-    }
-    std::string getString (std::unordered_map<std::string, std::any>::iterator it)
-    {
-        return std::any_cast<std::string> (it->second);
-    }
-    template <typename T>
-    T getValue (std::string key)
-    {
-        return std::any_cast<T> (keys[key]);
-    }
-    ErrorFrame* frame;
-    std::unordered_map<std::string, std::any> keys;
-};
-
-using ImageResult = ResCustom<NoResult, ImageError>;
-
-class Image;
-class Partition;
-
-using ImgConfSetter = ImageResult (*) (Image&, const ImageVal&);
-using PartConfSetter = ImageResult (*) (Partition&, const ImageVal&);
-using ImgConfGetter = std::optional<std::any> (*) (Image&);
-using PartConfGetter = std::optional<std::any> (*) (Partition&);
-
-struct ImgConfItem
-{
-    std::type_index inputType;
-    ImgConfSetter setter;
-    ImgConfGetter getter;
-};
-
-struct PartConfItem
-{
-    std::type_index inputType;
-    PartConfSetter setter;
-    PartConfGetter getter;
-};
-
-using ImgConfRegistry = std::unordered_map<ImgProp, ImgConfItem>;
-using PartConfRegistry = std::unordered_map<PartProp, PartConfItem>;
 
 class Partition
 {
@@ -310,7 +74,7 @@ class Partition
         return spec.name;
     }
 
-    ImageResult Set (const std::string& name, const ImageVal& val);
+    ImageResult Set (std::string_view name, const ImageVal& val);
     ImageResult Set (PartProp key, const ImageVal& val);
 
     template <typename T>
@@ -318,11 +82,16 @@ class Partition
     template <typename T>
     ResCustom<std::optional<T>, ImageError> Get (PartProp prop);
 
-    static PartProp ResolveName (const std::string& name)
+    ResCustom<bool, ImageError> IsSet (std::string_view name);
+    ResCustom<bool, ImageError> IsSet (PartProp prop);
+
+    ImageResult SetDefaults();
+
+    static PartProp ResolveName (std::string_view name)
     {
         return nameRegistry.Resolve (name);
     }
-    static std::string GetPropName (PartProp prop)
+    static const std::string& GetPropName (PartProp prop)
     {
         return nameRegistry.GetName (prop);
     }
@@ -333,69 +102,76 @@ class Partition
     }
 
   private:
+    ImageResult applyDefault (const PartConfItem& conf);
+
+    // Resolves name to a PartProp and dispatches func(prop), converting a resolve failure into InvalidPartProp
+    template <typename Func>
+    static auto dispatchByName (std::string_view name, const std::string& partName, Func&& func)
+        -> decltype (func (PartProp::Max))
+    {
+        PartProp prop = ResolveName (name);
+        if (prop == PartProp::Max)
+            return ImageError (ErrorCode::InvalidPartProp, {{"prop_name", std::string (name)}, {"name", partName}});
+        return func (prop);
+    }
+
+    // Looks up the registry entry for prop, converting a missing entry into InvalidPartProp
+    ResCustom<PartConfItem, ImageError> resolveEntry (PartProp prop);
+
     PartSpec spec;
     const static PartConfRegistry registry;
     const static NameRegistry<PartProp> nameRegistry;
 };
 
-template <typename T>
-class CompRef
+// Base property enums
+enum class BootMode
 {
-  public:
-    CompRef (const std::string& name, T& comp, int line = -1) : name{name}, line{line}, comp{comp}
-    {}
-    std::string GetName() const
-    {
-        return name;
-    }
-    int GetLine() const
-    {
-        return line;
-    }
-    T& GetImage()
-    {
-        return comp;
-    }
-
-  private:
-    T& comp;
-    std::string name;
-    int line;
+    None,
+    Bios,
+    Efi,
+    Max
 };
 
-using ImgConstruct = std::unique_ptr<Image> (*) (const std::string&);
+// NOTE NOTE NOTE: this struct is in NO WAY copyable or movable and ALWAYS is const
+// If any code ever tries to copy or move it, many things would fail
+// It is STRICTLY NON COPYABLE
+// Do not attempt to do so. If you do, gcc/clang will find your home and make your life miserable
+struct ImgSpec
+{
+    std::string name{};
+    std::string fileExt{};
+    int64_t size = -1;
+    BootMode bootMode = BootMode::Max;
+
+    ImgSpec (const ImgSpec&) = delete;
+    ImgSpec& operator= (const ImgSpec&) = delete;
+    ImgSpec() = default;
+    ~ImgSpec() = default;
+};
 
 class Image
 {
   public:
+    Image (const std::string& name)
+    {
+        spec.name = name;
+    }
     const std::string& GetName() const
     {
         return spec.name;
-    }
-    ImgType GetType() const
-    {
-        return spec.type;
     }
 
     void SetName (const std::string& name)
     {
         spec.name = name;
     }
-    void SetType (ImgType type)
-    {
-        spec.type = type;
-    }
 
-    bool SetBackend (std::shared_ptr<Backend> backend)
+    bool SetBackend (BackendType backend)
     {
-        if (this->backend != nullptr)
+        if (this->backend != BackendType::None)
             return false;
         this->backend = backend;
         return true;
-    }
-    Backend* GetBackend()
-    {
-        return backend.get();
     }
     // Used by backends to identify the image, e.g. the block device name
     void SetBackendTag (const std::string& tag)
@@ -404,14 +180,24 @@ class Image
     }
     BackendType GetBackendType (BackendType suggestion) const;
 
-    // Set accepts parser-shaped values; Get returns the property's translated domain value.
-    ImageResult Set (const std::string& name, const ImageVal& val);
+    ImageResult AddComponent (std::unique_ptr<Component> comp);
+    template <class T>
+    ResCustom<T*, ImageError> GetComponent (CompType type);
+    bool CheckComponent (CompType type);
+
+    // Set accepts parser-shaped values, Get returns the property's translated value.
+    ImageResult Set (std::string_view name, const ImageVal& val);
     ImageResult Set (ImgProp prop, const ImageVal& val);
 
     template <typename T>
-    ResCustom<std::optional<T>, ImageError> Get (const std::string& name);
+    ResCustom<std::optional<T>, ImageError> Get (std::string_view name);
     template <typename T>
     ResCustom<std::optional<T>, ImageError> Get (ImgProp prop);
+
+    ResCustom<bool, ImageError> IsSet (std::string_view name);
+    ResCustom<bool, ImageError> IsSet (ImgProp prop);
+
+    ImageResult SetDefaults();
 
     void AddPartition (std::unique_ptr<Partition> part)
     {
@@ -427,30 +213,15 @@ class Image
         return spec;
     }
 
-    virtual ImageResult Validate();
-    static ResCustom<std::unique_ptr<Image>, ImageError> ImageFactory (ImgType type, const std::string& name);
-    static ResCustom<std::unique_ptr<Image>, ImageError> ImageFactory (const std::string& type,
-        const std::string& name);
+    ImageResult Validate();
 
-    static std::string GetTypeName (ImgType type)
-    {
-        return typeNames.GetName (type);
-    }
-    static ImgType ResolveType (const std::string& type)
-    {
-        return typeNames.Resolve (type);
-    }
-    static ImgProp ResolveProp (const std::string& name)
+    static ImgProp ResolveProp (std::string_view name)
     {
         return nameRegistry.Resolve (name);
     }
-    static std::string GetPropName (ImgProp prop)
+    static const std::string& GetPropName (ImgProp prop)
     {
         return nameRegistry.GetName (prop);
-    }
-    static std::string GetBootModeName (BootMode mode)
-    {
-        return bootModes.GetName (mode);
     }
 
     virtual ~Image() = default;
@@ -458,68 +229,48 @@ class Image
     Image (const Image&) = delete;
     Image& operator= (const Image&) = delete;
 
-  protected:
-    Image (const std::string& name, ImgType type)
+    // Error maker helpers
+    static ImageError InvalidId (const std::string& prop, const std::string& name, const std::string& id)
     {
-        spec.name = name;
-        spec.type = type;
+        return ImageError (ErrorCode::InvalidId, {{"prop_name", prop}, {"name", name}, {"id", id}});
     }
-
-    // Helper for common situation where a setter finds an invalid ID
-    static ImageError invalidId (const Image& img, const std::string& val)
-    {
-        return ImageError (ErrorCode::InvalidId, {{"name", img.GetName()}, {"id", val}});
-    }
-
-    static BootMode resolveBootMode (const std::string& mode)
-    {
-        return bootModes.Resolve (mode);
-    }
-
-    template <typename Derived>
-    static Derived& derived (Image& img)
-    {
-        // NOTE: this assert only exists to ensure that the below static cast is safe in debug builds. In
-        // release builds that check is slow and uneccesary
-        assert (typeid (img) == typeid (Derived));
-        return static_cast<Derived&> (img);
-    }
-
-    virtual const ImgConfRegistry& getRegistry() const = 0;
-    virtual const std::vector<BackendType> getValidBackends() const = 0;
-
-    ImgSpec spec;
-    std::vector<std::unique_ptr<Partition>> parts;
-    std::shared_ptr<Backend> backend;
-    std::string backendTag;
 
   private:
-    // These functions are the main driver of backend detection logic
-    bool checkBackendForImage (BackendType type) const
+    ImgSpec spec;
+    std::vector<std::unique_ptr<Partition>> parts;
+    BackendType backend;
+    std::string backendTag{};
+    std::string defaultExt = ".img";
+
+    // Component containers
+    EnumArray<CompType, std::unique_ptr<Component>, CompType::Max> comps;
+
+    // Resolves name to an ImgProp and dispatches func(prop), converting a resolve failure into InvalidImgProp
+    template <typename Func>
+    static auto dispatchByName (std::string_view name, const std::string& imgName, Func&& func)
+        -> decltype (func (ImgProp::Max))
     {
-        const auto& validBackends = getValidBackends();
-        return (std::find (validBackends.begin(), validBackends.end(), type) != validBackends.end()) &&
-               Backend::IsBackendEnabled (type);
+        ImgProp prop = ResolveProp (name);
+        if (prop == ImgProp::Max)
+            return ImageError (ErrorCode::InvalidImgProp, {{"prop_name", std::string (name)}, {"name", imgName}});
+        return func (prop);
     }
-    BackendType firstAvailBackend() const
-    {
-        const auto& validBackends = getValidBackends();
-        // Go through each backend and check if it is enabled
-        for (auto backend : validBackends)
-        {
-            if (Backend::IsBackendEnabled (backend))
-                return backend;
-        }
-        return BackendType::None;
-    }
+
+    // Resolves prop to its owning component, or nullopt if it's owned by the base image itself..
+    ResCustom<std::optional<Component*>, ImageError> resolveComponent (ImgProp prop);
+
+    ImageResult setBase (ImgProp prop, const ImageVal& val);
+    std::optional<std::any> getBase (ImgProp prop);
+    bool checkSetBase (ImgProp prop);
+
+    ImageResult applyDefaults (const ImgConfRegistry& registry);
+    ImageResult applyDefault (const ImgConfItem& conf);
 
     const static ImgConfRegistry baseRegistry;
-
+    const static std::unordered_map<ImgProp, CompType> keyMap;
     const static NameRegistry<ImgProp> nameRegistry;
-    const static NameRegistry<BootMode> bootModes;
 
-    const static EnumArray<ImgType, ImgConstruct, ImgType::Max> factory;
-    const static NameRegistry<ImgType> typeNames;
+    const static NameRegistry<BootMode> bootModes;
 };
 
 #include "include/ImageGet.txx"

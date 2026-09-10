@@ -1,5 +1,5 @@
 /*
-    config.h - contains nnimage system configuration
+    PartType.cxx - contains partition type components
     Copyright 2026 Jedidiah Thompson
 
     Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,22 +15,13 @@
     limitations under the License.
 */
 
-// clang-format off
+#include "include/comp/PartComp.h"
 
-#ifndef NNIMAGE_CONFIG_H
-#define NNIMAGE_CONFIG_H
+const CompConfRegistry& PartTypeComp::getRegistry() const
+{}
 
-#cmakedefine HAVE_CHARDET
-#cmakedefine NNIMAGE_ENABLE_TESTS
+const CompConfRegistry& MbrPartComp::getSubRegistry() const
+{}
 
-#define NNIMAGE_VERSION "@CMAKE_PROJECT_VERSION@"
-
-// ANSI color code
-#define ANSI_CODE_ERROR "\x1b[31m"
-#define ANSI_CODE_WARN  "\x1b[33m"
-#define ANSI_CODE_INFO  "\x1b[94m"
-#define ANSI_CODE_RESET "\x1b[39m"
-
-#define BACKEND_DEFAULT BackendType::@NNIMAGE_BACKEND_DEFAULT_ID@
-
-#endif
+const CompConfRegistry& GptPartComp::getSubRegistry() const
+{}

@@ -20,9 +20,12 @@
 
 #include "include/Task.h"
 #include "include/EnumArray.h"
+#include "include/Image.h"
 #include "BackendTypes.h"
 
-class Image;
+#include <memory>
+#include <string>
+
 class Backend
 {
   public:
@@ -43,5 +46,7 @@ class Backend
   protected:
     bool backendCreated = false;
 };
+
+#include "Backends.h"
 
 #endif

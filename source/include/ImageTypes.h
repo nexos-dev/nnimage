@@ -19,7 +19,7 @@
 #define NNIMAGE_IMAGETYPES_H
 
 #include "include/Image.h"
-
+/*
 // Image type classes
 class MbrImage : public Image
 {
@@ -87,7 +87,7 @@ class IsoImage : public Image
   public:
     IsoImage (const std::string& name) : Image (name, ImgType::Iso9660)
     {
-        spec.fileExt = ".iso";    // Ensure extension is .iso
+        defaultExt = ".iso";
     }
     ImageResult Validate() override;
 
@@ -108,7 +108,7 @@ class IsoImage : public Image
 
   private:
     std::string bootImageName;
-    IsoBootEmu bootEmu = IsoBootEmu::Noemu;
+    IsoBootEmu bootEmu = IsoBootEmu::Max;
     Image* bootImage = nullptr;
 
     const static ImgConfRegistry registry;
@@ -122,7 +122,9 @@ class FloppyImage : public Image
 {
   public:
     FloppyImage (const std::string& name) : Image (name, ImgType::Floppy)
-    {}
+    {
+        defaultExt = ".flp";
+    }
     ImageResult Validate() override;
 
   protected:
@@ -146,6 +148,6 @@ class FloppyImage : public Image
     inline const static std::vector<BackendType> validBackends = {BackendType::Krun,
         BackendType::Loopback,
         BackendType::Guestfs};
-};
+};*/
 
 #endif

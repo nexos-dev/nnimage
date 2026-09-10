@@ -17,6 +17,8 @@
 
 #include <unistd.h>
 
+#include <cstdint>
+
 static uint64_t GetMemorySize()
 {
     long pages = sysconf (_SC_PHYS_PAGES);

@@ -15,8 +15,10 @@
     limitations under the License.
 */
 
-#include "nnimage.h"
+#include "include/Backend.h"
 #include "BackendTable.h"
+
+#include <algorithm>
 
 BackendType Backend::ResolveBackend (const std::string& name)
 {
@@ -29,9 +31,9 @@ BackendType Backend::ResolveBackend (const std::string& name)
 
 const std::string Backend::GetBackendName (BackendType type)
 {
-    auto it = std::find_if (BackendNameRegistry.begin(),
-        BackendNameRegistry.end(),
-        [type] (const auto& pair) { return pair.second == type; });
+    auto it = std::find_if (BackendNameRegistry.begin(), BackendNameRegistry.end(), [type] (const auto& pair) {
+        return pair.second == type;
+    });
     if (it == BackendNameRegistry.end())
         return "unknown";
     return it->first;

@@ -20,6 +20,10 @@
 
 #include <iconv.h>
 
+#include <string>
+#include <string_view>
+#include <vector>
+
 class Iconv
 {
   public:
@@ -64,6 +68,7 @@ class Iconv
         // Ensure input is non-empty
         if (input.empty() || cd == (iconv_t) -1)
             return false;
+
         // Reset iconv
         iconv (cd, nullptr, nullptr, nullptr, nullptr);
 

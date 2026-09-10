@@ -17,7 +17,7 @@
 
 #define DOCTEST_CONFIG_IMPLEMENT
 
-#include "nnimage.h"
+#include "include/Log.h"
 #include "doctest.h"
 
 // NOTE: This test driver is only compiled if NNIMAGE_ENABLE_TESTS is enabled at configure time

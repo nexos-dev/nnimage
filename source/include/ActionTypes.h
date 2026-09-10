@@ -20,6 +20,8 @@
 
 #include "include/Action.h"
 
+#include <memory>
+
 class CreateAction : public Action
 {
   public:
@@ -35,7 +37,7 @@ class CreateActOptions : public ActionOptions
     void CollectOptions (cxxopts::Options& opts) override;
     ResNone ValidateOptions() override;
 
-    std::unique_ptr<Action> MakeAction()
+    std::unique_ptr<Action> MakeAction() override
     {
         return std::make_unique<CreateAction>();
     }
@@ -56,7 +58,7 @@ class InitActOptions : public ActionOptions
     void CollectOptions (cxxopts::Options& opts) override;
     ResNone ValidateOptions() override;
 
-    std::unique_ptr<Action> MakeAction()
+    std::unique_ptr<Action> MakeAction() override
     {
         return std::make_unique<InitAction>();
     }
@@ -75,7 +77,7 @@ class PartitionActOptions : public ActionOptions
     void CollectOptions (cxxopts::Options& opts) override;
     ResNone ValidateOptions() override;
 
-    std::unique_ptr<Action> MakeAction()
+    std::unique_ptr<Action> MakeAction() override
     {
         return std::make_unique<PartitionAction>();
     }
@@ -94,7 +96,7 @@ class FormatActOptions : public ActionOptions
     void CollectOptions (cxxopts::Options& opts) override;
     ResNone ValidateOptions() override;
 
-    std::unique_ptr<Action> MakeAction()
+    std::unique_ptr<Action> MakeAction() override
     {
         return std::make_unique<FormatAction>();
     }
@@ -115,7 +117,7 @@ class UpdateActOptions : public ActionOptions
     void CollectOptions (cxxopts::Options& opts) override;
     ResNone ValidateOptions() override;
 
-    std::unique_ptr<Action> MakeAction()
+    std::unique_ptr<Action> MakeAction() override
     {
         return std::make_unique<UpdateAction>();
     }

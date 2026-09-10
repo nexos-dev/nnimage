@@ -1,0 +1,5 @@
+# gpt.comp - describes the GPT partition type component
+NAME=gpt
+SLOT=parttype
+CLASS=GptPartComp
+HEADER=include/comp/PartComp.h

@@ -15,11 +15,12 @@
     limitations under the License.
 */
 
-#include "nnimage.h"
 #include "include/SimpleLexer.h"
 
-SimpleLexer::SimpleLexer (const std::string& file, std::string fileData)
-    : fileData{std::move (fileData)}, file{file}
+#include <cassert>
+#include <utility>
+
+SimpleLexer::SimpleLexer (const std::string& file, std::string fileData) : fileData{std::move (fileData)}, file{file}
 {
     curLine = 1;
     curTok = nullptr;
@@ -33,11 +34,14 @@ SimpleLexer::SimpleLexer (const std::string& file, std::string fileData)
 void SimpleLexer::lexError (Error& err, LexError errCode, const std::string& extra)
 {
     std::string msg;
-    msg = file;
-    msg += ":";
-    // Add the line
-    msg += std::to_string (curLine);
-    msg += ": ";
+    if (!file.empty())
+    {
+        msg += file;
+        msg += ":";
+        // Add the line
+        msg += std::to_string (curLine);
+        msg += ": ";
+    }
     // Now add the code
     switch (errCode)
     {
@@ -278,6 +282,10 @@ const char* SimpleLexer::NameFromToken (TokenType type)
             return ",";
         case TokenType::Equals:
             return "=";
+        case TokenType::True:
+            return "true";
+        case TokenType::False:
+            return "false";
         case TokenType::Eof:
             return "EOF";
         case TokenType::None:

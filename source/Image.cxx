@@ -15,141 +15,257 @@
     limitations under the License.
 */
 
-#include "nnimage.h"
-#include "include/ImageTypes.h"
+#include "include/Image.h"
 
-ResCustom<std::unique_ptr<Image>, ImageError> Image::ImageFactory (ImgType type, const std::string& name)
-{
-    assert (type < ImgType::Max);
-    return factory[type](name);
-}
-
-ResCustom<std::unique_ptr<Image>, ImageError> Image::ImageFactory (const std::string& type,
-    const std::string& name)
-{
-    ImgType imageType = ResolveType (type);
-    if (imageType == ImgType::Max)
-        return ImageError (ErrorCode::InvalidImgType, {{"type", type}, {"name", name}});
-    return ImageFactory (imageType, name);
-}
+#include <cassert>
+#include <sstream>
 
 BackendType Image::GetBackendType (BackendType suggestion) const
 {
-    // We prefer to use the suggestion, then the default, and if all else fails, use the first valid and
-    // enabled backend
-    if (checkBackendForImage (suggestion))
-        return suggestion;
-    if (checkBackendForImage (BACKEND_DEFAULT))
-        return BACKEND_DEFAULT;
-    return firstAvailBackend();
+    return BackendType::None;
 }
 
-ImageResult Image::Set (const std::string& name, const ImageVal& val)
+ImageResult Image::AddComponent (std::unique_ptr<Component> comp)
 {
-    ImgProp prop = ResolveProp (name);
-    if (prop == ImgProp::Max)
-        return ImageError (ErrorCode::InvalidImgProp, {{"prop_name", name}, {"name", spec.name}});
-    return Set (prop, val);
+    assert (comp);
+
+    CompType type = comp->GetType();
+    assert (type != CompType::Max);
+
+    if (comps[type])
+        return ImageError (ErrorCode::ComponentOverwrite, "Can't overwrite component");
+
+    comps[type] = std::move (comp);
+    return Success();
+}
+
+bool Image::CheckComponent (CompType type)
+{
+    return type != CompType::Max && comps[type] != nullptr;
+}
+
+ImageResult Image::Set (std::string_view name, const ImageVal& val)
+{
+    return dispatchByName (name, spec.name, [&] (ImgProp prop) { return Set (prop, val); });
 }
 
 ImageResult Image::Set (ImgProp prop, const ImageVal& val)
 {
-    const auto& registry = getRegistry();
-    auto it = registry.find (prop);
-    if (it == registry.end())
-    {
-        it = baseRegistry.find (prop);
-        if (it == baseRegistry.end())
-        {
-            // Usually this would occur if a user wants a property not available on a specific image type,
-            // e.g., boot emulation on a GPT image
-            return ImageError (ErrorCode::InvalidImgProp,
-                {{"prop_name", GetPropName (prop)}, {"name", spec.name}});
-        }
-    }
-    assert (it->second.setter);
+    // First try component
+    auto compRes = resolveComponent (prop);
+    if (!compRes.IsOk())
+        return compRes.GetError();
 
-    // Check the type
-    const ImgConfItem& propReg = it->second;
-    if (propReg.inputType != val.GetType())
-    {
-        // TODO: report the expected and found types. We just don't have a good way to get the type in string
-        // form
-        return ImageError (ErrorCode::PropTypeMismatch,
-            {{"prop_name", GetPropName (prop)}, {"name", spec.name}});
-    }
+    auto comp = compRes.GetValue();
+    if (comp.has_value())
+        return (*comp)->Set (prop, val);
 
-    return propReg.setter (*this, val);
+    return setBase (prop, val);
 }
 
-ImageResult Image::Validate()
+ResCustom<bool, ImageError> Image::IsSet (std::string_view name)
 {
-    // Check if spec has size unset
-    if (spec.size < 0)
+    return dispatchByName (name, spec.name, [&] (ImgProp prop) { return IsSet (prop); });
+}
+
+ResCustom<bool, ImageError> Image::IsSet (ImgProp prop)
+{
+    auto compRes = resolveComponent (prop);
+    if (!compRes.IsOk())
+        return compRes.GetError();
+
+    auto comp = compRes.GetValue();
+    if (comp.has_value())
     {
-        return ImageError (ErrorCode::MissingRequiredProp,
-            {{"prop", ImgProp::Size}, {"image_ptr", this}, {"name", spec.name}});
+        auto getRes = (*comp)->Get (prop);
+        if (!getRes.IsOk())
+            return getRes.GetError();
+        return getRes.GetValue().has_value();
     }
 
-    if (spec.name.empty())
-        spec.name = "nndisk";
+    return checkSetBase (prop);
+}
+
+ResCustom<std::optional<Component*>, ImageError> Image::resolveComponent (ImgProp prop)
+{
+    auto it = keyMap.find (prop);
+    assert (it != keyMap.end());
+
+    CompType owner = it->second;
+    if (owner == CompType::Max)
+        return std::optional<Component*>{};
+
+    Component* comp = comps[owner].get();
+    if (!comp)
+        return ImageError (ErrorCode::InvalidImgProp, {{"prop_name", GetPropName (prop)}, {"name", spec.name}});
+
+    return std::optional<Component*> (comp);
+}
+
+ImageResult Image::setBase (ImgProp prop, const ImageVal& val)
+{
+    // Get the registry entry
+    auto it = baseRegistry.find (prop);
+    assert (it != baseRegistry.end());
+
+    const auto& conf = it->second;
+    if (conf.inputType != val.GetType())
+        return ImageError (ErrorCode::PropTypeMismatch, {{"prop_name", GetPropName (prop)}});
+
+    return conf.setter (*this, val);
+}
+
+bool Image::checkSetBase (ImgProp prop)
+{
+    auto it = baseRegistry.find (prop);
+    assert (it != baseRegistry.end());
+
+    const auto& conf = it->second;
+
+    return conf.getter (*this).has_value();
+}
+
+ImageResult Image::SetDefaults()
+{
+    // Apply base level defaults
+    auto res = applyDefaults (baseRegistry);
+    if (!res.IsOk())
+        return res.GetError();
+
+    // Now apply for each component
+    for (auto it = comps.begin(); it != comps.end(); it++)
+    {
+        auto* comp = it->get();
+        if (comp)
+        {
+            res = comp->SetDefaults();
+            if (!res.IsOk())
+                return res;
+        }
+    }
 
     return Success();
 }
 
-ImageResult IsoImage::Validate()
+ImageResult Image::applyDefaults (const ImgConfRegistry& registry)
 {
-    // Check for a boot image on emulated discs
-    if (bootEmu != IsoBootEmu::Noemu)
+    for (const auto& [prop, conf] : registry)
     {
-        if (bootImageName.empty())
-            return ImageError (ErrorCode::ImgInvalid,
-                "No boot image specified on image \"" + spec.name + "\"");
-        // Ensure that the boot image is compatible
-        assert (bootImage);
-        if (bootImage->GetType() != bootEmuModes[bootEmu])
+        auto res = applyDefault (conf);
+        if (!res.IsOk())
         {
-            // TODO: print expected emulation
-            return ImageError (ErrorCode::ImgInvalid,
-                "Invalid boot emulation specified on image \"" + spec.name + "\"");
+            // Only MissingProp error is valid here; all others are programing errors
+            ImageError& err = res.GetError();
+            assert (err.LastFrame().code == ErrorCode::ImgMissingProp);
+            err.AddKey ({{"prop", GetPropName (prop)}});
+            return err;
         }
     }
-    return Image::Validate();
+    return Success();
 }
 
-ImageResult FloppyImage::Validate()
+ImageResult Image::applyDefault (const ImgConfItem& conf)
 {
-    // Ensure this is a valid floppy size
-    // NOTE: not all possible floppy sizes have been included but if a user needs a 360K floppy they have
-    // bigger issues anyway. Quite frankly if they need a floppy to begin with that's already rather curious
-    auto it = std::find (validSizes.begin(), validSizes.end(), spec.size);
-    if (it == validSizes.end())
-        return ImageError (ErrorCode::BadFloppySize, {{"name", spec.name}});
-    return Image::Validate();
+    // Don't overwrite a set value
+    if (conf.getter (*this).has_value())
+        return Success();
+
+    // Is has no default, error out
+    // TODO: should this really be an error?
+    else if (std::holds_alternative<std::monostate> (conf.defaultVal))
+        return ImageError (ErrorCode::ImgMissingProp, {{"prop", ""}, {"name", spec.name}});
+
+    return conf.setter (*this, conf.defaultVal);
 }
 
-ImageResult Partition::Set (const std::string& name, const ImageVal& val)
+ImageResult Image::Validate()
 {
-    PartProp prop = ResolveName (name);
-    if (prop == PartProp::Max)
-        return ImageError (ErrorCode::InvalidPartProp, {{"prop_name", name}, {"name", spec.name}});
-    return Set (prop, val);
+    return Success();
+}
+
+ImageResult Partition::Set (std::string_view name, const ImageVal& val)
+{
+    return dispatchByName (name, spec.name, [&] (PartProp prop) { return Set (prop, val); });
 }
 
 ImageResult Partition::Set (PartProp prop, const ImageVal& val)
 {
+    auto entryRes = resolveEntry (prop);
+    if (!entryRes.IsOk())
+        return entryRes.GetError();
+
+    auto conf = entryRes.GetValue();
+    if (conf.inputType != val.GetType())
+        return ImageError (ErrorCode::PropTypeMismatch, {{"prop_name", GetPropName (prop)}, {"name", spec.name}});
+
+    return conf.setter (*this, val);
+}
+
+ResCustom<bool, ImageError> Partition::IsSet (std::string_view name)
+{
+    return dispatchByName (name, spec.name, [&] (PartProp prop) { return IsSet (prop); });
+}
+
+ResCustom<bool, ImageError> Partition::IsSet (PartProp prop)
+{
+    auto entryRes = resolveEntry (prop);
+    if (!entryRes.IsOk())
+        return entryRes.GetError();
+
+    const auto& conf = entryRes.GetValue();
+    return conf.getter (*this).has_value();
+}
+
+ResCustom<PartConfItem, ImageError> Partition::resolveEntry (PartProp prop)
+{
     auto it = registry.find (prop);
     if (it == registry.end())
+        return ImageError (ErrorCode::InvalidPartProp, {{"prop_name", GetPropName (prop)}, {"name", spec.name}});
+
+    return it->second;
+}
+
+ImageResult Partition::SetDefaults()
+{
+    for (const auto& [prop, conf] : registry)
     {
-        // Shouldn't ever happen but then again we can't be too safe
-        return ImageError (ErrorCode::InvalidPartProp,
-            {{"prop_name", GetPropName (prop)}, {"name", spec.name}});
+        auto res = applyDefault (conf);
+        if (!res.IsOk())
+        {
+            ImageError& err = res.GetError();
+            // This is the only error that can occur validly; other errors are programing errors
+            assert (err.LastFrame().code == ErrorCode::PartMissingProp);
+            err.AddKey ({{"prop", GetPropName (prop)}});
+            return err;
+        }
     }
+    return Success();
+}
 
-    if (it->second.inputType != val.GetType())
-        return ImageError (ErrorCode::PropTypeMismatch, {{"prop_name", GetPropName (prop)}});
+ImageResult Partition::applyDefault (const PartConfItem& conf)
+{
+    // Don't overwrite
+    if (conf.getter (*this).has_value())
+        return Success();
 
-    return it->second.setter (*this, val);
+    // TODO: should this really be an error?
+    else if (std::holds_alternative<std::monostate> (conf.defaultVal))
+        return ImageError (ErrorCode::PartMissingProp, {{"prop", ""}, {"name", spec.name}});
+
+    return conf.setter (*this, conf.defaultVal);
+}
+
+ImageResult Component::Set (ImgProp prop, const ImageVal& val)
+{
+    return Success();
+}
+
+ResCustom<std::optional<std::any>, ImageError> Component::Get (ImgProp prop)
+{}
+
+ImageResult Component::SetDefaults()
+{
+    return Success();
 }
 
 void ImageError::makeMessage (ErrorFrame& frame)
@@ -172,36 +288,36 @@ void ImageError::makeMessage (ErrorFrame& frame)
             msg << "Name required for block type \"" << getString ("block_type") << "\"";
             break;
         case ErrorCode::InvalidImgType:
-            assertKeys ({"type", "name"});
-            msg << "Invalid image type \"" << getString ("type") << "\" specified on image \""
-                << getString ("name") << "\"";
+            assertKeys ({"type"});
+            msg << "Invalid image type \"" << getString ("type") << "\" specified on image" << getName();
             break;
-        case ErrorCode::MissingRequiredProp: {
-            assertKeys ({"prop", "name", "image_ptr"});
-            // HACK ALERT
-            Image* img = getValue<Image*> ("image_ptr");
-            assert (img);
-            msg << "Missing required property \"" << img->GetPropName (getValue<ImgProp> ("prop"))
-                << "\" on image \"" << getString ("name") << "\"";
-            break;
-        }
         case ErrorCode::InvalidImgProp:
-            assertKeys ({"prop_name", "name"});
-            msg << "Unrecognized property \"" << getString ("prop_name") << "\" specified on image \""
-                << getString ("name") << "\"";
+            assertKeys ({"prop_name"});
+            msg << "Unrecognized property \"" << getString ("prop_name") << "\" specified on image" << getName();
             break;
         case ErrorCode::BadFloppySize:
-            assertKeys ({"name"});
-            msg << "Floppy disc \"" << getString ("name") << "\" must have size 720K, 1.44M, or 2.88M";
+            msg << "Floppy disc" << getName() << " must have size 720K, 1.44M, or 2.88M";
             break;
         case ErrorCode::InvalidPartProp:
-            assertKeys ({"prop_name", "name"});
-            msg << "Unrecognized property \"" << getString ("prop_name") << "\" specified on partition \""
-                << getString ("name") << "\"";
+            assertKeys ({"prop_name"});
+            msg << "Unrecognized property \"" << getString ("prop_name") << "\" specified on partition" << getName();
             break;
         case ErrorCode::PropTypeMismatch:
             assertKeys ({"prop_name"});
             msg << "Invalid type specified on property \"" << getString ("prop_name") << "\"";
+            break;
+        case ErrorCode::InvalidId:
+            assertKeys ({"id", "prop_name"});
+            msg << "Invalid ID \"" << getString ("id") << "\" specified for property \"" << getString ("prop_name")
+                << "\" on image" << getName();
+            break;
+        case ErrorCode::ImgMissingProp:
+            assertKeys ({"prop"});
+            msg << "Missing required property \"" << getString ("prop") << "\" on image " << getName();
+            break;
+        case ErrorCode::PartMissingProp:
+            assertKeys ({"prop"});
+            msg << "Missing required property \"" << getString ("prop") << "\" on partition " << getName();
             break;
         default:
             msg << frame.msg;
@@ -210,216 +326,155 @@ void ImageError::makeMessage (ErrorFrame& frame)
 }
 
 // Now begins the all-important registries
-
-// NOTE: this contains names across all image types. It might be a questionable design choice but it's simpler
-// then having to chase down 100 different registries when we already do enough of that here
-const NameRegistry<ImgProp> Image::nameRegistry = {{"size", ImgProp::Size},
-    {"boot_mode", ImgProp::BootMode},
-    // MBR/GPT
-    {"mbr_file", ImgProp::MbrFile},
-    {"vbr_file", ImgProp::VbrFile},
-    // ISO9660
-    {"boot_emu", ImgProp::BootEmu},
-    {"boot_image", ImgProp::BootImage}};
-
-const EnumArray<ImgType, ImgConstruct, ImgType::Max> Image::factory = {
-    {ImgType::Mbr,
-        [] (const std::string& name) -> std::unique_ptr<Image> { return std::make_unique<MbrImage> (name); }},
-    {ImgType::Gpt,
-        [] (const std::string& name) -> std::unique_ptr<Image> { return std::make_unique<GptImage> (name); }},
-    {ImgType::Iso9660,
-        [] (const std::string& name) -> std::unique_ptr<Image> { return std::make_unique<IsoImage> (name); }},
-    {ImgType::Floppy, [] (const std::string& name) -> std::unique_ptr<Image> {
-         return std::make_unique<FloppyImage> (name);
-     }}};
-
-const NameRegistry<ImgType> Image::typeNames = {{"mbr", ImgType::Mbr},
-    {"gpt", ImgType::Gpt},
-    {"iso9660", ImgType::Iso9660},
-    {"floppy", ImgType::Floppy}};
-
-const NameRegistry<BootMode> Image::bootModes = {{"none", BootMode::None},
-    {"bios", BootMode::Bios},
-    {"efi", BootMode::Efi}};
-
-// NOTE: when the day comes that C++26 is fully ratified and implemented, the first thing I'm doing is erasing
-// this whole thing and using reflection to simplify this mess
-
 // clang-format off
+
+// NOTE: this contains names across for all components. It might be a questionable design choice but it's
+// simpler then having to chase down 100 different registries when we already do enough of that here
+const NameRegistry<ImgProp> Image::nameRegistry (MakeImgPropRegistry());
+
+// Property-to-owning-component table
+const std::unordered_map<ImgProp, CompType> Image::keyMap = [](){
+    constexpr auto table = MakeImgPropOwnerTable();
+    return std::unordered_map<ImgProp, CompType>{table.begin(), table.end()};
+}();
+
+// Keyword tables
+
+const NameRegistry<BootMode> Image::bootModes = {
+    {"none", BootMode::None},
+    {"bios", BootMode::Bios},
+    {"efi", BootMode::Efi},
+    {"uefi", BootMode::Efi}
+};
+
+// NOTE: when the day comes that C++26 is fully ratified and implemented, the first thing I'm doing is
+// erasing this whole thing and using reflection to simplify this mess
+
 const ImgConfRegistry Image::baseRegistry = {
-    {ImgProp::Size, {typeid (ImageNumId),
-        [] (Image& img, const ImageVal& val) -> ImageResult {
-            img.spec.size = (*val.Get<ImageNumId>()).Get();
-            return Success();
-        },
-        [] (Image& img) -> std::optional<std::any> {
-            return img.spec.size;
+    {ImgProp::Size,
+        {typeid (ImageNumId),
+            std::monostate{},
+            [] (Image& img, const ImageVal& val) -> ImageResult 
+            {
+                img.spec.size = (*val.Get<ImageNumId>()).Get();
+                return Success();
+            },
+            [] (Image& img) -> std::optional<std::any> 
+            {
+                if (img.spec.size < 0)
+                    return std::nullopt;
+                return img.spec.size;
+            }
         }
-    }},
-    {ImgProp::BootMode, {typeid (ImageId), 
-        [] (Image& img, const ImageVal& val) -> ImageResult {
-
-            std::string id = std::string(*val.Get<ImageId>());
-            auto mode = resolveBootMode (id);
-
-            if (mode == BootMode::Max)
-                return invalidId (img, id);
-
-            img.spec.bootMode = mode;
-            return Success();
-        },
-        [] (Image& img) -> std::optional<std::any> {
-            return img.spec.bootMode;
+    },
+    {ImgProp::BootMode,
+        {typeid (BootMode),
+            "none",
+            [] (Image& img, const ImageVal& val) -> ImageResult
+            {
+                std::string id = *val.Get<std::string>();
+                BootMode mode = bootModes.Resolve (id);
+                if(mode == BootMode::Max)
+                    return InvalidId (GetPropName (ImgProp::BootMode), img.spec.name, id);
+                img.spec.bootMode = mode;
+                return Success();
+            },
+            [] (Image& img) -> std::optional<std::any>
+            {
+                if(img.spec.bootMode == BootMode::Max)
+                    return std::nullopt;
+                return img.spec.bootMode;
+            }
         }
-    }}
-};
-
-// Image type-specific registrys
-
-const ImgConfRegistry MbrImage::registry = {
-    {ImgProp::VbrFile, {typeid (std::string),
-        [] (Image& img, const ImageVal& val) -> ImageResult {
-            derived<MbrImage> (img).vbrFile = *val.Get<std::string>();
-            return Success();
-        },
-        [] (Image& img) -> std::optional<std::any> {
-            return derived<MbrImage> (img).vbrFile;
-        }
-    }},
-    {ImgProp::MbrFile, {typeid (std::string),
-        [] (Image& img, const ImageVal& val) -> ImageResult {
-            derived<MbrImage> (img).mbrFile = *val.Get<std::string>();
-            return Success();
-        },
-        [] (Image& img) -> std::optional<std::any> {
-            return derived<MbrImage> (img).mbrFile;
-        }
-    }}
-};
-
-const ImgConfRegistry GptImage::registry = {
-    {ImgProp::VbrFile, {typeid (std::string),
-        [] (Image& img, const ImageVal& val) -> ImageResult {
-            derived<GptImage> (img).vbrFile = *val.Get<std::string>();
-            return Success();
-        },
-        [] (Image& img) -> std::optional<std::any> {
-            return derived<GptImage> (img).vbrFile;
-        }
-    }},
-    {ImgProp::MbrFile, {typeid (std::string),
-        [] (Image& img, const ImageVal& val) -> ImageResult {
-            derived<GptImage> (img).mbrFile = *val.Get<std::string>();
-            return Success();
-        },
-        [] (Image& img) -> std::optional<std::any> {
-            return derived<GptImage> (img).mbrFile;
-        }
-    }}
-};
-
-const ImgConfRegistry IsoImage::registry = {
-    {ImgProp::BootImage, {typeid (std::string),
-        [] (Image& img, const ImageVal& val) -> ImageResult {
-            derived<IsoImage> (img).bootImageName = *val.Get<std::string>();
-            return Success();
-        },
-        [] (Image& img) -> std::optional<std::any> {
-            return derived<IsoImage> (img).bootImageName;
-        }
-    }},
-    {ImgProp::BootEmu, {typeid (ImageId),
-        [] (Image& img, const ImageVal& val) -> ImageResult {
-            std::string id = std::string(*val.Get<ImageId>());
-            IsoBootEmu bootEmu = IsoImage::bootEmus.Resolve (id);
-            if (bootEmu == IsoBootEmu::Max)
-                return invalidId (img, id);
-
-            derived<IsoImage> (img).bootEmu = bootEmu;
-            return Success();
-        },
-        [] (Image& img) -> std::optional<std::any> {
-            return derived<IsoImage> (img).bootEmu;
-        }
-    }}
-};
-
-const ImgConfRegistry FloppyImage::registry = {
-    {ImgProp::MbrFile, {typeid (std::string),
-        [] (Image& img, const ImageVal& val) -> ImageResult {
-            derived<FloppyImage> (img).mbrFile = *val.Get<std::string>();
-            return Success();
-        },
-        [] (Image& img) -> std::optional<std::any> {
-            return derived<FloppyImage> (img).mbrFile;
-        }
-    }}
-};
-
-const EnumArray<IsoBootEmu, ImgType, IsoBootEmu::Max> IsoImage::bootEmuModes = {{IsoBootEmu::Noemu, ImgType::Max},
-    {IsoBootEmu::Hdd, ImgType::Mbr},    // NOTE: A GPT image is technically valid, but we don't have a clean
-                                        // way to represent that and if someone is dumb enough to use HDD
-                                        // emulation that I'm not responsible for their descisions
-    {IsoBootEmu::Fdd, ImgType::Floppy}};
-
-const NameRegistry<IsoBootEmu> IsoImage::bootEmus = {
-    {"noemu", IsoBootEmu::Noemu},
-    {"fdd", IsoBootEmu::Fdd},
-    {"hdd", IsoBootEmu::Hdd}
+        
+    }
 };
 
 // Partition types registry
 
-const NameRegistry<PartProp> Partition::nameRegistry = {{"start", PartProp::Start},
-    {"size", PartProp::Size},
-    {"format", PartProp::Format},
-    {"prefix", PartProp::Prefix},
-    {"is_boot", PartProp::IsBoot}};
+const NameRegistry<PartProp> Partition::nameRegistry (MakePartPropRegistry());
 
 const PartConfRegistry Partition::registry = {
-    {PartProp::Start, {typeid (ImageNumId),
-        [] (Partition& part, const ImageVal& val) -> ImageResult {
-            part.spec.start = (*val.Get<ImageNumId>()).Get();
-            return Success();
-        },
-        [] (Partition& part) -> std::optional<std::any> {
-            return part.spec.start;
+    {PartProp::Start,
+        {typeid (ImageNumId),
+            std::monostate{},
+            [] (Partition& part, const ImageVal& val) -> ImageResult 
+            {
+                part.spec.start = (*val.Get<ImageNumId>()).Get();
+                return Success();
+            },
+            [] (Partition& part) -> std::optional<std::any> 
+            {
+                if (part.spec.start == PartSpec::Default)
+                    return std::nullopt;
+                return part.spec.start;
+            }
         }
-    }},
-    {PartProp::Size, {typeid (ImageNumId),
-        [] (Partition& part, const ImageVal& val) -> ImageResult {
-            part.spec.size = (*val.Get<ImageNumId>()).Get();
-            return Success();
-        },
-        [] (Partition& part) -> std::optional<std::any> {
-            return part.spec.size;
+    },
+    {PartProp::Size,
+        {typeid (ImageNumId),
+            std::monostate{},
+            [] (Partition& part, const ImageVal& val) -> ImageResult 
+            {
+                part.spec.size = (*val.Get<ImageNumId>()).Get();
+                return Success();
+            },
+            [] (Partition& part) -> std::optional<std::any> 
+            {
+                if (part.spec.size == PartSpec::Default)
+                    return std::nullopt;
+                return part.spec.size;
+            }
         }
-    }},
-    {PartProp::Format, {typeid (std::string),
-        [] (Partition& part, const ImageVal& val) -> ImageResult {
-            part.spec.format = *val.Get<std::string>();
-            return Success();
-        },
-        [] (Partition& part) -> std::optional<std::any> {
-            return part.spec.format;
+    },
+    {PartProp::Format,
+        {typeid (std::string),
+            "",
+            [] (Partition& part, const ImageVal& val) -> ImageResult 
+            {
+                part.spec.format = *val.Get<std::string>();
+                return Success();
+            },
+            [] (Partition& part) -> std::optional<std::any> 
+            {
+                if (part.spec.format.empty())
+                    return std::nullopt;
+                return part.spec.format;
+            }
         }
-    }},
-    {PartProp::Prefix, {typeid (std::string),
-        [] (Partition& part, const ImageVal& val) -> ImageResult {
-            part.spec.prefix = *val.Get<std::string>();
-            return Success();
-        },
-        [] (Partition& part) -> std::optional<std::any> {
-            return part.spec.prefix;
+    },
+    {PartProp::Prefix,
+        {typeid (std::string),
+            "",
+            [] (Partition& part, const ImageVal& val) -> ImageResult 
+            {
+                part.spec.prefix = *val.Get<std::string>();
+                return Success();
+            },
+            [] (Partition& part) -> std::optional<std::any> 
+            {
+                if (part.spec.prefix.empty())
+                    return std::nullopt;
+                return part.spec.prefix;
+            }
         }
-    }},
-    {PartProp::IsBoot, {typeid (bool),
-        [] (Partition& part, const ImageVal& val) -> ImageResult {
-            part.spec.isBoot = *val.Get<bool>();
-            return Success();
-        },
-        [] (Partition& part) -> std::optional<std::any> {
-            return part.spec.isBoot;
+    },
+    {PartProp::IsBoot,
+        {typeid (bool),
+            false,
+            [] (Partition& part, const ImageVal& val) -> ImageResult 
+            {
+                part.spec.isBoot = *val.Get<bool>();
+                return Success();
+            },
+            [] (Partition& part) -> std::optional<std::any> 
+            {
+                if (!part.spec.isBoot.has_value())
+                    return std::nullopt;
+                return *part.spec.isBoot;
+            }
         }
-    }}
+    }
 };
+
+#include "CompTable.h"

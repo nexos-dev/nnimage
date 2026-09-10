@@ -22,6 +22,11 @@
 #include "include/EnumArray.h"
 #include "include/Error.h"
 
+#include <functional>
+#include <memory>
+#include <string>
+#include <unordered_map>
+
 enum class ActionType
 {
     Create,
@@ -55,8 +60,7 @@ class Action
     ActionType type;
 
   private:
-    inline static const std::unordered_map<std::string, ActionType> actionNameTable = {
-        {"create", ActionType::Create},
+    inline static const std::unordered_map<std::string, ActionType> actionNameTable = {{"create", ActionType::Create},
         {"init", ActionType::Init},
         {"partition", ActionType::Partition},
         {"format", ActionType::Format},

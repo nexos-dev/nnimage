@@ -20,6 +20,11 @@
 
 #include "include/Error.h"
 
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <variant>
+
 enum class TokenType
 {
     Identifier,

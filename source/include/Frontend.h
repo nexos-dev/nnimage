@@ -21,6 +21,12 @@
 #include "include/Error.h"
 #include "include/Image.h"
 #include "include/Options.h"
+#include "include/SimpleLexer.h"
+
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 // NOTE: this is here to prevent cxxopts from comma-splitting a partition spec. See Frontend.cxx for more
 // clarity
@@ -37,15 +43,22 @@ class FrontendOptions : public Options
   public:
     void CollectOptions (cxxopts::Options& opts);
     ResNone ValidateOptions();
-    static std::unique_ptr<Frontend> CreateFrontend();
+    std::unique_ptr<Frontend> CreateFrontend();
 
     std::string confFile{};
     std::string confEnc{};
 
     std::string imgSize{};
     std::string bootMode{};
+    std::string imgType{};
     std::vector<std::string> props{};
     PartitionStrings partSpecs{};
+
+  private:
+    Error makeOptionError (const std::string& msg)
+    {
+        return Error ({ErrorDomain::Option, ErrorCode::InvalidOption}, msg);
+    }
 };
 
 class Frontend
@@ -56,16 +69,26 @@ class Frontend
     {}
     virtual ~Frontend() = default;
     virtual ResNone Parse() = 0;
-    virtual std::vector<std::unique_ptr<Image>> GetImages() = 0;
+    std::vector<std::unique_ptr<Image>> GetImages()
+    {
+        std::vector<std::unique_ptr<Image>> vec;
+        vec.reserve (images.size());
+        for (auto& [key, ptr] : images)
+            vec.push_back (std::move (ptr));
+        // Clear the maps as we are done with them now
+        images.clear();
+        partitions.clear();
+        return vec;
+    }
 
   protected:
     FrontendOptions opts;
     // These contain all the images/partitions that have been parsed
-    std::vector<std::unique_ptr<Image>> images{};
-    std::vector<std::unique_ptr<Partition>> partitions{};
+    std::unordered_map<std::string, std::unique_ptr<Image>> images{};
+    std::unordered_map<std::string, std::unique_ptr<Partition>> partitions{};
     // These are any references between them. They get resolved at the end of parsing
-    std::vector<CompRef<Image>> imageRefs{};
-    std::vector<CompRef<Partition>> partRefs{};
+    std::vector<GenericRef<Image>> imageRefs{};
+    std::vector<GenericRef<Partition>> partRefs{};
 };
 
 // Frontend for specifying an image on the command line
@@ -75,6 +98,22 @@ class ImageCmd : public Frontend
     ImageCmd() = default;
     ImageCmd (FrontendOptions& opts) : Frontend (opts)
     {}
+    ResNone Parse();
+
+  private:
+    template <typename T>
+    Result<T> getToken (const std::string& val, const std::string& prop, TokenType type);
+    Result<ImageNumId> getSize();
+};
+
+// Frontend for images coming from a file
+class ImageConf : public Frontend
+{
+  public:
+    ImageConf() = default;
+    ImageConf (FrontendOptions& opts) : Frontend (opts)
+    {}
+    ResNone Parse();
 };
 
 #endif

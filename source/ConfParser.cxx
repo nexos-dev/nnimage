@@ -15,14 +15,19 @@
     limitations under the License.
 */
 
-#include "nnimage.h"
+#include "include/ConfParser.h"
+
+#include <algorithm>
+#include <cassert>
+#include <cstdint>
+#include <sstream>
 
 template <typename Derived, typename ConfKey>
 Result<TokenPtr> ConfParser<Derived, ConfKey>::parseProp (TokenPtr startTok, ConfProp& prop)
 {
     TokenPtr curTok = std::move (startTok);
     assert (curTok->type == TokenType::Identifier);
-    prop.name = std::get<std::string> (curTok->val);
+    prop.name = std::get<std::string> (std::move (curTok->val));
 
     // Get the equals sign
     auto res = expectToken (TokenType::Equals);
@@ -91,7 +96,7 @@ ResNone ConfParser<Derived, ConfKey>::parseLoop (std::vector<ConfProp>& props)
         res = parseProp (std::move (tok), curProp);
         if (!res.IsOk())
             return res.GetError();
-        props.push_back (curProp);
+        props.push_back (std::move (curProp));
 
         tok = std::move (res.GetValue());
         assert (tok);
@@ -102,7 +107,7 @@ ResNone ConfParser<Derived, ConfKey>::parseLoop (std::vector<ConfProp>& props)
 template <typename Derived, typename ConfKey>
 Result<TokenPtr> ConfParser<Derived, ConfKey>::setIdProp (ConfProp& prop, TokenPtr tok)
 {
-    prop.val = std::get<std::string> (tok->val);
+    prop.val = std::get<std::string> (std::move (tok->val));
     return expectToken (TokenType::Semicolon);
 }
 
@@ -118,7 +123,7 @@ Result<TokenPtr> ConfParser<Derived, ConfKey>::setListProp (ConfProp& prop, Toke
         tok = std::move (res.GetValue());
         assert (tok);
         // Add it
-        list.push_back (std::get<std::string> (tok->val));
+        list.push_back (std::get<std::string> (std::move (tok->val)));
 
         res = nextToken();
         if (!res.IsOk())
@@ -152,7 +157,7 @@ Result<TokenPtr> ConfParser<Derived, ConfKey>::setNumberProp (ConfProp& prop, Le
 template <typename Derived, typename ConfKey>
 ResNone ConfParser<Derived, ConfKey>::Parse()
 {
-    std::unique_lock<std::shared_mutex> (parseLock);
+    std::unique_lock<std::shared_mutex> lock (parseLock);
     if (fileName.empty())
     {
         throw ErrorException (
@@ -180,22 +185,20 @@ ResNone ConfParser<Derived, ConfKey>::Parse()
 template <typename Derived, typename ConfKey>
 ResNone ConfParser<Derived, ConfKey>::Set (ConfKey key, const ConfValue& val, bool overwrite)
 {
-    std::unique_lock<std::shared_mutex> (parseLock);
+    std::unique_lock<std::shared_mutex> lock (parseLock);
     auto& ctrl = this->getKeyRegistry()[key];
     // Check if key already exists and is overwritable
     if (!overwrite && (ctrl.getter (derived()).index() < static_cast<size_t> (ConfType::Max)))
     {
         return Error ({ErrorDomain::Log, ErrorCode::ParseError},
-                      "Attempt to write key \"{}\" and overwrite is not enabled",
-                      nameFromKey (key));
+            "Attempt to write key \"{}\" and overwrite is not enabled",
+            nameFromKey (key));
     }
 
     ConfType type = getValueType (val);
     if (type != ctrl.type)
     {
-        return Error ({ErrorDomain::Log, ErrorCode::ParseError},
-                      "Type mismatch on key \"{}\"",
-                      nameFromKey (key));
+        return Error ({ErrorDomain::Log, ErrorCode::ParseError}, "Type mismatch on key \"{}\"", nameFromKey (key));
     }
 
     // Add it to our list of keys if it isn't in there
@@ -211,7 +214,7 @@ ResNone ConfParser<Derived, ConfKey>::Set (ConfKey key, const ConfValue& val, bo
 template <typename Derived, typename ConfKey>
 Result<bool> ConfParser<Derived, ConfKey>::Get (ConfKey key, ConfValue& val)
 {
-    std::shared_lock<std::shared_mutex> (parseLock);    // Grab the lock for reading
+    std::shared_lock<std::shared_mutex> lock (parseLock);    // Grab the lock for reading
     val = getKeyRegistry()[key].getter (derived());
     if (val.index() >= static_cast<size_t> (ConfType::Max))
         return false;
@@ -231,7 +234,7 @@ ResNone ConfParser<Derived, ConfKey>::Serialize (std::string& out)
         });
         // Ensure we could find it
         assert (it != getNameToKey().end());
-        std::string name = it->first;
+        const std::string& name = it->first;
 
         // Now get the value
         ConfValue val = getKeyRegistry()[key].getter (derived());
@@ -259,6 +262,8 @@ ResNone ConfParser<Derived, ConfKey>::Serialize (std::string& out)
                 }
                 data << "}";
             }
+            default:
+                assert (false);
         }
         data << ";\n";
     }

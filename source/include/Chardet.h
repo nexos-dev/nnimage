@@ -20,6 +20,9 @@
 
 #include <config.h>
 
+#include <string>
+#include <string_view>
+
 #ifdef HAVE_CHARDET
 #include <chardet/chardet.h>
 

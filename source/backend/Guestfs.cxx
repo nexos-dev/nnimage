@@ -15,7 +15,6 @@
     limitations under the License.
 */
 
-#include "nnimage.h"
 #include "backend/GuestfsBackend.h"
 #include <guestfs.h>
 

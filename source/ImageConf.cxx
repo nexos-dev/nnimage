@@ -15,4 +15,9 @@
     limitations under the License.
 */
 
-#include "nnimage.h"
+#include "include/Frontend.h"
+
+ResNone ImageConf::Parse()
+{
+    return Success();
+}
