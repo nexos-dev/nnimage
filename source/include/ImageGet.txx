@@ -48,7 +48,12 @@ ResCustom<std::optional<T>, ImageError> Image::Get (ImgProp prop)
         val = getRes.GetValue();
     }
     else
-        val = getBase (prop);
+    {
+        auto getRes = RegElement::Get (prop);
+        if (!getRes.IsOk())
+            return getRes.GetError();
+        val = getRes.GetValue();
+    }
 
     if (!val)
         return std::optional<T>{};
@@ -56,7 +61,7 @@ ResCustom<std::optional<T>, ImageError> Image::Get (ImgProp prop)
     if (T* ptr = std::any_cast<T> (&*val))
         return std::optional<T> (*ptr);
 
-    return ImageError (ErrorCode::PropTypeMismatch, {{"prop_name", GetPropName (prop)}, {"name", spec.name}});
+    return ImageError (ErrorCode::PropTypeMismatch, {{"prop", GetPropName (prop)}, {"name", spec.name}});
 }
 
 template <typename T>
@@ -81,16 +86,16 @@ ResCustom<std::optional<T>, ImageError> Partition::Get (const std::string& name)
 template <typename T>
 ResCustom<std::optional<T>, ImageError> Partition::Get (PartProp prop)
 {
-    auto entryRes = resolveEntry (prop);
-    if (!entryRes.IsOk())
-        return entryRes.GetError();
+    auto res = RegElement::Get (prop);
+    if (!res.IsOk())
+        return res.GetError();
 
-    const auto& conf = entryRes.GetValue();
-    auto val = conf.getter (*this);
-    if (!val)
+    auto val = res.GetValue();
+    if (!val.has_value())
         return std::optional<T>{};
 
     if (T* ptr = std::any_cast<T> (&*val))
         return std::optional<T> (*ptr);
-    return ImageError (ErrorCode::PropTypeMismatch, {{"prop_name", GetPropName (prop)}, {"name", spec.name}});
+
+    return ImageError (ErrorCode::PropTypeMismatch, {{"prop", GetPropName (prop)}, {"name", spec.name}});
 }

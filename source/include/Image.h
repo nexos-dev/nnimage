@@ -59,10 +59,10 @@ struct PartSpec
     ~PartSpec() = default;
 };
 
-class Partition
+class Partition : public RegElement<Partition, PartProp, PartConfRegistry>
 {
   public:
-    Partition (const std::string& name)
+    Partition (const std::string& name) : RegElement{ErrorCode::InvalidPartProp, ErrorCode::PartMissingProp}
     {
         spec.name = name;
     }
@@ -75,17 +75,18 @@ class Partition
     }
 
     ImageResult Set (std::string_view name, const ImageVal& val);
-    ImageResult Set (PartProp key, const ImageVal& val);
 
     template <typename T>
     ResCustom<std::optional<T>, ImageError> Get (const std::string& name);
+
     template <typename T>
     ResCustom<std::optional<T>, ImageError> Get (PartProp prop);
 
     ResCustom<bool, ImageError> IsSet (std::string_view name);
-    ResCustom<bool, ImageError> IsSet (PartProp prop);
 
-    ImageResult SetDefaults();
+    using RegElement<Partition, PartProp, PartConfRegistry>::IsSet;
+    using RegElement<Partition, PartProp, PartConfRegistry>::Set;
+    using RegElement<Partition, PartProp, PartConfRegistry>::SetDefaults;
 
     static PartProp ResolveName (std::string_view name)
     {
@@ -102,21 +103,29 @@ class Partition
     }
 
   private:
-    ImageResult applyDefault (const PartConfItem& conf);
-
-    // Resolves name to a PartProp and dispatches func(prop), converting a resolve failure into InvalidPartProp
+    // Resolves name to a PartProp and dispatches func(prop)
     template <typename Func>
-    static auto dispatchByName (std::string_view name, const std::string& partName, Func&& func)
+    auto dispatchByName (std::string_view name, const std::string& partName, Func&& func)
         -> decltype (func (PartProp::Max))
     {
         PartProp prop = ResolveName (name);
         if (prop == PartProp::Max)
-            return ImageError (ErrorCode::InvalidPartProp, {{"prop_name", std::string (name)}, {"name", partName}});
+            return ImageError (ErrorCode::InvalidPartProp, {{"prop", std::string (name)}, {"name", partName}});
         return func (prop);
     }
 
-    // Looks up the registry entry for prop, converting a missing entry into InvalidPartProp
-    ResCustom<PartConfItem, ImageError> resolveEntry (PartProp prop);
+    const PartConfRegistry& getRegistry() const override
+    {
+        return registry;
+    }
+    const std::string& getRegElementName() const override
+    {
+        return spec.name;
+    }
+    const std::string& getPropName (PartProp prop) const override
+    {
+        return GetPropName (prop);
+    }
 
     PartSpec spec;
     const static PartConfRegistry registry;
@@ -149,10 +158,10 @@ struct ImgSpec
     ~ImgSpec() = default;
 };
 
-class Image
+class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
 {
   public:
-    Image (const std::string& name)
+    Image (const std::string& name) : RegElement{ErrorCode::InvalidImgProp, ErrorCode::ImgMissingProp}
     {
         spec.name = name;
     }
@@ -232,7 +241,7 @@ class Image
     // Error maker helpers
     static ImageError InvalidId (const std::string& prop, const std::string& name, const std::string& id)
     {
-        return ImageError (ErrorCode::InvalidId, {{"prop_name", prop}, {"name", name}, {"id", id}});
+        return ImageError (ErrorCode::InvalidId, {{"prop", prop}, {"name", name}, {"id", id}});
     }
 
   private:
@@ -245,26 +254,32 @@ class Image
     // Component containers
     EnumArray<CompType, std::unique_ptr<Component>, CompType::Max> comps;
 
-    // Resolves name to an ImgProp and dispatches func(prop), converting a resolve failure into InvalidImgProp
+    // Resolves name to an ImgProp and dispatches func(prop)
     template <typename Func>
     static auto dispatchByName (std::string_view name, const std::string& imgName, Func&& func)
         -> decltype (func (ImgProp::Max))
     {
         ImgProp prop = ResolveProp (name);
         if (prop == ImgProp::Max)
-            return ImageError (ErrorCode::InvalidImgProp, {{"prop_name", std::string (name)}, {"name", imgName}});
+            return ImageError (ErrorCode::InvalidImgProp, {{"prop", std::string (name)}, {"name", imgName}});
         return func (prop);
     }
 
     // Resolves prop to its owning component, or nullopt if it's owned by the base image itself..
     ResCustom<std::optional<Component*>, ImageError> resolveComponent (ImgProp prop);
 
-    ImageResult setBase (ImgProp prop, const ImageVal& val);
-    std::optional<std::any> getBase (ImgProp prop);
-    bool checkSetBase (ImgProp prop);
-
-    ImageResult applyDefaults (const ImgConfRegistry& registry);
-    ImageResult applyDefault (const ImgConfItem& conf);
+    const ImgConfRegistry& getRegistry() const override
+    {
+        return baseRegistry;
+    }
+    const std::string& getRegElementName() const override
+    {
+        return spec.name;
+    }
+    const std::string& getPropName (ImgProp prop) const override
+    {
+        return GetPropName (prop);
+    }
 
     const static ImgConfRegistry baseRegistry;
     const static std::unordered_map<ImgProp, CompType> keyMap;

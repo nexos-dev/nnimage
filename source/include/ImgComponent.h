@@ -34,24 +34,30 @@ class Image;
 using CompConfRegistry = ConfRegistry<ImgProp, Component>;
 
 // Generic image object component
-class Component
+class Component : public RegElement<Component, ImgProp, CompConfRegistry>
 {
   public:
     virtual ~Component() = default;
+
+    using RegElement<Component, ImgProp, CompConfRegistry>::Get;
+    using RegElement<Component, ImgProp, CompConfRegistry>::IsSet;
+    using RegElement<Component, ImgProp, CompConfRegistry>::Set;
+    using RegElement<Component, ImgProp, CompConfRegistry>::SetDefaults;
 
     CompType GetType()
     {
         return type;
     }
 
-    ImageResult Set (ImgProp prop, const ImageVal& val);
-    ResCustom<std::optional<std::any>, ImageError> Get (ImgProp prop);
-    ImageResult SetDefaults();
-
   protected:
-    Component (CompType type, Image& img) : owner{img}, type{type}
+    Component (CompType type, Image& img)
+        : RegElement{ErrorCode::InvalidImgProp, ErrorCode::ImgMissingProp}, owner{img}, type{type}
     {}
-    virtual const CompConfRegistry& getRegistry() const = 0;
+    virtual const CompConfRegistry& getRegistry() const override = 0;
+
+  private:
+    const std::string& getRegElementName() const override;
+    const std::string& getPropName (ImgProp prop) const override;
 
     CompType type;
     Image& owner;

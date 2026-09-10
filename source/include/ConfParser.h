@@ -110,6 +110,8 @@ class ConfParser
     Result<TokenPtr> setNumberProp (ConfProp& prop, LexToken* tok);
     Result<TokenPtr> setIdProp (ConfProp& prop, TokenPtr tok);
     Result<TokenPtr> setListProp (ConfProp& prop, TokenPtr tok);
+    // Does the actual work of Set() without acquiring parseLoc
+    ResNone setLocked (ConfKey key, const ConfValue& val, bool overwrite);
 
     SimpleLexer lexer;
     std::string fileName;

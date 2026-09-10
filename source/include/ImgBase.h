@@ -222,4 +222,42 @@ struct ConfItem
 template <typename Key, typename Object>
 using ConfRegistry = std::unordered_map<Key, ConfItem<Object>>;
 
+template <typename Element, typename Property, typename Registry>
+class RegElement
+{
+  public:
+    virtual ~RegElement() = default;
+
+    ImageResult Set (Property prop, const ImageVal& val);
+
+    ResCustom<std::optional<std::any>, ImageError> Get (Property prop);
+
+    ResCustom<bool, ImageError> IsSet (Property prop);
+
+    ImageResult SetDefaults();
+
+  protected:
+    RegElement (ErrorCode invalidPropertyCode, ErrorCode missingPropertyCode)
+        : invalidPropertyCode{invalidPropertyCode}, missingPropertyCode{missingPropertyCode}
+    {}
+
+    Element& element()
+    {
+        return static_cast<Element&> (*this);
+    }
+
+    static ImageError makeRegElementError (ErrorCode code, const std::string& elementName, std::string_view propName)
+    {
+        return ImageError (code, {{"prop", std::string (propName)}, {"name", elementName}});
+    }
+
+  private:
+    virtual const Registry& getRegistry() const = 0;
+    virtual const std::string& getRegElementName() const = 0;
+    virtual const std::string& getPropName (Property prop) const = 0;
+
+    ErrorCode invalidPropertyCode;
+    ErrorCode missingPropertyCode;
+};
+
 #endif

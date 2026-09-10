@@ -68,15 +68,6 @@ ResNone FrontendOptions::ValidateOptions()
         return Success();
     }
 
-    if (!hasImgSize && !hasPartitions)
-        return makeOptionError ("No image specification provided");
-
-    if (!hasImgSize)
-        return makeOptionError ("No image size specified");
-
-    if (!hasPartitions)
-        return makeOptionError ("No partition specification provided");
-
     return Success();
 }
 

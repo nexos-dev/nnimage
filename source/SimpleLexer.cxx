@@ -489,14 +489,7 @@ TokenResult SimpleLexer::NextToken()
                     skipChar();
                 }
                 else
-                {
-                    // This is just a zero
-                    tok->type = TokenType::Number;
-                    tok->line = curLine;
-                    tok->val.emplace<uint64_t> (0);
-                    isAccepted = true;
-                    break;
-                }
+                    base = 10;    // This is a lone 0
                 goto lexNum;
             case '1':
             case '2':
@@ -528,7 +521,7 @@ TokenResult SimpleLexer::NextToken()
                 catch (const std::invalid_argument& e)
                 {
                     lexError (err, LexError::InvalidNum, numStr);
-                    return TokenResult (std::move (tok));
+                    return TokenResult (err);
                 }
                 // Check what next character is
                 if (isCharId (c))
@@ -570,7 +563,7 @@ TokenResult SimpleLexer::NextToken()
                     {
                         // That's an error
                         lexError (err, LexError::UnexpectedEof, "");
-                        return TokenResult (std::move (tok));
+                        return TokenResult (err);
                     }
                     // Check for escape
                     else if (c == '\\')
@@ -617,7 +610,7 @@ TokenResult SimpleLexer::NextToken()
                         else if (next == '\0')
                         {
                             lexError (err, LexError::UnexpectedEof, "");
-                            return TokenResult (std::move (tok));
+                            return TokenResult (err);
                         }
                         else
                         {

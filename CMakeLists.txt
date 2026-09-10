@@ -54,11 +54,7 @@ set(NNIMAGE_DEFAULT_BACKEND "krun" CACHE STRING "Default backend to use when cre
 
 set(NNIMAGE_ALL_BACKENDS "krun;guestfs;xorriso;loopback" CACHE INTERNAL "All backends that can be enabled")
 
-####################
-# SOURCE SETUP     #
-####################
-
-set(NNIMAGE_SOURCES "")
+set(NNIMAGE_BACKEND_SOURCES "")
 set(NNIMAGE_LIBRARIES "")
 set(NNIMAGE_USABLE_BACKENDS "")
 
@@ -119,7 +115,7 @@ foreach(BACKEND ${NNIMAGE_ENABLED_BACKENDS})
             if(BACKEND_ENABLED)
 
                 list(APPEND NNIMAGE_USABLE_BACKENDS ${BACKEND_NAME})
-                list(APPEND NNIMAGE_SOURCES ${BACKEND_SOURCE})
+                list(APPEND NNIMAGE_BACKEND_SOURCES ${BACKEND_SOURCE})
 
                 if(BACKEND_LIBRARY_TARGET)
                     list(APPEND NNIMAGE_LIBRARIES ${BACKEND_LIBRARY_TARGET})
@@ -197,8 +193,6 @@ configure_file(source/config.h.in config.h)
 # PREPARE EXECUTABLE #
 ######################
 
-list(APPEND NNIMAGE_SOURCES ${NNIMAGE_COMP_SOURCES})
-
 # List sources
 list(APPEND NNIMAGE_SOURCES source/main.cxx
                             source/Log.cxx
@@ -212,11 +206,19 @@ list(APPEND NNIMAGE_SOURCES source/main.cxx
                             source/Frontend.cxx
                             source/ImageCmd.cxx
                             source/ImageConf.cxx
-                            source/Task.cxx
-                            external/MemoryMapped.cpp)
+                            source/Task.cxx)
+
+list(APPEND NNIMAGE_EXT_SOURCES external/MemoryMapped.cpp)
 
 if(NNIMAGE_ENABLE_TESTS)
-    list(APPEND NNIMAGE_SOURCES tests/TestDriver.cxx)
+    list(APPEND NNIMAGE_TEST_SOURCES tests/TestDriver.cxx
+                                     tests/Task.cxx
+                                     tests/Error.cxx
+                                     tests/Log.cxx
+                                     tests/Helpers.cxx
+                                     tests/Image.cxx
+                                     tests/SimpleLexer.cxx
+                                     tests/ConfParser.cxx)
 endif()
 
 ######################
@@ -224,7 +226,11 @@ endif()
 ######################
 
 # Create the program
-add_executable(nnimage ${NNIMAGE_SOURCES})
+add_executable(nnimage)
+
+target_sources(nnimage PRIVATE ${NNIMAGE_SOURCES}
+                ${NNIMAGE_COMP_SOURCES} ${NNIMAGE_BACKEND_SOURCES} 
+                ${NNIMAGE_EXT_SOURCES} ${NNIMAGE_TEST_SOURCES})
 
 # Ensure nnimage is dependent on the backend header file
 add_dependencies(nnimage GenerateBackendHeader GenerateComponentHeader)

@@ -173,8 +173,9 @@ ResNone ConfParser<Derived, ConfKey>::Parse()
     {
         ConfKey key = getPropKey (prop.name);
         assert (key != ConfKey::None);
-        // We have the key, now set it
-        auto res = Set (key, prop.val, true);
+        // We have the key, now set it. Use the lock-free variant since Parse() already holds
+        // parseLock for the entire operation
+        auto res = setLocked (key, prop.val, true);
         if (!res.IsOk())
             return res.GetError();
     }
@@ -186,6 +187,12 @@ template <typename Derived, typename ConfKey>
 ResNone ConfParser<Derived, ConfKey>::Set (ConfKey key, const ConfValue& val, bool overwrite)
 {
     std::unique_lock<std::shared_mutex> lock (parseLock);
+    return setLocked (key, val, overwrite);
+}
+
+template <typename Derived, typename ConfKey>
+ResNone ConfParser<Derived, ConfKey>::setLocked (ConfKey key, const ConfValue& val, bool overwrite)
+{
     auto& ctrl = this->getKeyRegistry()[key];
     // Check if key already exists and is overwritable
     if (!overwrite && (ctrl.getter (derived()).index() < static_cast<size_t> (ConfType::Max)))

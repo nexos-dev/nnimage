@@ -20,6 +20,67 @@
 #include <cassert>
 #include <sstream>
 
+// Generic registry class functions
+// Pardon all the template noise
+
+template <typename Element, typename Property, typename Registry>
+ImageResult RegElement<Element, Property, Registry>::Set (Property prop, const ImageVal& val)
+{
+    const auto& registry = getRegistry();
+    auto it = registry.find (prop);
+    if (it == registry.end())
+        return makeRegElementError (invalidPropertyCode, getRegElementName(), getPropName (prop));
+
+    const auto& conf = it->second;
+    if (conf.inputType != val.GetType())
+        return makeRegElementError (ErrorCode::PropTypeMismatch, getRegElementName(), getPropName (prop));
+
+    return conf.setter (element(), val);
+}
+
+template <typename Element, typename Property, typename Registry>
+ResCustom<std::optional<std::any>, ImageError> RegElement<Element, Property, Registry>::Get (Property prop)
+{
+    const auto& registry = getRegistry();
+    auto it = registry.find (prop);
+    if (it == registry.end())
+        return makeRegElementError (invalidPropertyCode, getRegElementName(), getPropName (prop));
+
+    return it->second.getter (element());
+}
+
+template <typename Element, typename Property, typename Registry>
+ResCustom<bool, ImageError> RegElement<Element, Property, Registry>::IsSet (Property prop)
+{
+    auto value = Get (prop);
+    if (!value.IsOk())
+        return value.GetError();
+    return value.GetValue().has_value();
+}
+
+template <typename Element, typename Property, typename Registry>
+ImageResult RegElement<Element, Property, Registry>::SetDefaults()
+{
+    for (const auto& [prop, conf] : getRegistry())
+    {
+        // Don't overwrite an existing value
+        if (conf.getter (element()).has_value())
+            continue;
+
+        // Error out, monostate means there is no default and it is required
+        // TODO: should we do this?
+        if (std::holds_alternative<std::monostate> (conf.defaultVal))
+            return makeRegElementError (missingPropertyCode, getRegElementName(), getPropName (prop));
+
+        auto result = conf.setter (element(), ImageVal (conf.defaultVal));
+        if (!result.IsOk())
+            return result.GetError();
+    }
+    return Success();
+}
+
+// Begin Image class
+
 BackendType Image::GetBackendType (BackendType suggestion) const
 {
     return BackendType::None;
@@ -60,7 +121,7 @@ ImageResult Image::Set (ImgProp prop, const ImageVal& val)
     if (comp.has_value())
         return (*comp)->Set (prop, val);
 
-    return setBase (prop, val);
+    return RegElement::Set (prop, val);
 }
 
 ResCustom<bool, ImageError> Image::IsSet (std::string_view name)
@@ -83,7 +144,7 @@ ResCustom<bool, ImageError> Image::IsSet (ImgProp prop)
         return getRes.GetValue().has_value();
     }
 
-    return checkSetBase (prop);
+    return RegElement::IsSet (prop);
 }
 
 ResCustom<std::optional<Component*>, ImageError> Image::resolveComponent (ImgProp prop)
@@ -97,38 +158,15 @@ ResCustom<std::optional<Component*>, ImageError> Image::resolveComponent (ImgPro
 
     Component* comp = comps[owner].get();
     if (!comp)
-        return ImageError (ErrorCode::InvalidImgProp, {{"prop_name", GetPropName (prop)}, {"name", spec.name}});
+        return ImageError (ErrorCode::InvalidImgProp, {{"prop", GetPropName (prop)}, {"name", spec.name}});
 
     return std::optional<Component*> (comp);
-}
-
-ImageResult Image::setBase (ImgProp prop, const ImageVal& val)
-{
-    // Get the registry entry
-    auto it = baseRegistry.find (prop);
-    assert (it != baseRegistry.end());
-
-    const auto& conf = it->second;
-    if (conf.inputType != val.GetType())
-        return ImageError (ErrorCode::PropTypeMismatch, {{"prop_name", GetPropName (prop)}});
-
-    return conf.setter (*this, val);
-}
-
-bool Image::checkSetBase (ImgProp prop)
-{
-    auto it = baseRegistry.find (prop);
-    assert (it != baseRegistry.end());
-
-    const auto& conf = it->second;
-
-    return conf.getter (*this).has_value();
 }
 
 ImageResult Image::SetDefaults()
 {
     // Apply base level defaults
-    auto res = applyDefaults (baseRegistry);
+    auto res = RegElement::SetDefaults();
     if (!res.IsOk())
         return res.GetError();
 
@@ -147,58 +185,15 @@ ImageResult Image::SetDefaults()
     return Success();
 }
 
-ImageResult Image::applyDefaults (const ImgConfRegistry& registry)
-{
-    for (const auto& [prop, conf] : registry)
-    {
-        auto res = applyDefault (conf);
-        if (!res.IsOk())
-        {
-            // Only MissingProp error is valid here; all others are programing errors
-            ImageError& err = res.GetError();
-            assert (err.LastFrame().code == ErrorCode::ImgMissingProp);
-            err.AddKey ({{"prop", GetPropName (prop)}});
-            return err;
-        }
-    }
-    return Success();
-}
-
-ImageResult Image::applyDefault (const ImgConfItem& conf)
-{
-    // Don't overwrite a set value
-    if (conf.getter (*this).has_value())
-        return Success();
-
-    // Is has no default, error out
-    // TODO: should this really be an error?
-    else if (std::holds_alternative<std::monostate> (conf.defaultVal))
-        return ImageError (ErrorCode::ImgMissingProp, {{"prop", ""}, {"name", spec.name}});
-
-    return conf.setter (*this, conf.defaultVal);
-}
-
 ImageResult Image::Validate()
 {
     return Success();
 }
 
+// Partition functions
 ImageResult Partition::Set (std::string_view name, const ImageVal& val)
 {
     return dispatchByName (name, spec.name, [&] (PartProp prop) { return Set (prop, val); });
-}
-
-ImageResult Partition::Set (PartProp prop, const ImageVal& val)
-{
-    auto entryRes = resolveEntry (prop);
-    if (!entryRes.IsOk())
-        return entryRes.GetError();
-
-    auto conf = entryRes.GetValue();
-    if (conf.inputType != val.GetType())
-        return ImageError (ErrorCode::PropTypeMismatch, {{"prop_name", GetPropName (prop)}, {"name", spec.name}});
-
-    return conf.setter (*this, val);
 }
 
 ResCustom<bool, ImageError> Partition::IsSet (std::string_view name)
@@ -206,66 +201,15 @@ ResCustom<bool, ImageError> Partition::IsSet (std::string_view name)
     return dispatchByName (name, spec.name, [&] (PartProp prop) { return IsSet (prop); });
 }
 
-ResCustom<bool, ImageError> Partition::IsSet (PartProp prop)
+// Component functions
+const std::string& Component::getRegElementName() const
 {
-    auto entryRes = resolveEntry (prop);
-    if (!entryRes.IsOk())
-        return entryRes.GetError();
-
-    const auto& conf = entryRes.GetValue();
-    return conf.getter (*this).has_value();
+    return owner.GetName();
 }
 
-ResCustom<PartConfItem, ImageError> Partition::resolveEntry (PartProp prop)
+const std::string& Component::getPropName (ImgProp prop) const
 {
-    auto it = registry.find (prop);
-    if (it == registry.end())
-        return ImageError (ErrorCode::InvalidPartProp, {{"prop_name", GetPropName (prop)}, {"name", spec.name}});
-
-    return it->second;
-}
-
-ImageResult Partition::SetDefaults()
-{
-    for (const auto& [prop, conf] : registry)
-    {
-        auto res = applyDefault (conf);
-        if (!res.IsOk())
-        {
-            ImageError& err = res.GetError();
-            // This is the only error that can occur validly; other errors are programing errors
-            assert (err.LastFrame().code == ErrorCode::PartMissingProp);
-            err.AddKey ({{"prop", GetPropName (prop)}});
-            return err;
-        }
-    }
-    return Success();
-}
-
-ImageResult Partition::applyDefault (const PartConfItem& conf)
-{
-    // Don't overwrite
-    if (conf.getter (*this).has_value())
-        return Success();
-
-    // TODO: should this really be an error?
-    else if (std::holds_alternative<std::monostate> (conf.defaultVal))
-        return ImageError (ErrorCode::PartMissingProp, {{"prop", ""}, {"name", spec.name}});
-
-    return conf.setter (*this, conf.defaultVal);
-}
-
-ImageResult Component::Set (ImgProp prop, const ImageVal& val)
-{
-    return Success();
-}
-
-ResCustom<std::optional<std::any>, ImageError> Component::Get (ImgProp prop)
-{}
-
-ImageResult Component::SetDefaults()
-{
-    return Success();
+    return Image::GetPropName (prop);
 }
 
 void ImageError::makeMessage (ErrorFrame& frame)
@@ -292,23 +236,23 @@ void ImageError::makeMessage (ErrorFrame& frame)
             msg << "Invalid image type \"" << getString ("type") << "\" specified on image" << getName();
             break;
         case ErrorCode::InvalidImgProp:
-            assertKeys ({"prop_name"});
-            msg << "Unrecognized property \"" << getString ("prop_name") << "\" specified on image" << getName();
+            assertKeys ({"prop"});
+            msg << "Unrecognized property \"" << getString ("prop") << "\" specified on image" << getName();
             break;
         case ErrorCode::BadFloppySize:
             msg << "Floppy disc" << getName() << " must have size 720K, 1.44M, or 2.88M";
             break;
         case ErrorCode::InvalidPartProp:
-            assertKeys ({"prop_name"});
-            msg << "Unrecognized property \"" << getString ("prop_name") << "\" specified on partition" << getName();
+            assertKeys ({"prop"});
+            msg << "Unrecognized property \"" << getString ("prop") << "\" specified on partition" << getName();
             break;
         case ErrorCode::PropTypeMismatch:
-            assertKeys ({"prop_name"});
-            msg << "Invalid type specified on property \"" << getString ("prop_name") << "\"";
+            assertKeys ({"prop"});
+            msg << "Invalid type specified on property \"" << getString ("prop") << "\"";
             break;
         case ErrorCode::InvalidId:
-            assertKeys ({"id", "prop_name"});
-            msg << "Invalid ID \"" << getString ("id") << "\" specified for property \"" << getString ("prop_name")
+            assertKeys ({"id", "prop"});
+            msg << "Invalid ID \"" << getString ("id") << "\" specified for property \"" << getString ("prop")
                 << "\" on image" << getName();
             break;
         case ErrorCode::ImgMissingProp:
@@ -368,7 +312,7 @@ const ImgConfRegistry Image::baseRegistry = {
         }
     },
     {ImgProp::BootMode,
-        {typeid (BootMode),
+        {typeid (std::string),
             "none",
             [] (Image& img, const ImageVal& val) -> ImageResult
             {
@@ -476,5 +420,9 @@ const PartConfRegistry Partition::registry = {
         }
     }
 };
+
+template class RegElement<Image, ImgProp, ImgConfRegistry>;
+template class RegElement<Partition, PartProp, PartConfRegistry>;
+template class RegElement<Component, ImgProp, CompConfRegistry>;
 
 #include "CompTable.h"

@@ -111,12 +111,22 @@ bool Dispatch::Execute()
 
     // Invoke the frontend
     auto frontend = frontOpts.CreateFrontend();
-    auto resFront = frontend->Parse();
+    /*auto resFront = frontend->Parse();
     if (!resFront.IsOk())
     {
         dispatchFail (resFront.GetError());
         return false;
-    }
+    }*/
+
+    Image img ("testImg");
+    ImageNumId id (127, "MiB");
+    id.Parse();
+    img.Set (ImgProp::Size, ImageVal (id));
+
+    auto res = img.Get<int64_t> (ImgProp::Size);
+    assert (res.IsOk());
+
+    auto val = *res.GetValue();
 
     return true;
 }

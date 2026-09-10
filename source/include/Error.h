@@ -134,7 +134,8 @@ class Error
     // TODO: maybe we should allow lvalues?
     Error& Add (const Error&& err)
     {
-        if (err.severity != ErrorSeverity::Fatal)
+        // Never downgrade from fatal, matching the semantics of the other Add() overloads
+        if (this->severity != ErrorSeverity::Fatal)
             this->severity = err.severity;
         frames.push_back (err.frames[0]);
         return *this;
