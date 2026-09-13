@@ -26,12 +26,13 @@
 
 // X-Macro tables for image/partition property enums
 
-// NOTE: each property has an owning component. This is the mid-level component, as each
-// property by definition is owned at that level so it can be redefined for different types across the same level
+// NOTE: each property has an owning component. This is for the slot level, as each
+// property by definition is owned at that level so it can be redefined for different types across the same slot
 #define IMG_PROP_TABLE(X)             \
     X (Size, "size", Max)             \
     X (BootMode, "boot_mode", Max)    \
     X (PartType, "type", Max)         \
+    X (BootLoad, "bootloader", Max)   \
     X (MbrFile, "mbr_file", Boot)     \
     X (VbrFile, "vbr_file", Boot)     \
     X (BootEmu, "boot_emu", PartType) \

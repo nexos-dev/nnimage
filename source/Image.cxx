@@ -121,7 +121,14 @@ ImageResult Image::Set (ImgProp prop, const ImageVal& val)
     if (comp.has_value())
         return (*comp)->Set (prop, val);
 
-    return RegElement::Set (prop, val);
+    // CHeck if it's on the base
+    if (hasProperty (prop))
+        return RegElement::Set (prop, val);
+
+    // Otherwise defer it
+    deferredProps.push_back ({prop, val});
+
+    return Success();
 }
 
 ResCustom<bool, ImageError> Image::IsSet (std::string_view name)
@@ -147,22 +154,6 @@ ResCustom<bool, ImageError> Image::IsSet (ImgProp prop)
     return RegElement::IsSet (prop);
 }
 
-ResCustom<std::optional<Component*>, ImageError> Image::resolveComponent (ImgProp prop)
-{
-    auto it = keyMap.find (prop);
-    assert (it != keyMap.end());
-
-    CompType owner = it->second;
-    if (owner == CompType::Max)
-        return std::optional<Component*>{};
-
-    Component* comp = comps[owner].get();
-    if (!comp)
-        return ImageError (ErrorCode::InvalidImgProp, {{"prop", GetPropName (prop)}, {"name", spec.name}});
-
-    return std::optional<Component*> (comp);
-}
-
 ImageResult Image::SetDefaults()
 {
     // Apply base level defaults
@@ -185,8 +176,95 @@ ImageResult Image::SetDefaults()
     return Success();
 }
 
-ImageResult Image::Validate()
+ImageResult Image::Finalize()
 {
+    // Handle all deferred properties now
+    auto defRes = runDeferred();
+    if (!defRes.IsOk())
+        return defRes;
+
+    // Finalize the image
+    auto valRes = validate();
+    if (!valRes.IsOk())
+        return valRes;
+
+    // Now validate each component
+    for (auto it = comps.begin(); it != comps.end(); it++)
+    {
+        auto* comp = it->get();
+        if (comp)
+        {
+            auto res = comp->Validate();
+            if (!res.IsOk())
+                return res;
+        }
+    }
+
+    return Success();
+}
+
+template <typename CompT>
+ImageResult Image::setCompProp (ImgProp prop, const ImageVal& val)
+{
+    std::string id = std::string (*val.Get<ImageId>());
+    auto comp = CompT::Factory (id, *this);
+    if (!comp)
+        return InvalidId (GetPropName (prop), GetName(), id);
+
+    return AddComponent (std::move (comp));
+}
+
+template <typename CompT>
+CompT* Image::getCompProp (CompType type)
+{
+    if (!CheckComponent (type))
+        return nullptr;
+
+    auto res = GetComponent<CompT> (type);
+    if (!res.IsOk())
+        return nullptr;
+
+    return res.GetValue();
+}
+
+ResCustom<std::optional<Component*>, ImageError> Image::resolveComponent (ImgProp prop)
+{
+    auto it = keyMap.find (prop);
+    assert (it != keyMap.end());
+
+    CompType owner = it->second;
+    if (owner == CompType::Max)
+        return std::optional<Component*>{};
+
+    Component* comp = comps[owner].get();
+    if (!comp)
+        return std::optional<Component*>{};
+
+    return std::optional<Component*> (comp);
+}
+
+ImageResult Image::runDeferred()
+{
+    for (const auto& prop : deferredProps)
+    {
+        auto compRes = resolveComponent (prop.first);
+        if (!compRes.IsOk())
+            return compRes.GetError();
+
+        auto comp = compRes.GetValue();
+        if (comp.has_value())
+            return (*comp)->Set (prop.first, prop.second);
+
+        return RegElement::Set (prop.first, prop.second);
+    }
+    return Success();
+}
+
+ImageResult Image::validate()
+{
+    // Ensure a partition exists
+    if (parts.size() < 1)
+        return ImageError (ErrorCode::MissingPart, {{"name", spec.name}});
     return Success();
 }
 
@@ -210,6 +288,33 @@ const std::string& Component::getRegElementName() const
 const std::string& Component::getPropName (ImgProp prop) const
 {
     return Image::GetPropName (prop);
+}
+
+const CompConfRegistry& Component::getRegistry()
+{
+    // Check if merging is need
+    if (mergedRegistry.empty())
+    {
+        // Get the two registries
+        const auto& mainReg = getMainRegistry();
+        const auto& subReg = getSubRegistry();
+
+        // Add every entry into the registry. Start with the main, and then sub. If a conflict occurs, that's an error
+        for (const auto& conf : mainReg)
+            mergedRegistry.insert (conf);
+
+        for (const auto& conf : subReg)
+        {
+            // Check if it was already added
+            // We throw here as this is a programming error, but I don't really want to assert it
+            // in case it did seep through
+            if (mergedRegistry.find (conf.first) != mergedRegistry.end())
+                throw ErrorException (ImageError (ErrorCode::PropConflict, ""));
+
+            mergedRegistry.insert (conf);
+        }
+    }
+    return mergedRegistry;
 }
 
 void ImageError::makeMessage (ErrorFrame& frame)
@@ -263,6 +368,9 @@ void ImageError::makeMessage (ErrorFrame& frame)
             assertKeys ({"prop"});
             msg << "Missing required property \"" << getString ("prop") << "\" on partition " << getName();
             break;
+        case ErrorCode::MissingPart:
+            msg << "Image" << getName() << " requires at least one partition";
+            break;
         default:
             msg << frame.msg;
     }
@@ -287,7 +395,7 @@ const std::unordered_map<ImgProp, CompType> Image::keyMap = [](){
 const NameRegistry<BootMode> Image::bootModes = {
     {"none", BootMode::None},
     {"bios", BootMode::Bios},
-    {"efi", BootMode::Efi},
+    {"efi",  BootMode::Efi},
     {"uefi", BootMode::Efi}
 };
 
@@ -312,14 +420,15 @@ const ImgConfRegistry Image::baseRegistry = {
         }
     },
     {ImgProp::BootMode,
-        {typeid (std::string),
-            "none",
+        {typeid (ImageId),
+            ImageId ("none"),
             [] (Image& img, const ImageVal& val) -> ImageResult
             {
-                std::string id = *val.Get<std::string>();
+                std::string id = std::string (*val.Get<ImageId>());
                 BootMode mode = bootModes.Resolve (id);
                 if(mode == BootMode::Max)
                     return InvalidId (GetPropName (ImgProp::BootMode), img.spec.name, id);
+
                 img.spec.bootMode = mode;
                 return Success();
             },
@@ -329,8 +438,41 @@ const ImgConfRegistry Image::baseRegistry = {
                     return std::nullopt;
                 return img.spec.bootMode;
             }
+        }   
+    },
+    {ImgProp::PartType,
+        {typeid (ImageId),
+            ImageId ("gpt"),
+            [] (Image& img, const ImageVal& val) -> ImageResult
+            {
+                return img.setCompProp<PartTypeComp> (ImgProp::PartType, val);
+            },
+            [] (Image& img) -> std::optional<std::any>
+            {
+                auto comp = img.getCompProp<PartTypeComp> (CompType::PartType);
+                if (!comp)
+                    return std::nullopt;
+
+                return comp->GetPartType();
+            }
         }
-        
+    },
+    {ImgProp::BootLoad,
+        {typeid (ImageId),
+            ImageId ("none"),
+            [] (Image& img, const ImageVal& val) -> ImageResult
+            {
+                return img.setCompProp<BootLoadComp> (ImgProp::BootLoad, val);
+            },
+            [] (Image& img) -> std::optional<std::any>
+            {
+                auto comp = img.getCompProp<BootLoadComp> (CompType::Boot);
+                if (!comp)
+                    return std::nullopt;
+
+                return comp->GetBootType();
+            }
+        }
     }
 };
 

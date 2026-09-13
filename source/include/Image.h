@@ -114,7 +114,7 @@ class Partition : public RegElement<Partition, PartProp, PartConfRegistry>
         return func (prop);
     }
 
-    const PartConfRegistry& getRegistry() const override
+    const PartConfRegistry& getRegistry() override
     {
         return registry;
     }
@@ -222,7 +222,7 @@ class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
         return spec;
     }
 
-    ImageResult Validate();
+    ImageResult Finalize();
 
     static ImgProp ResolveProp (std::string_view name)
     {
@@ -254,6 +254,9 @@ class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
     // Component containers
     EnumArray<CompType, std::unique_ptr<Component>, CompType::Max> comps;
 
+    // Deferred properties
+    std::vector<std::pair<ImgProp, ImageVal>> deferredProps;
+
     // Resolves name to an ImgProp and dispatches func(prop)
     template <typename Func>
     static auto dispatchByName (std::string_view name, const std::string& imgName, Func&& func)
@@ -265,10 +268,21 @@ class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
         return func (prop);
     }
 
-    // Resolves prop to its owning component, or nullopt if it's owned by the base image itself..
+    // Resolves prop to its owning component, or nullopt if it's owned by the base image itself.
     ResCustom<std::optional<Component*>, ImageError> resolveComponent (ImgProp prop);
 
-    const ImgConfRegistry& getRegistry() const override
+    // Replays deferred properties
+    ImageResult runDeferred();
+    ImageResult validate();
+
+    // Getter/setter for setting a property that adds a component
+    template <typename CompT>
+    ImageResult setCompProp (ImgProp prop, const ImageVal& val);
+
+    template <typename CompT>
+    CompT* getCompProp (CompType type);
+
+    const ImgConfRegistry& getRegistry() override
     {
         return baseRegistry;
     }

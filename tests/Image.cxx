@@ -29,8 +29,19 @@ class TestComponent : public Component
     TestComponent (Image& img) : Component (CompType::Format, img)
     {}
 
+    ImageResult Validate() override
+    {
+        return Success();
+    }
+
   protected:
-    const CompConfRegistry& getRegistry() const override
+    const CompConfRegistry& getMainRegistry() const override
+    {
+        static const CompConfRegistry empty{};
+        return empty;
+    }
+
+    const CompConfRegistry& getSubRegistry() const override
     {
         static const CompConfRegistry empty{};
         return empty;
@@ -43,8 +54,19 @@ class OtherTestComponent : public Component
     OtherTestComponent (Image& img) : Component (CompType::Encryption, img)
     {}
 
+    ImageResult Validate() override
+    {
+        return Success();
+    }
+
   protected:
-    const CompConfRegistry& getRegistry() const override
+    const CompConfRegistry& getMainRegistry() const override
+    {
+        static const CompConfRegistry empty{};
+        return empty;
+    }
+
+    const CompConfRegistry& getSubRegistry() const override
     {
         static const CompConfRegistry empty{};
         return empty;
@@ -191,11 +213,23 @@ TEST_CASE ("Image name accessors work as expected")
     CHECK (img.GetName() == "disk2");
 }
 
+TEST_CASE ("Image component setter/getter works")
+{
+    Image img ("disk1");
+    REQUIRE (img.Set (ImgProp::BootLoad, ImageId ("grub")).IsOk());
+    auto optRes = img.Get<BootLoadType> (ImgProp::BootLoad);
+    REQUIRE (optRes.GetValue().has_value());
+    CHECK (*optRes.GetValue() == BootLoadType::Grub);
+
+    auto res = img.GetComponent<BootLoadComp> (CompType::Boot);
+    REQUIRE (res.IsOk());
+    REQUIRE (res.GetValue()->GetBootType() == BootLoadType::Grub);
+}
+
 TEST_CASE ("Image::Set/Get round-trips the size property through ImageNumId")
 {
     Image img ("disk1");
-    ImageVal val (MakeNumId (128, "MiB"));
-    REQUIRE (img.Set (ImgProp::Size, val).IsOk());
+    REQUIRE (img.Set (ImgProp::Size, MakeNumId (128, "MiB")).IsOk());
 
     auto res = img.Get<int64_t> (ImgProp::Size);
     REQUIRE (res.IsOk());
@@ -206,8 +240,7 @@ TEST_CASE ("Image::Set/Get round-trips the size property through ImageNumId")
 TEST_CASE ("Image::Set/Get by name resolves the property before dispatching")
 {
     Image img ("disk1");
-    ImageVal val (MakeNumId (2, "GiB"));
-    REQUIRE (img.Set ("size", val).IsOk());
+    REQUIRE (img.Set ("size", MakeNumId (2, "GiB")).IsOk());
 
     auto res = img.Get<int64_t> ("size");
     REQUIRE (res.IsOk());
@@ -217,8 +250,7 @@ TEST_CASE ("Image::Set/Get by name resolves the property before dispatching")
 TEST_CASE ("Image::Set rejects an unrecognized property name")
 {
     Image img ("disk1");
-    ImageVal val (std::string ("x"));
-    auto res = img.Set ("not_a_real_prop", val);
+    auto res = img.Set ("not_a_real_prop", std::string ("x"));
     CHECK_FALSE (res.IsOk());
     CHECK (res.GetError().RootFrame().code == ErrorCode::InvalidImgProp);
     CHECK (res.GetError().RootFrame().msg.find ("disk1") != std::string::npos);
@@ -227,8 +259,7 @@ TEST_CASE ("Image::Set rejects an unrecognized property name")
 TEST_CASE ("Image::Set reports a type mismatch when the value's variant alternative is wrong")
 {
     Image img ("disk1");
-    ImageVal wrongType (std::string ("not a numid"));
-    auto res = img.Set (ImgProp::Size, wrongType);
+    auto res = img.Set (ImgProp::Size, std::string ("not a numid"));
     CHECK_FALSE (res.IsOk());
     CHECK (res.GetError().RootFrame().code == ErrorCode::PropTypeMismatch);
 }
@@ -236,12 +267,12 @@ TEST_CASE ("Image::Set reports a type mismatch when the value's variant alternat
 TEST_CASE ("Image::Set boot_mode resolves each supported keyword and rejects unknown ones")
 {
     Image img ("disk1");
-    REQUIRE (img.Set (ImgProp::BootMode, ImageVal (std::string ("bios"))).IsOk());
-    REQUIRE (img.Set (ImgProp::BootMode, ImageVal (std::string ("efi"))).IsOk());
-    REQUIRE (img.Set (ImgProp::BootMode, ImageVal (std::string ("uefi"))).IsOk());
-    REQUIRE (img.Set (ImgProp::BootMode, ImageVal (std::string ("none"))).IsOk());
+    REQUIRE (img.Set (ImgProp::BootMode, ImageId ("bios")).IsOk());
+    REQUIRE (img.Set (ImgProp::BootMode, ImageId ("efi")).IsOk());
+    REQUIRE (img.Set (ImgProp::BootMode, ImageId ("uefi")).IsOk());
+    REQUIRE (img.Set (ImgProp::BootMode, ImageId ("none")).IsOk());
 
-    auto res = img.Set (ImgProp::BootMode, ImageVal (std::string ("not_a_mode")));
+    auto res = img.Set (ImgProp::BootMode, ImageId ("not_a_mode"));
     CHECK_FALSE (res.IsOk());
     CHECK (res.GetError().RootFrame().code == ErrorCode::InvalidId);
 }
@@ -253,7 +284,7 @@ TEST_CASE ("Image::IsSet reflects whether a property currently has a value")
     REQUIRE (res.IsOk());
     CHECK_FALSE (res.GetValue());
 
-    REQUIRE (img.Set (ImgProp::Size, ImageVal (MakeNumId (1, "MiB"))).IsOk());
+    REQUIRE (img.Set (ImgProp::Size, MakeNumId (1, "MiB")).IsOk());
     res = img.IsSet (ImgProp::Size);
     REQUIRE (res.IsOk());
     CHECK (res.GetValue());
@@ -270,7 +301,7 @@ TEST_CASE ("Image::SetDefaults fails when a property without a default is missin
 TEST_CASE ("Image::SetDefaults fills in defaulted properties without touching ones already set")
 {
     Image img ("disk1");
-    REQUIRE (img.Set (ImgProp::Size, ImageVal (MakeNumId (1, "MiB"))).IsOk());
+    REQUIRE (img.Set (ImgProp::Size, MakeNumId (1, "MiB")).IsOk());
     REQUIRE (img.SetDefaults().IsOk());
 
     auto bootMode = img.Get<BootMode> (ImgProp::BootMode);
@@ -286,8 +317,8 @@ TEST_CASE ("Image::SetDefaults fills in defaulted properties without touching on
 TEST_CASE ("Image::SetDefaults does not overwrite an explicitly-set boot_mode")
 {
     Image img ("disk1");
-    REQUIRE (img.Set (ImgProp::Size, ImageVal (MakeNumId (1, "MiB"))).IsOk());
-    REQUIRE (img.Set (ImgProp::BootMode, ImageVal (std::string ("efi"))).IsOk());
+    REQUIRE (img.Set (ImgProp::Size, MakeNumId (1, "MiB")).IsOk());
+    REQUIRE (img.Set (ImgProp::BootMode, ImageId ("efi")).IsOk());
     REQUIRE (img.SetDefaults().IsOk());
 
     auto bootMode = img.Get<BootMode> (ImgProp::BootMode);
@@ -311,11 +342,11 @@ TEST_CASE ("Partition name and spec accessors")
 TEST_CASE ("Partition::Set/Get round-trips start, size, format, prefix and is_boot")
 {
     Partition part ("part0");
-    REQUIRE (part.Set ("start", ImageVal (MakeNumId (1, "MiB"))).IsOk());
-    REQUIRE (part.Set ("size", ImageVal (MakeNumId (16, "MiB"))).IsOk());
-    REQUIRE (part.Set ("format", ImageVal (std::string ("ext4"))).IsOk());
-    REQUIRE (part.Set ("prefix", ImageVal (std::string ("boot-"))).IsOk());
-    REQUIRE (part.Set ("is_boot", ImageVal (true)).IsOk());
+    REQUIRE (part.Set ("start", MakeNumId (1, "MiB")).IsOk());
+    REQUIRE (part.Set ("size", MakeNumId (16, "MiB")).IsOk());
+    REQUIRE (part.Set ("format", std::string ("ext4")).IsOk());
+    REQUIRE (part.Set ("prefix", std::string ("boot-")).IsOk());
+    REQUIRE (part.Set ("is_boot", true).IsOk());
 
     CHECK (*part.Get<int64_t> ("start").GetValue() == 1024 * 1024);
     CHECK (*part.Get<int64_t> ("size").GetValue() == 16LL * 1024 * 1024);
@@ -327,7 +358,7 @@ TEST_CASE ("Partition::Set/Get round-trips start, size, format, prefix and is_bo
 TEST_CASE ("Partition::Set rejects unknown properties and reports the partition name")
 {
     Partition part ("part0");
-    auto res = part.Set ("bogus", ImageVal (std::string ("x")));
+    auto res = part.Set ("bogus", std::string ("x"));
     CHECK_FALSE (res.IsOk());
     CHECK (res.GetError().RootFrame().code == ErrorCode::InvalidPartProp);
     CHECK (res.GetError().RootFrame().msg.find ("part0") != std::string::npos);
@@ -337,15 +368,15 @@ TEST_CASE ("Partition::IsSet is false until the property is written")
 {
     Partition part ("part0");
     CHECK_FALSE (part.IsSet ("format").GetValue());
-    REQUIRE (part.Set ("format", ImageVal (std::string ("fat32"))).IsOk());
+    REQUIRE (part.Set ("format", std::string ("fat32")).IsOk());
     CHECK (part.IsSet ("format").GetValue());
 }
 
 TEST_CASE ("Partition::SetDefaults fills defaulted properties once the required ones are set")
 {
     Partition part ("part0");
-    REQUIRE (part.Set ("start", ImageVal (MakeNumId (1, "MiB"))).IsOk());
-    REQUIRE (part.Set ("size", ImageVal (MakeNumId (1, "MiB"))).IsOk());
+    REQUIRE (part.Set ("start", MakeNumId (1, "MiB")).IsOk());
+    REQUIRE (part.Set ("size", MakeNumId (1, "MiB")).IsOk());
     REQUIRE (part.SetDefaults().IsOk());
 
     // "format"'s default is an empty string, and the getter treats an empty string as "not set", so
@@ -369,7 +400,7 @@ TEST_CASE ("Partition::SetDefaults fails while start/size remain unset since the
 TEST_CASE ("Partition::Get reports a type mismatch when the requested C++ type does not match storage")
 {
     Partition part ("part0");
-    REQUIRE (part.Set ("format", ImageVal (std::string ("ext4"))).IsOk());
+    REQUIRE (part.Set ("format", std::string ("ext4")).IsOk());
     auto res = part.Get<int64_t> ("format");
     CHECK_FALSE (res.IsOk());
     CHECK (res.GetError().RootFrame().code == ErrorCode::PropTypeMismatch);
@@ -415,6 +446,25 @@ TEST_CASE ("Image::GetComponent reports an error when the dynamic type doesn't m
     auto res = img.GetComponent<OtherTestComponent> (CompType::Format);
     CHECK_FALSE (res.IsOk());
     CHECK (res.GetError().RootFrame().code == ErrorCode::BadArgument);
+}
+
+TEST_CASE ("Image replays deferred component properties during validation")
+{
+    Image img ("disk1");
+    REQUIRE (img.Set (ImgProp::Size, MakeNumId (1, "MiB")).IsOk());
+
+    REQUIRE (img.Set (ImgProp::BootEmu, ImageId ("noemu")).IsOk());
+    CHECK_FALSE (img.CheckComponent (CompType::PartType));
+
+    REQUIRE (img.Set (ImgProp::PartType, ImageId ("iso9660")).IsOk());
+    REQUIRE (img.SetDefaults().IsOk());
+    img.AddPartition (std::make_unique<Partition> ("part0"));
+    REQUIRE (img.Finalize().IsOk());
+
+    auto bootEmu = img.Get<IsoBootEmu> (ImgProp::BootEmu);
+    REQUIRE (bootEmu.IsOk());
+    REQUIRE (bootEmu.GetValue().has_value());
+    CHECK (*bootEmu.GetValue() == IsoBootEmu::NoEmu);
 }
 
 TEST_CASE ("Image partitions can be added and enumerated")
@@ -473,14 +523,14 @@ TEST_CASE ("ImageError::AddKey enriches the message with context added after con
 TEST_CASE ("Image stress test with many partitions and repeated property writes")
 {
     Image img ("bigdisk");
-    REQUIRE (img.Set (ImgProp::Size, ImageVal (MakeNumId (1, "TiB"))).IsOk());
+    REQUIRE (img.Set (ImgProp::Size, MakeNumId (1, "TiB")).IsOk());
 
     constexpr int partCount = 2000;
     for (int i = 0; i < partCount; i++)
     {
         auto part = std::make_unique<Partition> ("part" + std::to_string (i));
-        REQUIRE (part->Set ("start", ImageVal (MakeNumId (static_cast<size_t> (i + 1), "MiB"))).IsOk());
-        REQUIRE (part->Set ("size", ImageVal (MakeNumId (1, "MiB"))).IsOk());
+        REQUIRE (part->Set ("start", MakeNumId (static_cast<size_t> (i + 1), "MiB")).IsOk());
+        REQUIRE (part->Set ("size", MakeNumId (1, "MiB")).IsOk());
         img.AddPartition (std::move (part));
     }
 
@@ -494,7 +544,7 @@ TEST_CASE ("Image stress test with many partitions and repeated property writes"
 
     // Repeatedly overwrite the same property many times and make sure the final value sticks
     for (int i = 0; i < 1000; i++)
-        REQUIRE (img.Set (ImgProp::BootMode, ImageVal (std::string (i % 2 == 0 ? "bios" : "efi"))).IsOk());
+        REQUIRE (img.Set (ImgProp::BootMode, ImageId (i % 2 == 0 ? "bios" : "efi")).IsOk());
     auto finalMode = img.Get<BootMode> (ImgProp::BootMode);
     CHECK (*finalMode.GetValue() == BootMode::Efi);
 }

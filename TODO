@@ -1,5 +1,3 @@
-Implement component base
-Implement partition type component and registry
-Implement validation
-Implement deffered property setting
-Consider templating all registry/setter/getter stuff into its own class
+Look into making a componentFactory class
+Finish ImageCmd implementation
+Make a cxxopts wrapper for unused argument handling

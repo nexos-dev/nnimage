@@ -17,6 +17,7 @@
 
 #include "include/Task.h"
 
+#include <iostream>
 #include <algorithm>
 #include <thread>
 
@@ -71,27 +72,6 @@ TaskId TaskGraph::AddTask (std::unique_ptr<Task> task)
     return id;
 }
 
-void TaskGraph::RemoveTask (TaskId task)
-{
-    if (!taskExists (task))
-        return;
-    // Remove all edges from this task
-    auto& deps = adjList[task];
-    deps.clear();
-    // Remove all edges to this task
-    for (auto& depList : adjList)
-    {
-        // NOTE: This is woefully inefficient, but this is only called during failure handling so it
-        // doesn't matter too much
-        depList.erase (std::remove (depList.begin(), depList.end(), task), depList.end());
-    }
-    // Clear the task
-    // This does leave a nullptr in the tasks vector, but that's better than having to shift every
-    // single ID
-    tasks[task] = nullptr;
-    inDegree[task] = 0;
-}
-
 bool TaskGraph::AddDependency (TaskId src, TaskId dest)
 {
     if (!taskExists (src) || !taskExists (dest))
@@ -134,39 +114,26 @@ void TaskGraph::getDescendants (TaskId task, std::vector<TaskId>& descendants)
 void TaskGraph::skipDescendants (TaskId failedTask)
 {
     std::lock_guard<std::mutex> guard (failureMtx);
+
     // Get all descendants of the failed task and mark them as skipped
     std::vector<TaskId> descendants;
     getDescendants (failedTask, descendants);
+
     size_t skippedCount = 0;
     for (TaskId id : descendants)
     {
         // This will mark the task as skipped if it is still pending
         TaskState cur = tasks[id]->Skip();
-        // If the task is running when we try to skip, mark it as rollback pending
-        // And then Run() will rollback when it finishes
-        if (cur == TaskState::Running)
-            tasks[id]->SetRollbackPending();
-        else if (cur == TaskState::Skipped)
+        if (cur == TaskState::Skipped)
             skippedCount++;
+        // NOTE: how to handle else condition?
     }
+
     if (skippedCount > 0)
     {
         size_t done = completed.fetch_add (skippedCount) + skippedCount;
         if (done == tasks.size())
             readyCond.notify_all();
-    }
-    // Now, we need to rollback all finished tasks in reverse topological order
-    std::lock_guard<std::mutex> completedGuard (completedMtx);
-    while (!completedQueue.empty())
-    {
-        TaskId id = completedQueue.front();
-        completedQueue.pop();
-        if (std::find (descendants.begin(), descendants.end(), id) != descendants.end())
-        {
-            // Rollback only will be called on tasks that are finished, so we don't need to check
-            // the state here
-            tasks[id]->Rollback();
-        }
     }
 }
 
@@ -210,6 +177,7 @@ void TaskGraph::addReadyTask (TaskId task)
     }
     std::unique_lock<std::mutex> guard (readyMtx);
     ready.push (task);
+
     // Let a thread know that a task is ready to run
     readyCond.notify_one();
 }
@@ -229,12 +197,14 @@ bool TaskGraph::RunTasks()
         _log->Error ("cycle detected in task graph");
         return false;
     }
+
     // Initialize ready queue with all source tasks
     for (TaskId i = 0; static_cast<size_t> (i) < tasks.size(); i++)
     {
         if (inDegree[i].load() == 0 && taskExists (i))
             ready.push (i);
     }
+
     // Prepare worker threads
     size_t workerCount = std::thread::hardware_concurrency();
     if (workerCount == 0)
@@ -262,32 +232,35 @@ bool TaskGraph::RunTasks()
             assert (task != nullptr);    // THis shouldn't ever happen as we check for task
                                          // existence before adding to ready queue, But it's better
                                          // to be safe
+
             bool ok = task->Run();
-            size_t done = completed.fetch_add (1) + 1;
+            completed.fetch_add (1);
+
             // Re-compute the in-degrees of dependent tasks
             // We do this even if the task failed, because we want to mark all dependent
             // tasks as skipped
             for (TaskId dep : adjList[nextTask])
             {
                 if (inDegree[dep].fetch_sub (1) == 1)
-                    addReadyTask (dep);
+                {
+                    if (ok)
+                        addReadyTask (dep);
+                }
             }
+
             if (ok)
             {
-                succeeded++;
+                succeeded.fetch_add (1);
                 // Add to list of completed tasks in reverse topological order
                 std::unique_lock<std::mutex> guard (completedMtx);
                 completedQueue.push (nextTask);
             }
             else
             {
-                // If an error occurred, we need to begin the rollback process.
-                // Essentially, we go through every descendant, mark it as skipped,
-                // and if one is running or finished,we wait for it to finish
-                // and then roll it back
+                // If an error occurred, we go through every descendant, and mark it as skipped
                 skipDescendants (nextTask);
             }
-            if (done == tasks.size())
+            if (completed >= tasks.size())
                 readyCond.notify_all();
         }
     };
@@ -296,14 +269,17 @@ bool TaskGraph::RunTasks()
     workers.reserve (workerCount);
     for (size_t i = 0; i < workerCount; i++)
         workers.emplace_back (worker);
+
     // Go ahead and get the ball rolling
     readyCond.notify_all();
     for (std::thread& thread : workers)
         thread.join();
+
     // If one task succeeded at least, warn the user and still return false.
     // If zero did, that's an error
     if (succeeded == tasks.size())
         return true;
+
     else if (succeeded > 0)
     {
         _log->Warning ("not all tasks completed successfully");

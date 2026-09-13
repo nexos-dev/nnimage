@@ -77,7 +77,6 @@ else
 fi
 
 # Now we need to build libkrunfw. If not running on Linux, we must build using krunvm
-olddir=$PWD
 cd $outputdir/libkrunfw
 if [ "$(uname)" != "Linux" ]
 then
@@ -89,7 +88,8 @@ then
     sudo make install
     checkerr "Failed to install libkrunfw" $?
 else
-    make $jobsarg
+    [ -z "$jobsarg" ] && jobsargs="-j $(nproc)"
+    make "$jobsarg"
     checkerr "Failed to build libkrunfw" $?
     echo "Requesting sudo privileges to install libkrun..."
     sudo make install

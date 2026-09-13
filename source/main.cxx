@@ -26,11 +26,6 @@
 #include <memory>
 #include <string>
 
-#ifdef NNIMAGE_ENABLE_TESTS
-// Test driver function, only linked in when tests are enabled
-bool TestDriver (int argc, char** argv);
-#endif
-
 // Global log instance
 std::unique_ptr<Log> _log;
 
@@ -107,12 +102,6 @@ int main (int argc, char** argv)
         std::cerr << argv[0] << ": error: Failed to create log" << std::endl;
         return 1;
     }
-
-    // Now see if we want to call test driver
-#ifdef NNIMAGE_ENABLE_TESTS
-    if (argc > 1 && std::string (argv[1]) == "run-test-cases")
-        return !TestDriver (argc - 1, argv + 1);
-#endif
 
     Dispatch disp;
 

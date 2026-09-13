@@ -49,19 +49,44 @@ class Component : public RegElement<Component, ImgProp, CompConfRegistry>
         return type;
     }
 
+    Image& GetOwner()
+    {
+        return owner;
+    }
+
+    virtual ImageResult Validate() = 0;
+
   protected:
     Component (CompType type, Image& img)
         : RegElement{ErrorCode::InvalidImgProp, ErrorCode::ImgMissingProp}, owner{img}, type{type}
     {}
-    virtual const CompConfRegistry& getRegistry() const override = 0;
+
+    const CompConfRegistry& getRegistry() override;
+    virtual const CompConfRegistry& getMainRegistry() const = 0;
+    virtual const CompConfRegistry& getSubRegistry() const = 0;
+
+    template <typename Derived>
+    static Derived& derived (Component& comp)
+    {
+        // Slow? yes. But it's good for checking on debug builds
+        assert (typeid (comp) == typeid (Derived));
+        return static_cast<Derived&> (comp);
+    }
+
+    Image& owner;
 
   private:
     const std::string& getRegElementName() const override;
     const std::string& getPropName (ImgProp prop) const override;
 
+    // The union of the main and sub registries
+    CompConfRegistry mergedRegistry;
+
     CompType type;
-    Image& owner;
 };
+
+template <typename Enum, class Class>
+using CompFactoryTable = EnumArray<Enum, std::function<std::unique_ptr<Class> (Image&)>, Enum::Max>;
 
 // Partition layout component
 
@@ -70,20 +95,77 @@ class PartTypeComp : public Component
   public:
     virtual ~PartTypeComp() = default;
 
-    static std::unique_ptr<PartTypeComp> Factory (PartType type);
+    PartType GetPartType() const
+    {
+        return type;
+    }
+
+    static std::unique_ptr<PartTypeComp> Factory (PartType type, Image& owner);
+    static std::unique_ptr<PartTypeComp> Factory (std::string_view type, Image& owner);
+    virtual ImageResult Validate() override;
 
   protected:
     PartTypeComp (PartType type, Image& img) : type{type}, Component{CompType::PartType, img}
     {}
 
-    virtual const CompConfRegistry& getSubRegistry() const = 0;
-    const CompConfRegistry& getRegistry() const;
+    const CompConfRegistry& getMainRegistry() const override
+    {
+        return registry;
+    }
+    virtual const CompConfRegistry& getSubRegistry() const override = 0;
+
+    std::string getTypeName (PartType type)
+    {
+        return nameRegistry.GetName (type);
+    }
 
     PartType type;
 
   private:
+    static const CompConfRegistry registry;
+
     static const NameRegistry<PartType> nameRegistry;
-    static const EnumArray<PartType, std::function<std::unique_ptr<PartTypeComp> (Image& img)>, PartType::Max> factory;
+    static const CompFactoryTable<PartType, PartTypeComp> factory;
+};
+
+// Bootloader type component
+
+class BootLoadComp : public Component
+{
+  public:
+    virtual ~BootLoadComp() = default;
+
+    BootLoadType GetBootType() const
+    {
+        return type;
+    }
+
+    static std::unique_ptr<BootLoadComp> Factory (BootLoadType type, Image& owner);
+    static std::unique_ptr<BootLoadComp> Factory (std::string_view type, Image& owner);
+    virtual ImageResult Validate() override;
+
+  protected:
+    BootLoadComp (BootLoadType type, Image& img) : type{type}, Component{CompType::Boot, img}
+    {}
+
+    const CompConfRegistry& getMainRegistry() const override
+    {
+        return registry;
+    }
+    virtual const CompConfRegistry& getSubRegistry() const override = 0;
+
+    std::string getTypeName (BootLoadType type)
+    {
+        return nameRegistry.GetName (type);
+    }
+
+    BootLoadType type;
+
+  private:
+    static const CompConfRegistry registry;
+
+    static const NameRegistry<BootLoadType> nameRegistry;
+    static const CompFactoryTable<BootLoadType, BootLoadComp> bootFactory;
 };
 
 #include "Components.h"

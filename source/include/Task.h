@@ -47,12 +47,7 @@ enum class TaskState
 class Task
 {
   public:
-    Task (
-        TaskFunc func,
-        const std::string& name,
-        const std::string& msg = "",
-        TaskFunc rollbackFunc = []() { return true; })
-        : task{func}, name{name}, msg{msg}, rollback{rollbackFunc}
+    Task (TaskFunc func, const std::string& name, const std::string& msg = "") : task{func}, name{name}, msg{msg}
     {}
     void SetId (TaskId id)
     {
@@ -63,6 +58,7 @@ class Task
         // Ensure the task is in a pending state and honor skipped tasks
         TaskState expected = TaskState::Pending;
         bool result = false;
+
         if (!state.compare_exchange_strong (expected, TaskState::Running))
         {
             if (expected == TaskState::Skipped)
@@ -70,19 +66,14 @@ class Task
             _log->Error ("task \"" + name + "\" is not in a pending state");
             return false;
         }
+
         if (!msg.empty())
             _log->Status (msg);
+
         result = task();
+
         if (result)
-        {
-            if (rollbackPending.load())
-            {
-                rollback();
-                this->state.store (TaskState::RolledBack);
-            }
-            else
-                this->state.store (TaskState::Finished);
-        }
+            this->state.store (TaskState::Finished);
         else
             this->state.store (TaskState::Failed);
         return result;
@@ -94,16 +85,6 @@ class Task
         if (!state.compare_exchange_strong (expected, TaskState::Skipped))
             return expected;
         return TaskState::Skipped;
-    }
-    bool Rollback()
-    {
-        // Only a finished task can be rolled back, otherwise return false
-        TaskState expected = TaskState::Finished;
-        if (!state.compare_exchange_strong (expected, TaskState::Rollback))
-            return false;
-        rollback();
-        this->state.store (TaskState::RolledBack);
-        return true;
     }
     TaskId GetId() const
     {
@@ -117,12 +98,6 @@ class Task
     {
         return state.load();
     }
-    // Used when a task is being skipped but is already running, so we need to roll it back when it
-    // finishes
-    void SetRollbackPending()
-    {
-        rollbackPending.store (true);
-    }
     static std::unique_ptr<Task> EmptyTask (const std::string& name = "NoopTask")
     {
         return std::make_unique<Task> ([]() { return true; }, name);
@@ -131,13 +106,7 @@ class Task
   private:
     TaskId id;
     TaskFunc task;
-    // NOTE: maybe this shouldn't be user-facing?
-    TaskFunc rollback = []() {
-        _log->Warning ("default rollback handler called");
-        return true;
-    };
     std::atomic<TaskState> state{TaskState::Pending};
-    std::atomic<bool> rollbackPending{false};
     const std::string name;
     const std::string msg = "";
 };
@@ -148,7 +117,6 @@ class TaskGraph
     TaskGraph()
     {}
     TaskId AddTask (std::unique_ptr<Task> task);
-    void RemoveTask (TaskId task);
     bool AddDependency (TaskId src, TaskId dest);
     bool RunTasks();
 

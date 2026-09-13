@@ -1,0 +1,5 @@
+# floppy.comp - contains floppy part type component
+NAME=floppy
+SLOT=parttype
+CLASS=FloppyPartComp
+HEADER=include/comp/PartComp.h

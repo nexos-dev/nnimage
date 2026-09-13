@@ -122,18 +122,6 @@ TEST_CASE ("Task lifecycle edge cases")
     CHECK (skippedTask.Skip() == TaskState::Skipped);
     CHECK (skippedTask.GetState() == TaskState::Skipped);
     CHECK (skipCount.load() == 0);
-
-    std::atomic<int> rollbackCount{0};
-    Task rollbackTask (
-        [&]() {
-            rollbackCount.fetch_add (1);
-            return true;
-        },
-        "rollback");
-    CHECK (rollbackTask.Run());
-    CHECK (rollbackCount.load() == 1);
-    CHECK (rollbackTask.Rollback());
-    CHECK (rollbackTask.GetState() == TaskState::RolledBack);
 }
 
 TEST_CASE ("TaskGraph rejects invalid DAG edges")
@@ -203,6 +191,7 @@ TEST_CASE ("TaskGraph reports a single failure")
     CHECK (failPtr->GetState() == TaskState::Failed);
 }
 
+// FIXME: currently will ocasionally fail. Must be race condition
 TEST_CASE ("TaskGraph skips dependents after failure")
 {
     std::atomic<int> rootRuns{0};
@@ -303,28 +292,4 @@ TEST_CASE ("TaskGraph handles a larger independent workload")
 
     for (Task* task : tasks)
         CHECK (task->GetState() == TaskState::Finished);
-}
-
-TEST_CASE ("Task rollback pending triggers rollback handler")
-{
-    std::atomic<int> taskCount{0};
-    std::atomic<int> rollbackCount{0};
-    Task rollbackTask (
-        [&]() {
-            taskCount.fetch_add (1);
-            return true;
-        },
-        "rollback-pending",
-        "",
-        [&]() {
-            rollbackCount.fetch_add (1);
-            return true;
-        });
-
-    rollbackTask.SetRollbackPending();
-
-    CHECK (rollbackTask.Run());
-    CHECK (taskCount.load() == 1);
-    CHECK (rollbackCount.load() == 1);
-    CHECK (rollbackTask.GetState() == TaskState::RolledBack);
 }

@@ -128,6 +128,9 @@ bool Dispatch::Execute()
 
     auto val = *res.GetValue();
 
+    img.Set (ImgProp::BootEmu, ImageId ("noemu"));
+    img.Set (ImgProp::PartType, ImageId ("iso9660"));
+
     return true;
 }
 

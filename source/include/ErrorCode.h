@@ -22,32 +22,34 @@
 
 #include <string>
 
-#define ERROR_CODE_LIST(X)                                     \
-    X (None, "No error")                                       \
-    X (FileError, "File failure")                              \
-    X (PathError, "Path failure")                              \
-    X (ParseError, "Parser error")                             \
-    X (LexError, "Lexer error")                                \
-    X (LogCtrlLocked, "Log control file is locked")            \
-    X (EncMismatch, "Unable to retrieve character encoding")   \
-    X (SysFailure, "Call to system failed")                    \
-    X (Internal, "Internal error")                             \
-    X (BadAction, "Invalid action specified")                  \
-    X (InvalidOption, "Invalid option configuration")          \
-    X (OpFailed, "Operation failed")                           \
-    X (NameMissing, "Component name missing")                  \
-    X (InvalidImgType, "Invalid image type")                   \
-    X (MissingRequiredProp, "Missing required property")       \
-    X (InvalidImgProp, "Invalid image property")               \
-    X (BadFloppySize, "Invalid floppy disc size")              \
-    X (PropTypeMismatch, "Unexpected property type")           \
-    X (ImgInvalid, "Image validation failure")                 \
-    X (InvalidPartProp, "Invalid partition property")          \
-    X (InvalidId, "Invalid indentifier")                       \
-    X (BadArgument, "Bad argument format")                     \
-    X (ImgMissingProp, "Required image property missing")      \
-    X (PartMissingProp, "Required partition property missing") \
-    X (ComponentOverwrite, "Attempt to overwrite existing component")
+#define ERROR_CODE_LIST(X)                                            \
+    X (None, "No error")                                              \
+    X (FileError, "File failure")                                     \
+    X (PathError, "Path failure")                                     \
+    X (ParseError, "Parser error")                                    \
+    X (LexError, "Lexer error")                                       \
+    X (LogCtrlLocked, "Log control file is locked")                   \
+    X (EncMismatch, "Unable to retrieve character encoding")          \
+    X (SysFailure, "Call to system failed")                           \
+    X (Internal, "Internal error")                                    \
+    X (BadAction, "Invalid action specified")                         \
+    X (InvalidOption, "Invalid option configuration")                 \
+    X (OpFailed, "Operation failed")                                  \
+    X (NameMissing, "Component name missing")                         \
+    X (InvalidImgType, "Invalid image type")                          \
+    X (MissingRequiredProp, "Missing required property")              \
+    X (InvalidImgProp, "Invalid image property")                      \
+    X (BadFloppySize, "Invalid floppy disc size")                     \
+    X (PropTypeMismatch, "Unexpected property type")                  \
+    X (ImgInvalid, "Image validation failure")                        \
+    X (InvalidPartProp, "Invalid partition property")                 \
+    X (InvalidId, "Invalid indentifier")                              \
+    X (BadArgument, "Bad argument format")                            \
+    X (ImgMissingProp, "Required image property missing")             \
+    X (PartMissingProp, "Required partition property missing")        \
+    X (ComponentOverwrite, "Attempt to overwrite existing component") \
+    X (PropConflict, "Conflicting properties found in registry")      \
+    X (MissingPart, "Image requires at least 1 partition")
 
 // Make clang-format shut up to prevent it from moving Max to the previous line
 // clang-format off

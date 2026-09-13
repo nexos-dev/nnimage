@@ -2,4 +2,5 @@
 set(_compdir "source/comps")
 
 set(NNIMAGE_COMP_SOURCES 
-    ${_compdir}/PartType.cxx)
+    ${_compdir}/PartType.cxx
+    ${_compdir}/BootLoad.cxx)

@@ -1,0 +1,5 @@
+# boot.comp - contains bootloader component
+ENUMNAME=BootLoadType
+BASECLASS=BootLoadComp
+NAMEREGISTRY=nameRegistry
+FACTORYREGISTRY=bootFactory

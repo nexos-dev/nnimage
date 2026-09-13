@@ -27,7 +27,13 @@ class MbrPartComp final : public PartTypeComp
     {}
 
   protected:
-    const CompConfRegistry& getSubRegistry() const;
+    const CompConfRegistry& getSubRegistry() const override
+    {
+        return registry;
+    }
+
+  private:
+    static const CompConfRegistry registry;
 };
 
 class GptPartComp final : public PartTypeComp
@@ -37,7 +43,67 @@ class GptPartComp final : public PartTypeComp
     {}
 
   protected:
-    const CompConfRegistry& getSubRegistry() const;
+    const CompConfRegistry& getSubRegistry() const override
+    {
+        return registry;
+    }
+
+  private:
+    static const CompConfRegistry registry;
+};
+
+enum class IsoBootEmu
+{
+    NoEmu,
+    Hdd,
+    Fdd,
+    Max
+};
+
+class IsoPartComp final : public PartTypeComp
+{
+  public:
+    IsoPartComp (Image& img) : PartTypeComp{PartType::Iso9660, img}
+    {}
+
+    ImageResult Validate() override;
+
+  protected:
+    const CompConfRegistry& getSubRegistry() const override
+    {
+        return registry;
+    }
+
+  private:
+    IsoBootEmu bootEmu = IsoBootEmu::Max;
+    Image* bootImage = nullptr;
+    std::string bootImageName{};
+
+    // Boot emulation registry
+    static const NameRegistry<IsoBootEmu> bootEmus;
+
+    // Mapping of bootEmu->accepted partition type for boot image
+    inline static const EnumArray<IsoBootEmu, std::vector<PartType>, IsoBootEmu::Max> validBootImage = {
+        {IsoBootEmu::Hdd, {PartType::Mbr, PartType::Gpt}},
+        {IsoBootEmu::Fdd, {PartType::Floppy}}};
+
+    static const CompConfRegistry registry;
+};
+
+class FloppyPartComp final : public PartTypeComp
+{
+  public:
+    FloppyPartComp (Image& img) : PartTypeComp{PartType::Floppy, img}
+    {}
+
+  protected:
+    const CompConfRegistry& getSubRegistry() const override
+    {
+        return registry;
+    }
+
+  private:
+    static const CompConfRegistry registry;
 };
 
 #endif

@@ -21,7 +21,6 @@
 
 cmake_minimum_required(VERSION 3.50)
 project(nnimage VERSION 0.1.0 LANGUAGES CXX)
-set(CMAKE_CXX_STANDARD 23)
 
 # Yes we enable the language in project but GNUInstallDirs complains without this
 enable_language(CXX)
@@ -57,6 +56,11 @@ set(NNIMAGE_ALL_BACKENDS "krun;guestfs;xorriso;loopback" CACHE INTERNAL "All bac
 set(NNIMAGE_BACKEND_SOURCES "")
 set(NNIMAGE_LIBRARIES "")
 set(NNIMAGE_USABLE_BACKENDS "")
+
+if(NNIMAGE_ENABLE_TESTS)
+    enable_testing()
+    include(external/cmake/doctest.cmake)
+endif()
 
 ###################
 # PACKAGE SETUP   #
@@ -193,9 +197,8 @@ configure_file(source/config.h.in config.h)
 # PREPARE EXECUTABLE #
 ######################
 
-# List sources
-list(APPEND NNIMAGE_SOURCES source/main.cxx
-                            source/Log.cxx
+# Main sources
+list(APPEND NNIMAGE_SOURCES source/Log.cxx
                             source/SimpleLexer.cxx
                             source/ConfParser.cxx
                             source/Dispatch.cxx
@@ -210,15 +213,28 @@ list(APPEND NNIMAGE_SOURCES source/main.cxx
 
 list(APPEND NNIMAGE_EXT_SOURCES external/MemoryMapped.cpp)
 
+add_library(libnnimage OBJECT ${NNIMAGE_SOURCES} ${NNIMAGE_COMP_SOURCES} ${NNIMAGE_EXT_SOURCES})
+target_compile_features(libnnimage PUBLIC cxx_std_23)
+
+# Ensure nnimage is dependent on the backend header file
+add_dependencies(libnnimage GenerateBackendHeader GenerateComponentHeader)
+
+add_library(libbackend OBJECT ${NNIMAGE_BACKEND_SOURCES})
+target_link_libraries(libbackend PRIVATE libnnimage)
+
 if(NNIMAGE_ENABLE_TESTS)
-    list(APPEND NNIMAGE_TEST_SOURCES tests/TestDriver.cxx
-                                     tests/Task.cxx
-                                     tests/Error.cxx
-                                     tests/Log.cxx
-                                     tests/Helpers.cxx
-                                     tests/Image.cxx
-                                     tests/SimpleLexer.cxx
-                                     tests/ConfParser.cxx)
+    add_executable(nnimage_test tests/TestDriver.cxx
+                                tests/Task.cxx
+                                tests/Error.cxx
+                                tests/Log.cxx
+                                tests/Helpers.cxx
+                                tests/Image.cxx
+                                tests/SimpleLexer.cxx
+                                tests/ConfParser.cxx)
+    target_link_libraries(nnimage_test PRIVATE libnnimage libbackend ${NNIMAGE_LIBRARIES})
+
+    # Add doctests to CTest
+    doctest_discover_tests(nnimage_test)
 endif()
 
 ######################
@@ -226,32 +242,22 @@ endif()
 ######################
 
 # Create the program
-add_executable(nnimage)
-
-target_sources(nnimage PRIVATE ${NNIMAGE_SOURCES}
-                ${NNIMAGE_COMP_SOURCES} ${NNIMAGE_BACKEND_SOURCES} 
-                ${NNIMAGE_EXT_SOURCES} ${NNIMAGE_TEST_SOURCES})
-
-# Ensure nnimage is dependent on the backend header file
-add_dependencies(nnimage GenerateBackendHeader GenerateComponentHeader)
+add_executable(nnimage source/main.cxx)
 
 # Add all libraries
-if(NNIMAGE_LIBRARIES)
-    target_link_libraries(nnimage PRIVATE ${NNIMAGE_LIBRARIES})
-endif()
+target_link_libraries(nnimage PRIVATE libnnimage libbackend ${NNIMAGE_LIBRARIES})
 
 if(NNIMAGE_ENABLE_PROFILING)
     target_compile_options(nnimage PRIVATE -pg)
     target_link_options(nnimage PRIVATE -pg)
 endif()
 
-
-target_include_directories(nnimage PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
-target_include_directories(nnimage PRIVATE source)
-target_include_directories(nnimage PRIVATE external/include)
+target_include_directories(libnnimage PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
+target_include_directories(libnnimage PUBLIC source)
+target_include_directories(libnnimage PUBLIC external/include)
 # Ugly hack because libchardet doesn't provide version.h which it depends on, so we have a fake one
 # We probably shouldn't go to such lengths to support a broken library
-target_include_directories(nnimage PRIVATE cmake)
+target_include_directories(libnnimage PUBLIC cmake)
 
 # Install it
 install(TARGETS nnimage)

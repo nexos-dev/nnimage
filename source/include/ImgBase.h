@@ -176,8 +176,12 @@ class ImageVal
 {
   public:
     ImageVal() = default;
-    ImageVal (const ImageValType& val, int line = -1) : val{val}, line{line}
+    ImageVal (ImageValType val, int line = -1) : val{std::move (val)}, line{line}
     {}
+    template <typename T, typename = std::enable_if_t<std::is_constructible_v<ImageValType, T>>>
+    ImageVal (T&& val, int line = -1) : val{std::forward<T> (val)}, line{line}
+    {}
+
     bool IsEmpty() const
     {
         return std::holds_alternative<std::monostate> (val);
@@ -199,7 +203,7 @@ class ImageVal
     }
 
   private:
-    const ImageValType val = std::monostate{};
+    ImageValType val = std::monostate{};
     int line = -1;
 };
 
@@ -229,11 +233,8 @@ class RegElement
     virtual ~RegElement() = default;
 
     ImageResult Set (Property prop, const ImageVal& val);
-
     ResCustom<std::optional<std::any>, ImageError> Get (Property prop);
-
     ResCustom<bool, ImageError> IsSet (Property prop);
-
     ImageResult SetDefaults();
 
   protected:
@@ -251,8 +252,14 @@ class RegElement
         return ImageError (code, {{"prop", std::string (propName)}, {"name", elementName}});
     }
 
+    bool hasProperty (Property prop)
+    {
+        const auto& registry = getRegistry();
+        return registry.find (prop) != registry.end();
+    }
+
   private:
-    virtual const Registry& getRegistry() const = 0;
+    virtual const Registry& getRegistry() = 0;
     virtual const std::string& getRegElementName() const = 0;
     virtual const std::string& getPropName (Property prop) const = 0;
 

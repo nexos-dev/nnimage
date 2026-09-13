@@ -1,0 +1,5 @@
+# grub.comp - contains grub bootloader component
+NAME=grub
+SLOT=boot
+CLASS=GrubBootComp
+HEADER=include/comp/BootLoad.h

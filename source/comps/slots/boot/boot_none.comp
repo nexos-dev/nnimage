@@ -1,0 +1,5 @@
+# boot_none.comp - component for no bootloader
+NAME=none
+SLOT=boot
+CLASS=BootNoneComp
+HEADER=include/comp/BootLoad.h
