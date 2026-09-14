@@ -21,6 +21,7 @@
 #include "include/Error.h"
 #include "include/Image.h"
 #include "include/Options.h"
+#include "include/OptionParser.h"
 #include "include/SimpleLexer.h"
 
 #include <memory>
@@ -28,12 +29,7 @@
 #include <unordered_map>
 #include <vector>
 
-// NOTE: this is here to prevent cxxopts from comma-splitting a partition spec. See Frontend.cxx for more
-// clarity
-struct PartitionStrings
-{
-    std::vector<std::string> values;
-};
+using PartitionStrings = CommaString;
 
 // NOTE: there is not a different options class for derived classes because we need access to all options at
 // once to determine which frontend to use
@@ -41,9 +37,9 @@ class Frontend;
 class FrontendOptions : public Options
 {
   public:
-    void CollectOptions (cxxopts::Options& opts);
+    void CollectOptions (OptionsParser& opts);
     ResNone ValidateOptions();
-    std::unique_ptr<Frontend> CreateFrontend();
+    std::unique_ptr<Frontend> CreateFrontend (OptionsParser& opts);
 
     std::string confFile{};
     std::string confEnc{};

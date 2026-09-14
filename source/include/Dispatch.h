@@ -50,10 +50,10 @@ class Dispatch
 {
   public:
     Dispatch();
-    void CollectOptions (cxxopts::Options& opts);
+    void CollectOptions (OptionsParser& opts);
     ResNone ValidateOptions();
     ResNone SetupConf();
-    bool Execute();
+    bool Execute (OptionsParser& parser);
 
   private:
     ResNone setupLogs();

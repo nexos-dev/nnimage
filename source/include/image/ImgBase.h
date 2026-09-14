@@ -19,8 +19,8 @@
 #define IMGBASE_H
 
 #include "include/StringHash.h"
-#include "include/ImgError.h"
-#include "include/ImgProp.h"
+#include "include/image/ImgError.h"
+#include "include/image/ImgProp.h"
 
 #include <algorithm>
 #include <any>

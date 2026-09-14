@@ -16,40 +16,21 @@
 */
 
 #include "include/Frontend.h"
-#include "cxxopts.hpp"
-
-#include <istream>
 #include <string>
 
-// NOTE: cxxopts splits options into a vector by comma by default. However, we dont want that.
-// This is because a partition spec is supposed a set of comma-seperated key=value pairs.
-// To prevent, we define a custom type that will contain an array and use this operator to parse into it
-std::istream& operator>> (std::istream& is, PartitionStrings& val)
-{
-    std::string spec;
-    is >> spec;
-    val.values.push_back (spec);
-    return is;
-}
-
-void FrontendOptions::CollectOptions (cxxopts::Options& opts)
+void FrontendOptions::CollectOptions (OptionsParser& opts)
 {
     // clang-format off
-    opts.add_options("Frontend")
-        ("f,file", "Configuration to get desired image configurations from", 
-            cxxopts::value<std::string>(confFile), "CONF_FILE")
-        ("confenc", "Encoding to use for configuration file", 
-            cxxopts::value<std::string>(confEnc), "ENC")
-        ("s,size", "Specifies size of image.\nMust be suffixed with multiplier (e.g., B, MiB, GB, etc)", 
-            cxxopts::value<std::string>(imgSize), "SIZE")
-        ("t,type", "Specifies image partition type (mbr, gpt, iso9660, or floppy)", 
-            cxxopts::value<std::string>(imgType), "TYPE")
-        ("bootmode", "Specifies boot mode of image (bios, efi, none)", 
-            cxxopts::value<std::string>(bootMode), "MODE")
+    opts.AddOptions ("Frontend", "frontend_cmd")
+        ("s,size", "Specifies size of image.\nMust be suffixed with multiplier (e.g., B, MiB, GB, etc)", imgSize)
+        ("t,type", "Specifies image partition type (mbr, gpt, iso9660, or floppy)", imgType)
+        ("bootmode", "Specifies boot mode of image (bios, efi, none)", bootMode)
         ("imgprop", "Specifies an additional property of image.\n"
-            "Any property valid in configuration file is valid here",
-            cxxopts::value<std::vector<std::string>>(props), "PROP=VALUE...")
-        ("p,partition", "Specifies a partition to add", cxxopts::value<PartitionStrings>(partSpecs), "PART=SPEC...");
+            "Any property valid in configuration file is valid here", props)
+        ("p,partition", "Specifies a partition to add", partSpecs);
+    opts.AddOptions ("Frontend", "frontend_conf")
+        ("f,file", "Configuration to get desired image configurations from", confFile)
+        ("confenc", "Encoding to use for configuration file", confEnc);
     // clang-format on
 }
 
@@ -71,12 +52,15 @@ ResNone FrontendOptions::ValidateOptions()
     return Success();
 }
 
-std::unique_ptr<Frontend> FrontendOptions::CreateFrontend()
+std::unique_ptr<Frontend> FrontendOptions::CreateFrontend (OptionsParser& parser)
 {
     // If a configuration file was provided, this is a ImageConf instance.
     // Other wise an ImageCmd
     if (!confFile.empty())
+    {
+        parser.UseSet ("frontend_conf");
         return std::make_unique<ImageConf> (*this);
-
+    }
+    parser.UseSet ("frontend_cmd");
     return std::make_unique<ImageCmd> (*this);
 }

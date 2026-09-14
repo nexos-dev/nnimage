@@ -22,10 +22,10 @@ std::unique_ptr<ActionOptions> ActionOptions::MakeActOptions (ActionType type)
     return actionTable[type]();
 }
 
-void ActionOptions::CollectOptions (cxxopts::Options& opts)
+void ActionOptions::CollectOptions (OptionsParser& opts)
 {}
 
-void CreateActOptions::CollectOptions (cxxopts::Options& opts)
+void CreateActOptions::CollectOptions (OptionsParser& opts)
 {
     ActionOptions::CollectOptions (opts);
 }
@@ -35,7 +35,7 @@ ResNone CreateActOptions::ValidateOptions()
     return Success();
 }
 
-void InitActOptions::CollectOptions (cxxopts::Options& opts)
+void InitActOptions::CollectOptions (OptionsParser& opts)
 {
     ActionOptions::CollectOptions (opts);
 }
@@ -45,7 +45,7 @@ ResNone InitActOptions::ValidateOptions()
     return Success();
 }
 
-void PartitionActOptions::CollectOptions (cxxopts::Options& opts)
+void PartitionActOptions::CollectOptions (OptionsParser& opts)
 {}
 
 ResNone PartitionActOptions::ValidateOptions()
@@ -53,7 +53,7 @@ ResNone PartitionActOptions::ValidateOptions()
     return Success();
 }
 
-void FormatActOptions::CollectOptions (cxxopts::Options& opts)
+void FormatActOptions::CollectOptions (OptionsParser& opts)
 {
     ActionOptions::CollectOptions (opts);
 }
@@ -63,7 +63,7 @@ ResNone FormatActOptions::ValidateOptions()
     return Success();
 }
 
-void UpdateActOptions::CollectOptions (cxxopts::Options& opts)
+void UpdateActOptions::CollectOptions (OptionsParser& opts)
 {
     ActionOptions::CollectOptions (opts);
 }

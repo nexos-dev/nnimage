@@ -19,7 +19,7 @@
 #define KRUNBACKEND_H
 
 #include "include/Backend.h"
-#include "include/BlockDevGen.h"
+#include "include/sys/BlockDevGen.h"
 
 class KrunBackend : public Backend
 {

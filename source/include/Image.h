@@ -20,10 +20,10 @@
 
 #include "include/ConfParser.h"
 #include "include/EnumArray.h"
-#include "include/ImgProp.h"
-#include "include/ImgBase.h"
-#include "include/ImgError.h"
-#include "include/ImgComponent.h"
+#include "include/image/ImgProp.h"
+#include "include/image/ImgBase.h"
+#include "include/image/ImgError.h"
+#include "include/image/ImgComponent.h"
 #include "BackendTypes.h"
 
 #include <memory>
@@ -302,6 +302,6 @@ class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
     const static NameRegistry<BootMode> bootModes;
 };
 
-#include "include/ImageGet.txx"
+#include "include/image/ImageGet.txx"
 
 #endif

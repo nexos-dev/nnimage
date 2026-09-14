@@ -18,8 +18,6 @@
 #include "include/Dispatch.h"
 #include "include/Error.h"
 #include "include/Log.h"
-#include "cxxopts.hpp"
-
 #include <memory>
 
 Dispatch::Dispatch()
@@ -90,7 +88,7 @@ ResNone Dispatch::SetupConf()
     return Success();
 }
 
-bool Dispatch::Execute()
+bool Dispatch::Execute (OptionsParser& parser)
 {
     // This is the main driver for the dispatcher. All the main business logic is controlled through here
     // This routine is a little annoying cause it's mostly error checking, but it is what it is
@@ -110,50 +108,49 @@ bool Dispatch::Execute()
     }
 
     // Invoke the frontend
-    auto frontend = frontOpts.CreateFrontend();
-    /*auto resFront = frontend->Parse();
+    auto frontend = frontOpts.CreateFrontend (parser);
+    auto resFront = frontend->Parse();
     if (!resFront.IsOk())
     {
         dispatchFail (resFront.GetError());
         return false;
-    }*/
+    }
 
-    Image img ("testImg");
-    ImageNumId id (127, "MiB");
-    id.Parse();
-    img.Set (ImgProp::Size, ImageVal (id));
-
-    auto res = img.Get<int64_t> (ImgProp::Size);
-    assert (res.IsOk());
-
-    auto val = *res.GetValue();
-
-    img.Set (ImgProp::BootEmu, ImageId ("noemu"));
-    img.Set (ImgProp::PartType, ImageId ("iso9660"));
+    // Now verify that there are no unused options
+    auto resOpts = parser.CheckUnusedOpts();
+    if (!resOpts.IsOk())
+    {
+        dispatchFail (resOpts.GetError());
+        return false;
+    }
 
     return true;
 }
 
-void Dispatch::CollectOptions (cxxopts::Options& opts)
+void Dispatch::CollectOptions (OptionsParser& opts)
 {
-    // Make clang-format not destroy our beautiful formatting
     // clang-format off
-    opts.add_options ("Global")
-        ("operation", "Operation to perform", cxxopts::value<std::string> (options.operation))
-        ("q,quiet", "Make program run silently", cxxopts::value<bool> (options.quiet))
-        ("verbose", "Prints out verbose messages", cxxopts::value<bool> (options.verbose))
-        ("trace-errors", "Print errors in trace format", cxxopts::value<bool> (options.traceErrors))
+    opts.AddOptions ("Global", "dispatch") 
+        ("operation", "Operation to perform", options.operation) 
+        ("q,quiet", "Make program run silently", options.quiet) 
+        ("verbose", "Prints out verbose messages", options.verbose)
+        ("trace-errors", "Print errors in trace format",options.traceErrors)
         ("b,backend", "Specifies default backend to use\n"
-                      "If an image specified to be generated is incompatible\n"
-                      "will use default backend for that image type",
-                      cxxopts::value<std::string> (options.defaultBackend), "BACKEND")
-        ("l,log-file", "Specifies file to use for logging purposes\n"
-                       "Can be specified multiple times\n"
-                       "or as a comma-seperated list", 
-                        cxxopts::value<std::vector<std::string>>(options.logFiles), "FILES...");
+            "If an image specified to be generated is incompatible\n"
+            "will use default backend for that image type",
+            options.defaultBackend)
+        ("l,log-file",
+            "Specifies file to use for logging purposes\n"
+            "Can be specified multiple times\n"
+            "or as a comma-seperated list",
+            options.logFiles);
     // clang-format on
+
     // Add operation argument
-    opts.parse_positional ({"operation"});
+    opts.AddPositional ("operation");
+
+    // Go ahead and mark our set as used as it always is
+    opts.UseSet ("dispatch");
 
     // Add frontend options
     frontOpts.CollectOptions (opts);

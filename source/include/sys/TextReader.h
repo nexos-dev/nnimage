@@ -18,8 +18,8 @@
 #ifndef TEXTREADER_H
 #define TEXTREADER_H
 
-#include "include/Chardet.h"
-#include "include/Iconv.h"
+#include "include/sys/Chardet.h"
+#include "include/sys/Iconv.h"
 #include "include/Error.h"
 #include "MemoryMapped.h"
 

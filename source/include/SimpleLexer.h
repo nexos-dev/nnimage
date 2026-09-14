@@ -23,6 +23,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <variant>
 
 enum class TokenType
@@ -89,9 +90,10 @@ class SimpleLexer
     void lexError (Error& err, LexError errCode, const std::string& extra);
     void lexWarn (LexWarning err, const std::string& extra);
     std::string file;
+    std::string ownedData;
     LexToken* curTok;
-    std::string fileData;    // File data (in UTF-8)
-    int idx;                 // Index in file data
+    std::string_view fileData;    // File data (in UTF-8)
+    std::size_t idx;              // Index in file data
     int curLine;
     bool isAccepted;
     bool isEof;

@@ -18,7 +18,7 @@
 #ifndef PARTCOMP_H
 #define PARTCOMP_H
 
-#include "include/ImgComponent.h"
+#include "include/image/ImgComponent.h"
 
 class MbrPartComp final : public PartTypeComp
 {

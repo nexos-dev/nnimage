@@ -34,7 +34,7 @@ class CreateAction : public Action
 class CreateActOptions : public ActionOptions
 {
   public:
-    void CollectOptions (cxxopts::Options& opts) override;
+    void CollectOptions (OptionsParser& opts) override;
     ResNone ValidateOptions() override;
 
     std::unique_ptr<Action> MakeAction() override
@@ -55,7 +55,7 @@ class InitAction : public Action
 class InitActOptions : public ActionOptions
 {
   public:
-    void CollectOptions (cxxopts::Options& opts) override;
+    void CollectOptions (OptionsParser& opts) override;
     ResNone ValidateOptions() override;
 
     std::unique_ptr<Action> MakeAction() override
@@ -74,7 +74,7 @@ class PartitionAction : public Action
 class PartitionActOptions : public ActionOptions
 {
   public:
-    void CollectOptions (cxxopts::Options& opts) override;
+    void CollectOptions (OptionsParser& opts) override;
     ResNone ValidateOptions() override;
 
     std::unique_ptr<Action> MakeAction() override
@@ -93,7 +93,7 @@ class FormatAction : public Action
 class FormatActOptions : public ActionOptions
 {
   public:
-    void CollectOptions (cxxopts::Options& opts) override;
+    void CollectOptions (OptionsParser& opts) override;
     ResNone ValidateOptions() override;
 
     std::unique_ptr<Action> MakeAction() override
@@ -114,7 +114,7 @@ class UpdateAction : public Action
 class UpdateActOptions : public ActionOptions
 {
   public:
-    void CollectOptions (cxxopts::Options& opts) override;
+    void CollectOptions (OptionsParser& opts) override;
     ResNone ValidateOptions() override;
 
     std::unique_ptr<Action> MakeAction() override

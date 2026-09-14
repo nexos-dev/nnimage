@@ -18,7 +18,7 @@
 #ifndef BOOTLOAD_H
 #define BOOTLOAD_H
 
-#include "include/ImgComponent.h"
+#include "include/image/ImgComponent.h"
 
 class BootNoneComp : public BootLoadComp
 {

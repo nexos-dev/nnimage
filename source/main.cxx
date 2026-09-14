@@ -17,8 +17,8 @@
 
 #include "include/Dispatch.h"
 #include "include/Log.h"
+#include "include/OptionParser.h"
 #include "config.h"
-#include "cxxopts.hpp"
 
 #include <cstdlib>
 #include <iostream>
@@ -45,55 +45,6 @@ static bool createLog (const char* progName)
     return true;
 }
 
-static void version()
-{
-    std::cout << "nnimage version " << NNIMAGE_VERSION << std::endl;
-    std::cout << "Copyright (C) 2026 Jedidiah Thompson" << std::endl;
-    std::cout << "See https://www.apache.org/licenses/LICENSE-2.0 for licensing" << std::endl;
-}
-
-static void help (cxxopts::Options& opts)
-{
-    std::cout << "nnimage: " << opts.help() << std::endl;
-    std::cout << "For more info, run \"man nnimage\"" << std::endl;
-}
-
-static void prepareOpts (cxxopts::Options& opts)
-{
-    opts.custom_help ("<operation> [-f conf_file] [-i image] [-o output] [options]");
-    opts.positional_help ("\nTakes configuration found in conf_file, or configuration specified on the command "
-                          "line and outputs it into specified output file.\nFor mult-image configurations, "
-                          "use -i to specify which images to generate");
-    opts.set_width (90);
-    // clang-format off
-    opts.add_options("Global")
-        ("h,help", "Shows this help screen")
-        ("v,version", "Shows version information");
-    // clang-format on
-}
-
-static cxxopts::ParseResult parseOpts (cxxopts::Options& opts, int argc, char** argv)
-{
-    try
-    {
-        auto res = opts.parse (argc, argv);
-        // Check for extra positional arguments
-        if (!res.unmatched().empty())
-        {
-            // Only print the first one out to avoid being too verbose
-            _log->Error (
-                "Unexpected extra argument \"" + res.unmatched().front() + "\"\nRun " + argv[0] + " --help for usage");
-            std::exit (1);
-        }
-        return res;
-    }
-    catch (const cxxopts::exceptions::exception& e)
-    {
-        _log->Error (std::string (e.what()) + "\nRun " + argv[0] + " --help for usage");
-        std::exit (1);
-    }
-}
-
 int main (int argc, char** argv)
 {
     // First task we have is to create the initial log
@@ -104,33 +55,24 @@ int main (int argc, char** argv)
     }
 
     Dispatch disp;
+    OptionsParser opts (basename (argv[0]), argc, argv);
 
-    // Now we need to prepare the command line
-    cxxopts::Options opts (basename (argv[0]), "A powerful, easy-to-use, all-in-one disk image manager");
-    prepareOpts (opts);
     disp.CollectOptions (opts);
-    auto result = parseOpts (opts, argc, argv);
+    auto result = opts.Parse();
 
-    // Now check for help/version
-    if (result.count ("help"))
-    {
-        help (opts);
+    if (result == OptionsResult::ExitSuccess)
         return 0;
-    }
-    else if (result.count ("version"))
-    {
-        version();
-        return 0;
-    }
+    else if (result == OptionsResult::Error)
+        return 1;
 
     // Prepare for the dispatcher to run
     auto res = disp.ValidateOptions();
     if (!res.IsOk())
     {
-        _log->Error (res.GetError().RootFrame().msg + std::string ("\nRun ") + argv[0] + " --help for usage");
+        opts.OptError (res.GetError().RootFrame().msg);
         return 1;
     }
 
     // We have all the info we need now, begin the dispatcher
-    return !disp.Execute();
+    return !disp.Execute (opts);
 }

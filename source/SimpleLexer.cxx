@@ -18,10 +18,14 @@
 #include "include/SimpleLexer.h"
 
 #include <cassert>
+#include <charconv>
+#include <cctype>
+#include <limits>
 #include <utility>
 
-SimpleLexer::SimpleLexer (const std::string& file, std::string fileData) : fileData{std::move (fileData)}, file{file}
+SimpleLexer::SimpleLexer (const std::string& file, std::string fileData) : file{file}, ownedData{std::move (fileData)}
 {
+    this->fileData = std::string_view (this->ownedData);
     curLine = 1;
     curTok = nullptr;
     idx = 0;
@@ -135,108 +139,23 @@ void SimpleLexer::returnChar (char c)
 
 bool SimpleLexer::isCharId (char c)
 {
-    switch (c)
-    {
-        case 'a':
-        case 'b':
-        case 'c':
-        case 'd':
-        case 'e':
-        case 'f':
-        case 'g':
-        case 'h':
-        case 'i':
-        case 'j':
-        case 'k':
-        case 'l':
-        case 'm':
-        case 'n':
-        case 'o':
-        case 'p':
-        case 'q':
-        case 'r':
-        case 's':
-        case 't':
-        case 'u':
-        case 'v':
-        case 'w':
-        case 'x':
-        case 'y':
-        case 'z':
-        case 'A':
-        case 'B':
-        case 'C':
-        case 'D':
-        case 'E':
-        case 'F':
-        case 'G':
-        case 'H':
-        case 'I':
-        case 'J':
-        case 'K':
-        case 'L':
-        case 'M':
-        case 'N':
-        case 'O':
-        case 'P':
-        case 'Q':
-        case 'R':
-        case 'S':
-        case 'T':
-        case 'U':
-        case 'V':
-        case 'W':
-        case 'X':
-        case 'Y':
-        case 'Z':
-        case '0':
-        case '1':
-        case '2':
-        case '3':
-        case '4':
-        case '5':
-        case '6':
-        case '7':
-        case '8':
-        case '9':
-        case '-':
-        case '_':
-            return true;
-        default:
-            return false;
-    }
+    const unsigned char ch = static_cast<unsigned char> (c);
+    return std::isalnum (ch) != 0 || c == '-' || c == '_';
 }
 
 bool SimpleLexer::isCharNum (char c, int base)
 {
-    switch (c)
+    const unsigned char ch = static_cast<unsigned char> (c);
+    switch (base)
     {
-        case '0':
-        case '1':
-            return true;
-        case '2':
-        case '3':
-        case '4':
-        case '5':
-        case '6':
-        case '7':
-            return base >= 8;
-        case '8':
-        case '9':
-            return base >= 10;
-        case 'A':
-        case 'a':
-        case 'B':
-        case 'b':
-        case 'C':
-        case 'c':
-        case 'D':
-        case 'd':
-        case 'E':
-        case 'e':
-        case 'F':
-        case 'f':
-            return base == 16;
+        case 2:
+            return ch == '0' || ch == '1';
+        case 8:
+            return ch >= '0' && ch <= '7';
+        case 10:
+            return std::isdigit (ch) != 0;
+        case 16:
+            return std::isdigit (ch) != 0 || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F');
         default:
             return false;
     }
@@ -244,18 +163,7 @@ bool SimpleLexer::isCharNum (char c, int base)
 
 bool SimpleLexer::isCharSpace (char c)
 {
-    switch (c)
-    {
-        case ' ':
-        case '\n':
-        case '\r':
-        case '\t':
-        case '\v':
-        case '\f':
-            return true;
-        default:
-            return false;
-    }
+    return std::isspace (static_cast<unsigned char> (c)) != 0;
 }
 
 const char* SimpleLexer::NameFromToken (TokenType type)
@@ -312,6 +220,7 @@ TokenResult SimpleLexer::NextToken()
     curTok = tok.get();
     tok->line = curLine;
     tok->type = TokenType::None;
+
     // Check for EOF
     if (isEof)
     {
@@ -319,6 +228,7 @@ TokenResult SimpleLexer::NextToken()
         return TokenResult (std::move (tok));
     }
     assert (!isError);
+
     // Now keep looping until it's accepted
     isAccepted = false;
     while (!isAccepted)
@@ -458,7 +368,6 @@ TokenResult SimpleLexer::NextToken()
                     id += c;
                     c = readChar();
                 }
-                // Return last character to buffer
                 returnChar (c);
                 // Check if the ID is a reserved word
                 if (id == "true")
@@ -471,26 +380,6 @@ TokenResult SimpleLexer::NextToken()
                 break;
             }
             case '0':
-                // Could just be a zero, also could be a hex/binary/octal
-                base = 0;
-                if (peekChar() == 'x')
-                {
-                    base = 16;
-                    skipChar();
-                }
-                else if (peekChar() == 'b')
-                {
-                    base = 2;
-                    skipChar();
-                }
-                else if (isCharNum (peekChar(), 10))
-                {
-                    base = 8;
-                    skipChar();
-                }
-                else
-                    base = 10;    // This is a lone 0
-                goto lexNum;
             case '1':
             case '2':
             case '3':
@@ -500,34 +389,52 @@ TokenResult SimpleLexer::NextToken()
             case '7':
             case '8':
             case '9': {
-                base = 10;
-            // fallthrough
-            lexNum:
-                tok->type = TokenType::Number;    // Tentative
+                tok->type = TokenType::Number;
                 tok->line = curLine;
                 std::string numStr;
-                // Go through every character
+                base = 10;
+                // Check if a base was specified
+                if (c == '0')
+                {
+                    char next = peekChar();
+                    if (next == 'x' || next == 'X')
+                    {
+                        base = 16;
+                        skipChar();
+                    }
+                    else if (next == 'b' || next == 'B')
+                    {
+                        base = 2;
+                        skipChar();
+                    }
+                    else if (next >= '0' && next <= '7')
+                        base = 8;
+                    else
+                        numStr += c;    // This means that a literal 0 was specified
+                    c = readChar();
+                }
+
                 while (isCharNum (c, base))
                 {
                     numStr += c;
                     c = readChar();
                 }
-                // Convert to number
+
+                // Being parsing
                 uint64_t val = 0;
-                try
-                {
-                    val = std::stoull (numStr, 0, base);
-                }
-                catch (const std::invalid_argument& e)
+                const char* begin = numStr.data();
+                const char* end = begin + numStr.size();
+                const auto parseRes = std::from_chars (begin, end, val, base);
+                if (parseRes.ec != std::errc{} || parseRes.ptr != end)
                 {
                     lexError (err, LexError::InvalidNum, numStr);
                     return TokenResult (err);
                 }
-                // Check what next character is
+
+                // Now handle a numid. A numid is a number with an ID attached to the end, e.g., "128MiB"
+                // We want both in one token for convinience
                 if (isCharId (c))
                 {
-                    // This is a numid
-                    // Now we need to lex the ID part
                     std::string id;
                     while (isCharId (c))
                     {
@@ -535,7 +442,6 @@ TokenResult SimpleLexer::NextToken()
                         c = readChar();
                     }
                     returnChar (c);
-                    // Now add to token
                     tok->val = LexNumId{val, id};
                     tok->type = TokenType::NumId;
                 }

@@ -16,7 +16,7 @@
 */
 
 #include "backend/KrunBackend.h"
-#include "include/SysMemory.h"
+#include "include/sys/SysMemory.h"
 #include <libkrun.h>
 #include <string.h>
 

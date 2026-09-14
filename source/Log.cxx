@@ -16,8 +16,8 @@
 */
 
 #include "include/Log.h"
-#include "include/LockFile.h"
-#include "include/TextReader.h"
+#include "include/sys/LockFile.h"
+#include "include/sys/TextReader.h"
 
 #include <unistd.h>
 

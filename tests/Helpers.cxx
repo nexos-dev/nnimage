@@ -16,9 +16,9 @@
 */
 
 #include "doctest.h"
-#include "include/LockFile.h"
-#include "include/Iconv.h"
-#include "include/Chardet.h"
+#include "include/sys/LockFile.h"
+#include "include/sys/Iconv.h"
+#include "include/sys/Chardet.h"
 #include "config.h"
 
 #include <sys/wait.h>

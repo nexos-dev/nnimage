@@ -18,9 +18,9 @@
 #ifndef IMGCOMPONENT_H
 #define IMGCOMPONENT_H
 
-#include "include/ImgBase.h"
-#include "include/ImgError.h"
-#include "include/ImgProp.h"
+#include "include/image/ImgBase.h"
+#include "include/image/ImgError.h"
+#include "include/image/ImgProp.h"
 #include "include/CompType.h"
 #include "include/EnumArray.h"
 #include "CompTypes.h"

@@ -20,7 +20,7 @@
 
 #include "include/Error.h"
 #include "include/EnumArray.h"
-#include "include/Timestamp.h"
+#include "include/sys/Timestamp.h"
 #include "include/ConfParser.h"
 #include "config.h"
 

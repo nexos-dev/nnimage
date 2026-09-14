@@ -19,17 +19,13 @@
 #define OPTIONS_H
 
 #include "include/Error.h"
-
-namespace cxxopts
-{
-    class Options;
-}
+#include "include/OptionParser.h"
 
 class Options
 {
   public:
     virtual ~Options() = default;
-    virtual void CollectOptions (cxxopts::Options& opts) = 0;
+    virtual void CollectOptions (OptionsParser& opts) = 0;
     virtual ResNone ValidateOptions() = 0;
 };
 

@@ -18,7 +18,7 @@
 #ifndef ERROR_H
 #define ERROR_H
 
-#include "ErrorCode.h"
+#include "sys/ErrorCode.h"
 
 #include <cassert>
 #include <cerrno>

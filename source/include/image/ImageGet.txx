@@ -16,7 +16,7 @@
 */
 
 #include "include/Image.h"
-#include "include/ImgComponent.h"
+#include "include/image/ImgComponent.h"
 
 #include <any>
 #include <optional>

@@ -121,26 +121,20 @@ TEST_CASE ("SimpleLexer lexes hexadecimal and binary numbers")
     CHECK (std::get<uint64_t> (tokens[3].val) == 0);
 }
 
-TEST_CASE ("SimpleLexer octal literals lose the digit immediately after the leading zero (known bug)")
+TEST_CASE ("SimpleLexer parses octal literals without dropping the first digit after a leading zero")
 {
-    // NOTE: SimpleLexer::NextToken uses skipChar() to consume the peeked digit that identifies an
-    // octal literal (the digit right after a leading '0'), but that digit is only discarded and
-    // never appended to the number string. As a result "017" is misparsed as octal "07" (7) instead
-    // of the correct octal "17" (15). This test documents the current (buggy) behavior so a future
-    // fix is caught by a red test rather than silently changing behavior.
     auto tokens = LexAll ("017");
     REQUIRE (tokens.size() == 2);
     CHECK (tokens[0].type == TokenType::Number);
-    CHECK (std::get<uint64_t> (tokens[0].val) == 7);
+    CHECK (std::get<uint64_t> (tokens[0].val) == 15);
 }
 
-TEST_CASE ("SimpleLexer throws on numbers that overflow uint64_t (known gap: only invalid_argument is caught)")
+TEST_CASE ("SimpleLexer reports an oversized integer as a lex error instead of throwing")
 {
-    // std::stoull throws std::out_of_range for values that don't fit in uint64_t, but
-    // SimpleLexer::NextToken only catches std::invalid_argument, so this currently propagates as an
-    // uncaught exception rather than a graceful LexError.
     SimpleLexer lexer ("test.conf", "99999999999999999999999999");
-    CHECK_THROWS_AS (lexer.NextToken(), std::out_of_range);
+    auto res = lexer.NextToken();
+    REQUIRE (!res.IsOk());
+    CHECK (res.GetError().RootFrame().code == ErrorCode::LexError);
 }
 
 TEST_CASE ("SimpleLexer lexes a NumId as a number immediately followed by identifier characters")
