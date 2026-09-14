@@ -175,6 +175,10 @@ void OptionsParser::version()
     std::cout << "nnimage version " << NNIMAGE_VERSION << "\n";
     std::cout << "Copyright (C) 2026 Jedidiah Thompson" << "\n";
     std::cout << "See https://www.apache.org/licenses/LICENSE-2.0 for licensing" << std::endl;
+    std::cout << "\nContains code from:\n";
+    std::cout << "  - cxxopts: (C) Jarryd Beck, MIT License\n";
+    std::cout << "  - doctest: (C) Viktor Kirilov, MIT License\n";
+    std::cout << "  - MemoryMapped: (C) Stephen Brumme, zlib license" << std::endl;
 }
 
 void OptionsParser::prepareHelp()

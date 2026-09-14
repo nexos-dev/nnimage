@@ -17,6 +17,10 @@
 
 #include <unistd.h>
 
+#ifdef __APPLE__
+#include <mach/mach.h>
+#endif
+
 #include <cstdint>
 
 static uint64_t GetMemorySize()
@@ -33,9 +37,25 @@ static uint64_t GetMemorySizeMB()
 
 static uint64_t GetFreeMemorySize()
 {
+#ifndef __APPLE__
     long free_pages = sysconf (_SC_AVPHYS_PAGES);
     long page_size = sysconf (_SC_PAGE_SIZE);
     return static_cast<uint64_t> (free_pages) * static_cast<uint64_t> (page_size);
+#else
+    // On Apple systems, use vm_statistics64 to get free memory
+    vm_size_t pgSize;
+    mach_port_t host = mach_host_self();
+    vm_statistics64_t stats;
+    mach_msg_type_number_t count = HOST_VM_INFO64_COUNT;
+
+    host_page_size (host, &pgSize);
+
+    if (host_statistics64 (host, HOST_VM_INFO64, (host_info64_t) &stats, &count) != KERN_SUCCESS)
+        throw std::runtime_error ("unable to get host free memory");    // Shouldn't happen, but who knows what arcane
+                                                                        // mach failure paths exist
+    return (stats->free_count + stats->inactive_count) * pgSize;
+
+#endif
 }
 
 static uint64_t GetFreeMemorySizeMB()
