@@ -68,14 +68,14 @@ endif()
 
 find_package(PkgConfig REQUIRED)
 
-# Get libchardet
-pkg_check_modules(CHARDET IMPORTED_TARGET chardet)
+# Get uchardet
+pkg_check_modules(UCHARDET IMPORTED_TARGET uchardet)
 # If not found, that's fine
-if(NOT CHARDET_FOUND)
-    set(HAVE_CHARDET OFF)
+if(NOT UCHARDET_FOUND)
+    set(HAVE_UCHARDET OFF)
 else()
-    set(HAVE_CHARDET ON)
-    list(APPEND NNIMAGE_LIBRARIES PkgConfig::CHARDET)
+    set(HAVE_UCHARDET ON)
+    list(APPEND NNIMAGE_LIBRARIES PkgConfig::UCHARDET)
 endif()
 
 # Get iconv

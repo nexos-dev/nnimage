@@ -56,13 +56,12 @@ class TextReader
         // Prepare encoding detection
         Chardet chardet;
         std::string enc = "";
-        float confidence = 0;
         if (!fileEnc.empty())
             enc = fileEnc;    // Force it
         else
         {
             // Attempt to detect it
-            if (!chardet.Detect (data, enc, confidence) || confidence < 0.5)
+            if (!chardet.Detect (data, enc))
             {
                 if (!requireEnc)
                 {
@@ -75,7 +74,6 @@ class TextReader
                     ErrorOutput::The()->Report (err);
 
                     enc = "ASCII";
-                    confidence = 1.0;    // Force it as ASCII is compatible with everything
                 }
                 else
                 {

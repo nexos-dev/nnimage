@@ -317,34 +317,28 @@ TEST_CASE ("Chardet move construction and assignment do not crash")
     another = std::move (moved);
 
     std::string encoding;
-    float confidence = -1.0f;
-    another.Detect ("plain ascii text", encoding, confidence);
-    CHECK (confidence >= 0.0f);
+    another.Detect ("plain ascii text", encoding);
 }
 
-#ifdef HAVE_CHARDET
+#ifdef HAVE_UCHARDET
 
 TEST_CASE ("Chardet detects an encoding for plain ASCII text when chardet is available")
 {
     Chardet det;
     std::string encoding;
-    float confidence = 0.0f;
-    bool ok = det.Detect ("The quick brown fox jumps over the lazy dog.", encoding, confidence);
+    bool ok = det.Detect ("The quick brown fox jumps over the lazy dog.", encoding);
     CHECK (ok);
     CHECK_FALSE (encoding.empty());
-    CHECK (confidence >= 0.0f);
 }
 
 #else
 
-TEST_CASE ("Chardet::Detect always fails and reports full confidence when chardet is unavailable")
+TEST_CASE ("Chardet::Detect always fails when uchardet is unavailable")
 {
     Chardet det;
     std::string encoding = "unchanged";
-    float confidence = -1.0f;
-    bool ok = det.Detect ("some data", encoding, confidence);
+    bool ok = det.Detect ("some data", encoding);
     CHECK_FALSE (ok);
-    CHECK (confidence == 1.0f);
     CHECK (encoding == "unchanged");
 }
 
