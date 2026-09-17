@@ -206,8 +206,9 @@ list(APPEND NNIMAGE_SOURCES source/Log.cxx
                             source/Action.cxx
                             source/ErrorFormat.cxx
                             source/Backend.cxx
-                            source/Image.cxx
                             source/Frontend.cxx
+                            source/Image.cxx
+                            source/ImgBase.cxx
                             source/ImageCmd.cxx
                             source/ImageConf.cxx
                             source/Task.cxx)
@@ -232,7 +233,8 @@ if(NNIMAGE_ENABLE_TESTS)
                                 tests/Image.cxx
                                 tests/SimpleLexer.cxx
                                 tests/ConfParser.cxx
-                                tests/Options.cxx)
+                                tests/Options.cxx
+                                tests/ImageCmd.cxx)
     target_link_libraries(nnimage_test PRIVATE libnnimage libbackend ${NNIMAGE_LIBRARIES})
 
     # Add doctests to CTest

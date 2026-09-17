@@ -47,10 +47,10 @@ struct PartSpec
     std::string name{};
     std::string format{};
     std::string prefix{};
-    int64_t start = PartSpec::Default;
-    int64_t size = PartSpec::Default;
+    uint64_t start = PartSpec::Default;
+    uint64_t size = PartSpec::Default;
     std::optional<bool> isBoot = std::nullopt;
-    static constexpr int64_t Default = -1;
+    static constexpr uint64_t Default = -1;
 
     // Delete all copy constructors assignment operators
     PartSpec (const PartSpec&) = delete;
@@ -149,8 +149,10 @@ struct ImgSpec
 {
     std::string name{};
     std::string fileExt{};
-    int64_t size = -1;
+    uint64_t size = -1;
     BootMode bootMode = BootMode::Max;
+
+    static constexpr uint64_t EmptySize = -1;
 
     ImgSpec (const ImgSpec&) = delete;
     ImgSpec& operator= (const ImgSpec&) = delete;
@@ -234,7 +236,7 @@ class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
     }
 
     virtual ~Image() = default;
-    // Delete all copy and move constructors and assignment operators
+    // Delete copy constructor and assignment operator
     Image (const Image&) = delete;
     Image& operator= (const Image&) = delete;
 
@@ -269,11 +271,13 @@ class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
     }
 
     // Resolves prop to its owning component, or nullopt if it's owned by the base image itself.
-    ResCustom<std::optional<Component*>, ImageError> resolveComponent (ImgProp prop);
+    std::optional<Component*> resolveComponent (ImgProp prop);
 
     // Replays deferred properties
     ImageResult runDeferred();
     ImageResult validate();
+
+    ResCustom<std::optional<std::any>, ImageError> getInternal (ImgProp prop);
 
     // Getter/setter for setting a property that adds a component
     template <typename CompT>

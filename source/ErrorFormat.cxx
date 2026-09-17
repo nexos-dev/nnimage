@@ -40,13 +40,13 @@ void LogErrorSink::Output (const Error& err)
         switch (err.GetSeverity())
         {
             case ErrorSeverity::Warning:
-                _log->Warning (errorMsg);
+                Log::The().Warning (errorMsg);
                 break;
             case ErrorSeverity::Error:
-                _log->Error (errorMsg);
+                Log::The().Error (errorMsg);
                 break;
             case ErrorSeverity::Fatal:
-                _log->Fatal (errorMsg);
+                Log::The().Fatal (errorMsg);
                 break;
         }
     }

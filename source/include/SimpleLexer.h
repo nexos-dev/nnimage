@@ -21,7 +21,6 @@
 #include "include/Error.h"
 
 #include <cstdint>
-#include <memory>
 #include <string>
 #include <string_view>
 #include <variant>
@@ -34,6 +33,7 @@ enum class TokenType
     NumId,
     Colon,
     Semicolon,
+    Slash,
     Comma,
     Obrace,
     Ebrace,
@@ -74,8 +74,8 @@ class SimpleLexer
 {
   public:
     SimpleLexer() = default;
-    SimpleLexer (const std::string& file, std::string fileData);
-    Result<std::unique_ptr<LexToken>> NextToken();
+    SimpleLexer (const std::string& file, std::string_view data);
+    Result<LexToken> NextToken();
     const char* NameFromToken (TokenType type);
 
   private:
@@ -86,12 +86,10 @@ class SimpleLexer
     bool isCharId (char c);
     bool isCharNum (char c, int base);
     bool isCharSpace (char c);
-    void prepareEof (LexToken* tok);
+    void prepareEof (LexToken& tok);
     void lexError (Error& err, LexError errCode, const std::string& extra);
     void lexWarn (LexWarning err, const std::string& extra);
     std::string file;
-    std::string ownedData;
-    LexToken* curTok;
     std::string_view fileData;    // File data (in UTF-8)
     std::size_t idx;              // Index in file data
     int curLine;

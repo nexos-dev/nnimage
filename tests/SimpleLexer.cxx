@@ -18,7 +18,6 @@
 #include "doctest.h"
 #include "include/SimpleLexer.h"
 
-#include <memory>
 #include <string>
 
 // Small helper that lexes an entire buffer and returns every token, stopping at (and including) EOF.
@@ -30,8 +29,8 @@ static std::vector<LexToken> LexAll (const std::string& data, const std::string&
     while (true)
     {
         auto res = lexer.NextToken();
-        REQUIRE (res.IsOk());
-        LexToken tok = *res.GetValue();
+        REQUIRE (res);
+        LexToken tok = res.Value();
         tokens.push_back (tok);
         if (tok.type == TokenType::Eof)
             break;
@@ -56,13 +55,13 @@ TEST_CASE ("SimpleLexer lexes whitespace-only buffers as EOF and repeated EOF af
 {
     SimpleLexer lexer ("test.conf", "   \t\n\r\n  ");
     auto res = lexer.NextToken();
-    REQUIRE (res.IsOk());
-    CHECK (res.GetValue()->type == TokenType::Eof);
+    REQUIRE (res);
+    CHECK (res.Value().type == TokenType::Eof);
 
     // Calling again after EOF must keep returning EOF rather than erroring or crashing
     res = lexer.NextToken();
-    REQUIRE (res.IsOk());
-    CHECK (res.GetValue()->type == TokenType::Eof);
+    REQUIRE (res);
+    CHECK (res.Value().type == TokenType::Eof);
 }
 
 TEST_CASE ("SimpleLexer recognizes every single-character token")
@@ -133,8 +132,8 @@ TEST_CASE ("SimpleLexer reports an oversized integer as a lex error instead of t
 {
     SimpleLexer lexer ("test.conf", "99999999999999999999999999");
     auto res = lexer.NextToken();
-    REQUIRE (!res.IsOk());
-    CHECK (res.GetError().RootFrame().code == ErrorCode::LexError);
+    REQUIRE (!res);
+    CHECK (res.Error().RootFrame().code == ErrorCode::LexError);
 }
 
 TEST_CASE ("SimpleLexer lexes a NumId as a number immediately followed by identifier characters")
@@ -218,18 +217,18 @@ TEST_CASE ("SimpleLexer reports an unterminated string as a lex error")
 {
     SimpleLexer lexer ("test.conf", "\"never closed");
     auto res = lexer.NextToken();
-    REQUIRE_FALSE (res.IsOk());
-    CHECK (res.GetError().RootFrame().domain == ErrorDomain::Conf);
-    CHECK (res.GetError().RootFrame().code == ErrorCode::LexError);
-    CHECK (res.GetError().RootFrame().msg.find ("Unexpected EOF") != std::string::npos);
+    REQUIRE_FALSE (res);
+    CHECK (res.Error().RootFrame().domain == ErrorDomain::Conf);
+    CHECK (res.Error().RootFrame().code == ErrorCode::LexError);
+    CHECK (res.Error().RootFrame().msg.find ("Unexpected EOF") != std::string::npos);
 }
 
 TEST_CASE ("SimpleLexer reports an invalid character as a lex error including file and line")
 {
     SimpleLexer lexer ("myfile.conf", "\n\n$");
     auto res = lexer.NextToken();
-    REQUIRE_FALSE (res.IsOk());
-    const std::string& msg = res.GetError().RootFrame().msg;
+    REQUIRE_FALSE (res);
+    const std::string& msg = res.Error().RootFrame().msg;
     CHECK (msg.find ("myfile.conf:3:") != std::string::npos);
     CHECK (msg.find ("Invalid character \"$\"") != std::string::npos);
 }
@@ -258,16 +257,16 @@ TEST_CASE ("SimpleLexer tracks line numbers across newlines, comments and string
     SimpleLexer lexer ("test.conf", data);
 
     auto res = lexer.NextToken();
-    REQUIRE (res.IsOk());
-    CHECK (res.GetValue()->line == 1);
+    REQUIRE (res);
+    CHECK (res.Value().line == 1);
 
     res = lexer.NextToken();
-    REQUIRE (res.IsOk());
-    CHECK (res.GetValue()->line == 2);
+    REQUIRE (res);
+    CHECK (res.Value().line == 2);
 
     res = lexer.NextToken();
-    REQUIRE (res.IsOk());
-    CHECK (res.GetValue()->line == 4);
+    REQUIRE (res);
+    CHECK (res.Value().line == 4);
 }
 
 TEST_CASE ("SimpleLexer handles CRLF line endings as a single newline")
@@ -276,12 +275,12 @@ TEST_CASE ("SimpleLexer handles CRLF line endings as a single newline")
     SimpleLexer lexer ("test.conf", data);
 
     auto res = lexer.NextToken();
-    REQUIRE (res.IsOk());
-    CHECK (res.GetValue()->line == 1);
+    REQUIRE (res);
+    CHECK (res.Value().line == 1);
 
     res = lexer.NextToken();
-    REQUIRE (res.IsOk());
-    CHECK (res.GetValue()->line == 2);
+    REQUIRE (res);
+    CHECK (res.Value().line == 2);
 }
 
 TEST_CASE ("SimpleLexer::NameFromToken returns the expected display name for every token type")

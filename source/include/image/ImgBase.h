@@ -107,15 +107,16 @@ class ImageNumId
     {
         auto it = mulMap.find (mul);
         if (it == mulMap.end())
-        {
             return Error ({ErrorDomain::ImageConf, ErrorCode::BadArgument}, "Invalid multiplier \"{}\" specified", mul);
-        }
+
         if (__builtin_mul_overflow (num, it->second, &val))
             return Error ({ErrorDomain::ImageConf, ErrorCode::BadArgument}, "Size overflow");
+
         valid = true;
         return Success();
     }
-    int64_t Get() const
+
+    uint64_t Get() const
     {
         if (valid)
             return val;
@@ -124,19 +125,11 @@ class ImageNumId
     }
 
   private:
-    int64_t val = 0;
+    uint64_t val = 0;
     bool valid = false;
     size_t num = 0;
     std::string mul{};
-    inline static const std::unordered_map<std::string, size_t> mulMap = {{"B", 1},
-        {"KiB", 1024},
-        {"KB", 1000},
-        {"MiB", 1024 * 1024},
-        {"MB", 1000 * 1000},
-        {"GiB", 1024 * 1024 * 1024},
-        {"GB", 1000 * 1000 * 1000},
-        {"TiB", static_cast<size_t> (1024) * 1024 * 1024 * 1024},
-        {"TB", static_cast<size_t> (1000) * 1000 * 1000 * 1000}};
+    static const std::unordered_map<std::string, size_t> mulMap;
 };
 
 // HACK: used purely to differentiate between a quoted string and an ID in the variant
@@ -169,7 +162,12 @@ struct ImageId
 using ImageList = std::vector<std::string>;
 
 // Variant of all valid image value types
-using ImageValType = std::variant<int64_t, ImageId, std::string, ImageList, bool, ImageNumId, std::monostate>;
+using ImageValType = std::variant<uint64_t, ImageId, std::string, ImageList, bool, ImageNumId, std::monostate>;
+using ImageValIdx = std::size_t;
+
+constexpr std::size_t ImageValSize = std::variant_size_v<ImageValType>;
+
+struct LexToken;
 
 // An image value
 class ImageVal
@@ -197,14 +195,40 @@ class ImageVal
             return {};
         return std::get<T> (val);
     }
-    std::type_index GetType() const
+    ImageValIdx GetType() const
     {
-        return std::visit ([] (auto&& arg) -> std::type_index { return typeid (arg); }, val);
+        return val.index();
     }
+
+    ImageVal Cast (ImageValIdx wantedType) const;
+
+    bool IsInvalid()
+    {
+        return val.index() == GetTypeIndex<std::monostate>();
+    }
+
+    // This function gets the index of the specified time
+    // It's constexpr as it's used a lot in registry tables to fill them out at compile time
+    template <typename T>
+    static constexpr ImageValIdx GetTypeIndex()
+    {
+        ImageValIdx idx = std::variant_npos;
+
+        auto check = [&]<ImageValIdx... Is> (std::index_sequence<Is...>) {
+            ((std::is_same_v<T, std::variant_alternative_t<Is, ImageValType>> ? idx = Is : 0), ...);
+        };
+        check (std::make_index_sequence<std::variant_size_v<ImageValType>>{});
+
+        return idx;
+    }
+
+    static Result<ImageVal> FromToken (const LexToken& tok);
 
   private:
     ImageValType val = std::monostate{};
     int line = -1;
+
+    static constexpr std::monostate Invalid = std::monostate{};
 };
 
 // Generic property setters/getters
@@ -217,7 +241,7 @@ using PropGetter = std::optional<std::any> (*) (T&);
 template <typename T>
 struct ConfItem
 {
-    std::type_index inputType;
+    ImageValIdx inputType;
     ImageValType defaultVal;
     PropSetter<T> setter;
     PropGetter<T> getter;

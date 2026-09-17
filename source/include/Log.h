@@ -73,6 +73,17 @@ using LogStream = int;
 class Log
 {
   public:
+    static Log& The()
+    {
+        static Log instance;
+        return instance;
+    }
+
+    Log (const Log&) = delete;
+    Log& operator= (const Log&) = delete;
+    ~Log();
+    Log();
+
     void LogAt (const std::string& message, LogLevel level, LogTime time = LogTime{});
     // Only log message to sinks with the given tag. If no sinks have that tag, nothing will be
     // logged
@@ -133,8 +144,6 @@ class Log
     std::shared_mutex sinkMtx;
     std::vector<std::pair<std::unique_ptr<LogSink>, LogSinkInfo>> sinks;
 };
-
-extern std::unique_ptr<Log> _log;
 
 class LogSink
 {
@@ -221,8 +230,8 @@ class ManagedLogCtrl : public ConfParser<ManagedLogCtrl, LogCtrlKey>
 {
   public:
     ManagedLogCtrl() = default;
-    ManagedLogCtrl (const std::string& fileName, std::string data)
-        : ConfParser<ManagedLogCtrl, LogCtrlKey> (fileName, std::move (data))
+    ManagedLogCtrl (const std::string& fileName, std::string_view data)
+        : ConfParser<ManagedLogCtrl, LogCtrlKey> (fileName, data)
     {}
     void Log (const std::string& message, LogLevel level, LogTime time);
 

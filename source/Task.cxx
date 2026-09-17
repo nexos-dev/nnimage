@@ -170,7 +170,7 @@ void TaskGraph::addReadyTask (TaskId task)
 {
     if (!taskExists (task))
     {
-        _log->Debug ("attempted to add non-existant task " + std::to_string (task) + " to ready queue");
+        Log::The().Debug ("attempted to add non-existant task " + std::to_string (task) + " to ready queue");
         return;    // It's perfectly harmless to attempt to add a non-existant task to the ready
                    // queue, so we just ignore it
                    // I still log it for debugging purposes, but it causes no side effects
@@ -187,14 +187,14 @@ bool TaskGraph::RunTasks()
     // CHeck if we have nothing to do
     if (tasks.empty())
     {
-        _log->Info ("nothing to do");
+        Log::The().Info ("nothing to do");
         return true;
     }
     // Build a stable topological order first to ensure this is a DAG.
     std::queue<TaskId> topoQueue;
     if (!topoSort (topoQueue))
     {
-        _log->Error ("cycle detected in task graph");
+        Log::The().Error ("cycle detected in task graph");
         return false;
     }
 
@@ -282,12 +282,12 @@ bool TaskGraph::RunTasks()
 
     else if (succeeded > 0)
     {
-        _log->Warning ("not all tasks completed successfully");
+        Log::The().Warning ("not all tasks completed successfully");
         return false;
     }
     else
     {
-        _log->Error ("action aborted");
+        Log::The().Error ("action aborted");
         return false;
     }
 }

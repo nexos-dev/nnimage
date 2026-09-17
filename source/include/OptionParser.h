@@ -96,7 +96,7 @@ class OptionsParser
 
     void OptError (const std::string& msg)
     {
-        _log->Error (msg + "\nRun " + argv[0] + "--help for usage");
+        Log::The().Error (msg + "\nRun " + argv[0] + " --help for usage");
     }
 
     ResNone CheckUnusedOpts();

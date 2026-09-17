@@ -26,21 +26,17 @@
 #include <memory>
 #include <string>
 
-// Global log instance
-std::unique_ptr<Log> _log;
-
 static bool createLog (const char* progName)
 {
-    _log = std::make_unique<Log>();
     // Add cout and cerr to it at their defaults
     LogSinkInfo coutSink = {LogLevel::Info, LogLevel::Status};
-    auto res = _log->AddConsoleSink (coutSink, progName, std::cout);
-    if (!res.IsOk())
+    auto res = Log::The().AddConsoleSink (coutSink, progName, std::cout);
+    if (!res)
         return false;
 
     LogSinkInfo cerrSink = {LogLevel::Warning, LogLevel::Fatal};
-    res = _log->AddConsoleSink (cerrSink, progName, std::cerr);
-    if (!res.IsOk())
+    res = Log::The().AddConsoleSink (cerrSink, progName, std::cerr);
+    if (!res)
         return false;
     return true;
 }
@@ -67,9 +63,9 @@ int main (int argc, char** argv)
 
     // Prepare for the dispatcher to run
     auto res = disp.ValidateOptions();
-    if (!res.IsOk())
+    if (!res)
     {
-        opts.OptError (res.GetError().RootFrame().msg);
+        opts.OptError (res.Error().RootFrame().msg);
         return 1;
     }
 

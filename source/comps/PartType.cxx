@@ -51,17 +51,17 @@ ImageResult IsoPartComp::Validate()
 
         // Ensure boot image type is valid
         auto res = bootImage->GetComponent<PartTypeComp> (CompType::PartType);
-        if (!res.IsOk())
+        if (!res)
         {
             if (!owner.GetName().empty())
             {
-                res.GetError().Add ({ErrorDomain::ImageConf, ErrorCode::ImgInvalid},
+                res.Error().Add ({ErrorDomain::ImageConf, ErrorCode::ImgInvalid},
                     "Failed to query boot image for image \"{}\"",
                     owner.GetName());
             }
-            return res.GetError();
+            return res.Error();
         }
-        PartTypeComp* bootImgPart = res.GetValue();
+        PartTypeComp* bootImgPart = res.Value();
         PartType type = bootImgPart->GetPartType();
 
         auto& validTypes = validBootImage[bootEmu];
@@ -104,13 +104,13 @@ const CompConfRegistry GptPartComp::registry = {
 // ISO9660 registry
 const CompConfRegistry IsoPartComp::registry = {
     {ImgProp::BootEmu, 
-        {typeid(ImageId),
+        {ImageVal::GetTypeIndex<ImageId>(),
             ImageId ("noemu"),
             [] (Component& comp, const ImageVal& val) -> ImageResult
             {
                 IsoPartComp& isoComp = derived<IsoPartComp> (comp);
                 // Resolve the ID
-                std::string name = std::string (*val.Get<ImageId>());
+                std::string name = std::move((*val.Get<ImageId>()).Str());
                 IsoBootEmu emu = bootEmus.Resolve (name);
                 if(emu == IsoBootEmu::Max)
                 {
@@ -130,7 +130,7 @@ const CompConfRegistry IsoPartComp::registry = {
         }
     },
     {ImgProp::BootImage,
-        {typeid(ImageId),
+        {ImageVal::GetTypeIndex<ImageId>(),
             "",
             [] (Component& comp, const ImageVal& val) -> ImageResult
             {

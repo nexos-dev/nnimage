@@ -238,23 +238,25 @@ class Error
 // anything else. THe ONLY exception to this rule is in constructors when a factory function is
 // impractial
 // Just try to catch the exception as close to the source as possible
-// NOTE2: generally for programming errors, assert is preferred
+// NOTE2: As a rule of thumb, if an error could happen during normal execution, return as a result
+// If it probably couldn't occur but is still a good safety net (e.g. improper function usage) throw
+// For complete invariants, assert
 class ErrorException : public std::exception
 {
   public:
-    explicit ErrorException (const Error& error) : error (error)
+    explicit ErrorException (const ::Error& error) : error (error)
     {}
     const char* what() const noexcept override
     {
         return error.RootFrame().msg.c_str();
     }
-    const Error& GetError() const noexcept
+    const ::Error& Error() const noexcept
     {
         return error;
     }
 
   private:
-    Error error;
+    class Error error;
 };
 
 // Rudimentary Result class
@@ -263,26 +265,34 @@ class ResCustom
 {
   public:
     ResCustom (T val) : error (std::nullopt), ok (true), value (std::move (val))
-    {}
+    {
+        static_assert (std::is_base_of_v<::Error, E>, "ResCustom<E> type must inherit from Error");
+        static_assert (!std::is_same_v<T, E>, "ResCustom<T,E> can't have same type");
+    }
     ResCustom (E error) : error (std::move (error)), ok (false), value (std::nullopt)
     {
-        static_assert (std::is_base_of_v<Error, E>, "Result<E> type must inherit from Error");
+        static_assert (std::is_base_of_v<::Error, E>, "ResCustom<E> type must inherit from Error");
+        static_assert (!std::is_same_v<T, E>, "ResCustom<T,E> can't have same type");
     }
-    bool IsOk() const
+    bool Ok() const
     {
         return ok;
     }
-    T& GetValue()
+    explicit operator bool() const
+    {
+        return ok;
+    }
+    T& Value()
     {
         assert (value.has_value());
         return *value;
     }
-    E& GetError()
+    E& Error()
     {
         assert (error.has_value());
         return *error;
     }
-    const E& GetError() const
+    const E& Error() const
     {
         assert (error.has_value());
         return *error;

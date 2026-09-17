@@ -26,6 +26,9 @@
 #include <cstdlib>
 #include <iostream>
 
+Log::~Log() = default;
+Log::Log() = default;
+
 void Log::LogAt (const std::string& message, LogLevel level, LogTime time)
 {
     if (time == LogTime{})
@@ -106,7 +109,7 @@ ResNone Log::AddFileSink (LogSinkInfo& info, const std::string& filename)
     }
     catch (ErrorException& e)
     {
-        return e.GetError();
+        return e.Error();
     }
     // Add it
     std::unique_lock<std::shared_mutex> lock (sinkMtx);
@@ -137,13 +140,13 @@ ResNone Log::AddManagedSink (LogSinkInfo& info, std::filesystem::path logDir)
     }
     catch (ErrorException& e)
     {
-        return e.GetError();
+        return e.Error();
     }
 
     std::unique_lock<std::shared_mutex> lock (sinkMtx);
 
     auto res = sink->Prepare();
-    if (!res.IsOk())
+    if (!res)
         return res;
 
     sinks.emplace_back (std::move (sink), info);
@@ -177,7 +180,7 @@ ConsoleLogSink::ConsoleLogSink (const char* progName, std::ostream& out) : out (
     // Check if this is a color terminal
     isOutColor = checkIsOutColor();
     if (!isOutColor)
-        _log->Debug ("Output stream is not a color terminal, disabling color output");
+        Log::The().Debug ("Output stream is not a color terminal, disabling color output");
 }
 
 void ConsoleLogSink::Log (const std::string& message, LogLevel level, LogTime time)
@@ -271,31 +274,30 @@ ResNone ManagedLogSink::Prepare()
 ResNone ManagedLogSink::openLogCtrl (ManagedLogSink& inst, const std::filesystem::path& ctrl, int& maxAge, int& maxLogs)
 {
     std::string data;
-
     try
     {
         TextReader ctrlReader = TextReader (inst.ctrlPath);
         auto res = ctrlReader.Read (data);
-        if (!res.IsOk())
-            return res.GetError();
+        if (!res)
+            return res.Error();
     }
     catch (const ErrorException& e)
     {
-        return e.GetError();
+        return e.Error();
     }
 
-    ManagedLogCtrl logCtrl = ManagedLogCtrl (inst.ctrlPath, std::move (data));
+    ManagedLogCtrl logCtrl = ManagedLogCtrl (inst.ctrlPath, data);
     auto resParse = logCtrl.Parse();
-    if (!resParse.IsOk())
-        return resParse.GetError();
+    if (!resParse)
+        return resParse.Error();
 
     // Get our values
     ConfValue val;
     auto res = logCtrl.Get (LogCtrlKey::MaxFiles, val);
-    if (res.GetValue())
+    if (res.Value())
         maxLogs = std::get<int> (val);
     res = logCtrl.Get (LogCtrlKey::MaxAge, val);
-    if (res.GetValue())
+    if (res.Value())
         maxAge = std::get<int> (val);
     assert (maxAge >= 0 && maxLogs >= 0);
     return Success();
@@ -341,10 +343,10 @@ void ManagedLogSink::logMaintWorker (ManagedLogSink& inst)
     if (std::filesystem::exists (inst.ctrlPath))
     {
         auto res = openLogCtrl (inst, inst.ctrlPath, maxAge, maxLogs);
-        if (!res.IsOk())
+        if (!res)
         {
             ErrorOutput::The()->Report (
-                res.GetError().Add ({ErrorDomain::Log, ErrorCode::FileError}, "unable to open log control file"));
+                res.Error().Add ({ErrorDomain::Log, ErrorCode::FileError}, "unable to open log control file"));
             return;
         }
     }

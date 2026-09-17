@@ -30,33 +30,11 @@ ResCustom<std::optional<T>, ImageError> Image::Get (std::string_view name)
 template <typename T>
 ResCustom<std::optional<T>, ImageError> Image::Get (ImgProp prop)
 {
-    auto compRes = resolveComponent (prop);
-    if (!compRes.IsOk())
-        return compRes.GetError();
+    auto resGet = getInternal (prop);
+    if (!resGet)
+        return resGet.Error();
 
-    std::optional<std::any> val{};
-    auto comp = compRes.GetValue();
-
-    if (comp.has_value())
-    {
-        assert (*comp);
-
-        auto getRes = (*comp)->Get (prop);
-        if (!getRes.IsOk())
-            return getRes.GetError();
-
-        val = getRes.GetValue();
-    }
-    else
-    {
-        auto getRes = RegElement::Get (prop);
-        if (!getRes.IsOk())
-            return getRes.GetError();
-        val = getRes.GetValue();
-    }
-
-    if (!val)
-        return std::optional<T>{};
+    auto val = resGet.Value();
 
     if (T* ptr = std::any_cast<T> (&*val))
         return std::optional<T> (*ptr);
@@ -67,12 +45,15 @@ ResCustom<std::optional<T>, ImageError> Image::Get (ImgProp prop)
 template <typename T>
 ResCustom<T*, ImageError> Image::GetComponent (CompType type)
 {
-    // TODO: should assert or no?
-    assert (comps[type]);
+    if (!comps[type])
+        return ImageError (ErrorCode::CompNotLoaded, {{"name", spec.name}});
 
     T* component = dynamic_cast<T*> (comps[type].get());
     if (!component)
-        return ImageError (ErrorCode::BadArgument, "Requested image component has an unexpected type");
+    {
+        throw ErrorException (Error ({ErrorDomain::ImageConf, ErrorCode::BadArgument},
+            "Requested image component has an unexpected type"));
+    }
 
     return component;
 }
@@ -87,10 +68,10 @@ template <typename T>
 ResCustom<std::optional<T>, ImageError> Partition::Get (PartProp prop)
 {
     auto res = RegElement::Get (prop);
-    if (!res.IsOk())
-        return res.GetError();
+    if (!res)
+        return res.Error();
 
-    auto val = res.GetValue();
+    auto val = res.Value();
     if (!val.has_value())
         return std::optional<T>{};
 

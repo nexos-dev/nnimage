@@ -33,15 +33,13 @@
     X (BootMode, "boot_mode", Max)    \
     X (PartType, "type", Max)         \
     X (BootLoad, "bootloader", Max)   \
-    X (MbrFile, "mbr_file", Boot)     \
-    X (VbrFile, "vbr_file", Boot)     \
     X (BootEmu, "boot_emu", PartType) \
     X (BootImage, "boot_image", PartType)
 
 #define PART_PROP_TABLE(X) \
     X (Start, "start")     \
     X (Size, "size")       \
-    X (Format, "format")   \
+    X (Format, "fs_type")  \
     X (Prefix, "prefix")   \
     X (IsBoot, "is_boot")
 

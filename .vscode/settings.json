@@ -1,0 +1,21 @@
+{
+    "files.associations": {
+        "*.comp": "shellscript",
+        "TODO": "plaintext"
+    },
+    "C_Cpp.default.includePath": [
+        "external/include",
+        "build",
+        "source"
+    ],
+    "C_Cpp.default.cppStandard": "c++23",
+    "editor.formatOnSave": true,
+    "editor.inlineSuggest.enabled": false,
+    "VSCodeCounter.exclude": [
+        "**/.gitignore",
+        "**/.vscode/**",
+        "**/node_modules/**",
+        "external/**",
+        "build/**"
+    ]
+}

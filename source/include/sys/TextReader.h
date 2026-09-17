@@ -67,11 +67,10 @@ class TextReader
                 {
                     // If chardet couldn't detect the encoding and the user didn't specify one, warn the user
                     // and force ASCII
-                    Error err =
+                    ErrorOutput::The()->Report (
                         Error ({ErrorDomain::None, ErrorCode::EncMismatch, ErrorLog::Normal, ErrorSeverity::Warning},
                             "unable to detect character set for file {}, assuming ASCII",
-                            file.string());
-                    ErrorOutput::The()->Report (err);
+                            file.string()));
 
                     enc = "ASCII";
                 }

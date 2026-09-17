@@ -16,6 +16,7 @@
 */
 
 #include "include/Image.h"
+#include "include/SimpleLexer.h"
 
 #include <cassert>
 #include <sstream>
@@ -32,8 +33,16 @@ ImageResult RegElement<Element, Property, Registry>::Set (Property prop, const I
         return makeRegElementError (invalidPropertyCode, getRegElementName(), getPropName (prop));
 
     const auto& conf = it->second;
+
     if (conf.inputType != val.GetType())
-        return makeRegElementError (ErrorCode::PropTypeMismatch, getRegElementName(), getPropName (prop));
+    {
+        // First try to cast it
+        ImageVal casted = val.Cast (conf.inputType);
+        if (!casted.IsInvalid())
+            return conf.setter (element(), casted);
+        else
+            return makeRegElementError (ErrorCode::PropTypeMismatch, getRegElementName(), getPropName (prop));
+    }
 
     return conf.setter (element(), val);
 }
@@ -53,9 +62,9 @@ template <typename Element, typename Property, typename Registry>
 ResCustom<bool, ImageError> RegElement<Element, Property, Registry>::IsSet (Property prop)
 {
     auto value = Get (prop);
-    if (!value.IsOk())
-        return value.GetError();
-    return value.GetValue().has_value();
+    if (!value)
+        return value.Error();
+    return value.Value().has_value();
 }
 
 template <typename Element, typename Property, typename Registry>
@@ -73,8 +82,8 @@ ImageResult RegElement<Element, Property, Registry>::SetDefaults()
             return makeRegElementError (missingPropertyCode, getRegElementName(), getPropName (prop));
 
         auto result = conf.setter (element(), ImageVal (conf.defaultVal));
-        if (!result.IsOk())
-            return result.GetError();
+        if (!result)
+            return result.Error();
     }
     return Success();
 }
@@ -113,11 +122,7 @@ ImageResult Image::Set (std::string_view name, const ImageVal& val)
 ImageResult Image::Set (ImgProp prop, const ImageVal& val)
 {
     // First try component
-    auto compRes = resolveComponent (prop);
-    if (!compRes.IsOk())
-        return compRes.GetError();
-
-    auto comp = compRes.GetValue();
+    auto comp = resolveComponent (prop);
     if (comp.has_value())
         return (*comp)->Set (prop, val);
 
@@ -138,17 +143,13 @@ ResCustom<bool, ImageError> Image::IsSet (std::string_view name)
 
 ResCustom<bool, ImageError> Image::IsSet (ImgProp prop)
 {
-    auto compRes = resolveComponent (prop);
-    if (!compRes.IsOk())
-        return compRes.GetError();
-
-    auto comp = compRes.GetValue();
+    auto comp = resolveComponent (prop);
     if (comp.has_value())
     {
         auto getRes = (*comp)->Get (prop);
-        if (!getRes.IsOk())
-            return getRes.GetError();
-        return getRes.GetValue().has_value();
+        if (!getRes)
+            return getRes.Error();
+        return getRes.Value().has_value();
     }
 
     return RegElement::IsSet (prop);
@@ -158,8 +159,8 @@ ImageResult Image::SetDefaults()
 {
     // Apply base level defaults
     auto res = RegElement::SetDefaults();
-    if (!res.IsOk())
-        return res.GetError();
+    if (!res)
+        return res.Error();
 
     // Now apply for each component
     for (auto it = comps.begin(); it != comps.end(); it++)
@@ -168,7 +169,7 @@ ImageResult Image::SetDefaults()
         if (comp)
         {
             res = comp->SetDefaults();
-            if (!res.IsOk())
+            if (!res)
                 return res;
         }
     }
@@ -180,12 +181,12 @@ ImageResult Image::Finalize()
 {
     // Handle all deferred properties now
     auto defRes = runDeferred();
-    if (!defRes.IsOk())
+    if (!defRes)
         return defRes;
 
     // Finalize the image
     auto valRes = validate();
-    if (!valRes.IsOk())
+    if (!valRes)
         return valRes;
 
     // Now validate each component
@@ -195,12 +196,42 @@ ImageResult Image::Finalize()
         if (comp)
         {
             auto res = comp->Validate();
-            if (!res.IsOk())
+            if (!res)
                 return res;
         }
     }
 
     return Success();
+}
+
+ResCustom<std::optional<std::any>, ImageError> Image::getInternal (ImgProp prop)
+{
+    std::optional<std::any> val{};
+    auto comp = resolveComponent (prop);
+
+    if (comp.has_value())
+    {
+        assert (*comp);
+        auto getRes = (*comp)->Get (prop);
+
+        if (!getRes)
+            return getRes.Error();
+
+        val = std::move (getRes.Value());
+    }
+    else
+    {
+        auto getRes = RegElement::Get (prop);
+        if (!getRes)
+            return getRes.Error();
+
+        val = std::move (getRes.Value());
+    }
+
+    if (!val.has_value())
+        return std::optional<std::any>{};
+
+    return val;
 }
 
 template <typename CompT>
@@ -221,37 +252,33 @@ CompT* Image::getCompProp (CompType type)
         return nullptr;
 
     auto res = GetComponent<CompT> (type);
-    if (!res.IsOk())
+    if (!res)
         return nullptr;
 
-    return res.GetValue();
+    return res.Value();
 }
 
-ResCustom<std::optional<Component*>, ImageError> Image::resolveComponent (ImgProp prop)
+std::optional<Component*> Image::resolveComponent (ImgProp prop)
 {
     auto it = keyMap.find (prop);
     assert (it != keyMap.end());
 
     CompType owner = it->second;
     if (owner == CompType::Max)
-        return std::optional<Component*>{};
+        return std::nullopt;
 
     Component* comp = comps[owner].get();
     if (!comp)
-        return std::optional<Component*>{};
+        return std::nullopt;
 
-    return std::optional<Component*> (comp);
+    return comp;
 }
 
 ImageResult Image::runDeferred()
 {
     for (const auto& prop : deferredProps)
     {
-        auto compRes = resolveComponent (prop.first);
-        if (!compRes.IsOk())
-            return compRes.GetError();
-
-        auto comp = compRes.GetValue();
+        auto comp = resolveComponent (prop.first);
         if (comp.has_value())
             return (*comp)->Set (prop.first, prop.second);
 
@@ -317,66 +344,6 @@ const CompConfRegistry& Component::getRegistry()
     return mergedRegistry;
 }
 
-void ImageError::makeMessage (ErrorFrame& frame)
-{
-    std::stringstream msg;
-    // Check if we have a file/line
-    if (auto it = keys.find ("file"); it != keys.end())
-        msg << getString (it) << ":";
-    if (auto it = keys.find ("line"); it != keys.end())
-        msg << getString (it) << ": ";
-    else
-        msg << " ";    // In case we have a file by itself with no line, it will still have a space at the end
-                       // of it
-
-    switch (frame.code)
-    {
-        // NOTE: all the below assertKeys calls only do anything on debug builds. That shouldn't be an issue
-        case ErrorCode::NameMissing:
-            assertKeys ({"block_type"});
-            msg << "Name required for block type \"" << getString ("block_type") << "\"";
-            break;
-        case ErrorCode::InvalidImgType:
-            assertKeys ({"type"});
-            msg << "Invalid image type \"" << getString ("type") << "\" specified on image" << getName();
-            break;
-        case ErrorCode::InvalidImgProp:
-            assertKeys ({"prop"});
-            msg << "Unrecognized property \"" << getString ("prop") << "\" specified on image" << getName();
-            break;
-        case ErrorCode::BadFloppySize:
-            msg << "Floppy disc" << getName() << " must have size 720K, 1.44M, or 2.88M";
-            break;
-        case ErrorCode::InvalidPartProp:
-            assertKeys ({"prop"});
-            msg << "Unrecognized property \"" << getString ("prop") << "\" specified on partition" << getName();
-            break;
-        case ErrorCode::PropTypeMismatch:
-            assertKeys ({"prop"});
-            msg << "Invalid type specified on property \"" << getString ("prop") << "\"";
-            break;
-        case ErrorCode::InvalidId:
-            assertKeys ({"id", "prop"});
-            msg << "Invalid ID \"" << getString ("id") << "\" specified for property \"" << getString ("prop")
-                << "\" on image" << getName();
-            break;
-        case ErrorCode::ImgMissingProp:
-            assertKeys ({"prop"});
-            msg << "Missing required property \"" << getString ("prop") << "\" on image " << getName();
-            break;
-        case ErrorCode::PartMissingProp:
-            assertKeys ({"prop"});
-            msg << "Missing required property \"" << getString ("prop") << "\" on partition " << getName();
-            break;
-        case ErrorCode::MissingPart:
-            msg << "Image" << getName() << " requires at least one partition";
-            break;
-        default:
-            msg << frame.msg;
-    }
-    frame.msg = msg.str();
-}
-
 // Now begins the all-important registries
 // clang-format off
 
@@ -404,7 +371,7 @@ const NameRegistry<BootMode> Image::bootModes = {
 
 const ImgConfRegistry Image::baseRegistry = {
     {ImgProp::Size,
-        {typeid (ImageNumId),
+        {ImageVal::GetTypeIndex<ImageNumId>(),
             std::monostate{},
             [] (Image& img, const ImageVal& val) -> ImageResult 
             {
@@ -413,18 +380,18 @@ const ImgConfRegistry Image::baseRegistry = {
             },
             [] (Image& img) -> std::optional<std::any> 
             {
-                if (img.spec.size < 0)
+                if (img.spec.size == ImgSpec::EmptySize)
                     return std::nullopt;
                 return img.spec.size;
             }
         }
     },
     {ImgProp::BootMode,
-        {typeid (ImageId),
+        {ImageVal::GetTypeIndex<ImageId>(),
             ImageId ("none"),
             [] (Image& img, const ImageVal& val) -> ImageResult
             {
-                std::string id = std::string (*val.Get<ImageId>());
+                std::string id = std::move((*val.Get<ImageId>()).Str());
                 BootMode mode = bootModes.Resolve (id);
                 if(mode == BootMode::Max)
                     return InvalidId (GetPropName (ImgProp::BootMode), img.spec.name, id);
@@ -441,7 +408,7 @@ const ImgConfRegistry Image::baseRegistry = {
         }   
     },
     {ImgProp::PartType,
-        {typeid (ImageId),
+        {ImageVal::GetTypeIndex<ImageId>(),
             ImageId ("gpt"),
             [] (Image& img, const ImageVal& val) -> ImageResult
             {
@@ -458,7 +425,7 @@ const ImgConfRegistry Image::baseRegistry = {
         }
     },
     {ImgProp::BootLoad,
-        {typeid (ImageId),
+        {ImageVal::GetTypeIndex<ImageId>(),
             ImageId ("none"),
             [] (Image& img, const ImageVal& val) -> ImageResult
             {
@@ -482,7 +449,7 @@ const NameRegistry<PartProp> Partition::nameRegistry (MakePartPropRegistry());
 
 const PartConfRegistry Partition::registry = {
     {PartProp::Start,
-        {typeid (ImageNumId),
+        {ImageVal::GetTypeIndex<ImageNumId>(),
             std::monostate{},
             [] (Partition& part, const ImageVal& val) -> ImageResult 
             {
@@ -498,7 +465,7 @@ const PartConfRegistry Partition::registry = {
         }
     },
     {PartProp::Size,
-        {typeid (ImageNumId),
+        {ImageVal::GetTypeIndex<ImageNumId>(),
             std::monostate{},
             [] (Partition& part, const ImageVal& val) -> ImageResult 
             {
@@ -514,11 +481,11 @@ const PartConfRegistry Partition::registry = {
         }
     },
     {PartProp::Format,
-        {typeid (std::string),
-            "",
+        {ImageVal::GetTypeIndex<ImageId>(),
+            ImageId (""),
             [] (Partition& part, const ImageVal& val) -> ImageResult 
             {
-                part.spec.format = *val.Get<std::string>();
+                part.spec.format = std::move((*val.Get<ImageId>()).Str());
                 return Success();
             },
             [] (Partition& part) -> std::optional<std::any> 
@@ -530,7 +497,7 @@ const PartConfRegistry Partition::registry = {
         }
     },
     {PartProp::Prefix,
-        {typeid (std::string),
+        {ImageVal::GetTypeIndex<std::string>(),
             "",
             [] (Partition& part, const ImageVal& val) -> ImageResult 
             {
@@ -546,7 +513,7 @@ const PartConfRegistry Partition::registry = {
         }
     },
     {PartProp::IsBoot,
-        {typeid (bool),
+        {ImageVal::GetTypeIndex<bool>(),
             false,
             [] (Partition& part, const ImageVal& val) -> ImageResult 
             {
