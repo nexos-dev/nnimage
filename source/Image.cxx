@@ -307,12 +307,12 @@ ResCustom<bool, ImageError> Partition::IsSet (std::string_view name)
 }
 
 // Component functions
-const std::string& Component::getRegElementName() const
+std::string_view Component::getRegElementName() const
 {
     return owner.GetName();
 }
 
-const std::string& Component::getPropName (ImgProp prop) const
+std::string_view Component::getPropName (ImgProp prop) const
 {
     return Image::GetPropName (prop);
 }

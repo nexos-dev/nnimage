@@ -75,9 +75,9 @@ class OtherTestComponent : public Component
 
 // Helper to build a parsed ImageNumId (mirrors what ImageCmd::getSize does before handing it to
 // Image::Set)
-static ImageNumId MakeNumId (size_t num, std::string_view mul)
+static ImageNumId MakeNumId (size_t num, std::string mul)
 {
-    ImageNumId id (num, mul);
+    ImageNumId id (num, std::move (mul));
     REQUIRE (id.Parse());
     return id;
 }

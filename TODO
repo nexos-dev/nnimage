@@ -1,3 +1,2 @@
 Make setter/getter interface symmetric via type erasure
 Support ImageVal->spec value translation via per-property howto table
-Implement ImageVal casting

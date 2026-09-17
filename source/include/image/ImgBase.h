@@ -40,7 +40,7 @@ template <typename T>
 class GenericRef
 {
   public:
-    GenericRef (const std::string& name, T& comp, int line = -1) : name{name}, line{line}, comp{comp}
+    GenericRef (std::string name, T& comp, int line = -1) : name{std::move (name)}, line{line}, comp{comp}
     {}
     const std::string& GetName() const
     {
@@ -101,7 +101,7 @@ class ImageNumId
 {
   public:
     ImageNumId() = default;
-    ImageNumId (size_t num, std::string_view mul) : num{num}, mul{mul}
+    ImageNumId (size_t num, std::string mul) : num{num}, mul{std::move (mul)}
     {}
     ResNone Parse()
     {
@@ -136,7 +136,7 @@ class ImageNumId
 struct ImageId
 {
     ImageId() = default;
-    ImageId (std::string_view str) : id{str}
+    ImageId (std::string str) : id{std::move (str)}
     {}
     std::string operator()() const
     {
@@ -146,7 +146,7 @@ struct ImageId
     {
         return id;
     }
-    std::string& Str()
+    std::string Str() const
     {
         return id;
     }
@@ -207,7 +207,7 @@ class ImageVal
         return val.index() == GetTypeIndex<std::monostate>();
     }
 
-    // This function gets the index of the specified time
+    // This function gets the index of the specified type
     // It's constexpr as it's used a lot in registry tables to fill them out at compile time
     template <typename T>
     static constexpr ImageValIdx GetTypeIndex()
@@ -256,10 +256,10 @@ class RegElement
   public:
     virtual ~RegElement() = default;
 
-    ImageResult Set (Property prop, const ImageVal& val);
-    ResCustom<std::optional<std::any>, ImageError> Get (Property prop);
-    ResCustom<bool, ImageError> IsSet (Property prop);
-    ImageResult SetDefaults();
+    virtual ImageResult Set (Property prop, const ImageVal& val);
+    virtual ResCustom<std::optional<std::any>, ImageError> Get (Property prop);
+    virtual ResCustom<bool, ImageError> IsSet (Property prop);
+    virtual ImageResult SetDefaults();
 
   protected:
     RegElement (ErrorCode invalidPropertyCode, ErrorCode missingPropertyCode)
@@ -271,9 +271,9 @@ class RegElement
         return static_cast<Element&> (*this);
     }
 
-    static ImageError makeRegElementError (ErrorCode code, const std::string& elementName, std::string_view propName)
+    static ImageError makeRegElementError (ErrorCode code, std::string_view elementName, std::string_view propName)
     {
-        return ImageError (code, {{"prop", std::string (propName)}, {"name", elementName}});
+        return ImageError (code, {{"prop", std::string (propName)}, {"name", std::string (elementName)}});
     }
 
     bool hasProperty (Property prop)
@@ -284,8 +284,8 @@ class RegElement
 
   private:
     virtual const Registry& getRegistry() = 0;
-    virtual const std::string& getRegElementName() const = 0;
-    virtual const std::string& getPropName (Property prop) const = 0;
+    virtual std::string_view getRegElementName() const = 0;
+    virtual std::string_view getPropName (Property prop) const = 0;
 
     ErrorCode invalidPropertyCode;
     ErrorCode missingPropertyCode;

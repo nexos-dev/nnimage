@@ -46,6 +46,7 @@ Result<ImageVal> ImageVal::FromToken (const LexToken& tok)
 
 ImageVal ImageVal::Cast (ImageValIdx wantedType) const
 {
+    // Currently, the only valid cast is from ID->std::string
     return std::visit (overloaded{[&] (const ImageId& x) -> ImageVal {
                                       if (wantedType == ImageVal::GetTypeIndex<std::string>())
                                           return ImageVal (std::string (x), line);

@@ -57,7 +57,7 @@ class Chardet
         other.obj = nullptr;
         return *this;
     }
-    bool Detect (const std::string_view data, std::string& encoding)
+    bool Detect (std::string_view data, std::string& encoding)
     {
         if (!obj)
             return false;

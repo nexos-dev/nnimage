@@ -62,9 +62,9 @@ struct PartSpec
 class Partition : public RegElement<Partition, PartProp, PartConfRegistry>
 {
   public:
-    Partition (const std::string& name) : RegElement{ErrorCode::InvalidPartProp, ErrorCode::PartMissingProp}
+    Partition (std::string name) : RegElement{ErrorCode::InvalidPartProp, ErrorCode::PartMissingProp}
     {
-        spec.name = name;
+        spec.name = std::move (name);
     }
     Partition (const Partition&) = delete;
     Partition& operator= (const Partition&) = delete;
@@ -118,11 +118,11 @@ class Partition : public RegElement<Partition, PartProp, PartConfRegistry>
     {
         return registry;
     }
-    const std::string& getRegElementName() const override
+    std::string_view getRegElementName() const override
     {
         return spec.name;
     }
-    const std::string& getPropName (PartProp prop) const override
+    std::string_view getPropName (PartProp prop) const override
     {
         return GetPropName (prop);
     }
@@ -198,7 +198,7 @@ class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
 
     // Set accepts parser-shaped values, Get returns the property's translated value.
     ImageResult Set (std::string_view name, const ImageVal& val);
-    ImageResult Set (ImgProp prop, const ImageVal& val);
+    ImageResult Set (ImgProp prop, const ImageVal& val) override;
 
     template <typename T>
     ResCustom<std::optional<T>, ImageError> Get (std::string_view name);
@@ -206,9 +206,9 @@ class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
     ResCustom<std::optional<T>, ImageError> Get (ImgProp prop);
 
     ResCustom<bool, ImageError> IsSet (std::string_view name);
-    ResCustom<bool, ImageError> IsSet (ImgProp prop);
+    ResCustom<bool, ImageError> IsSet (ImgProp prop) override;
 
-    ImageResult SetDefaults();
+    ImageResult SetDefaults() override;
 
     void AddPartition (std::unique_ptr<Partition> part)
     {
@@ -290,11 +290,11 @@ class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
     {
         return baseRegistry;
     }
-    const std::string& getRegElementName() const override
+    std::string_view getRegElementName() const override
     {
         return spec.name;
     }
-    const std::string& getPropName (ImgProp prop) const override
+    std::string_view getPropName (ImgProp prop) const override
     {
         return GetPropName (prop);
     }

@@ -52,7 +52,7 @@ class TextReader
             throw std::runtime_error ("attempt to read from unopened file");
 
         // Grab data
-        const std::string_view data (reinterpret_cast<const char*> (handle.getData()), handle.mappedSize());
+        std::string_view data (reinterpret_cast<const char*> (handle.getData()), handle.mappedSize());
         // Prepare encoding detection
         Chardet chardet;
         std::string enc = "";
