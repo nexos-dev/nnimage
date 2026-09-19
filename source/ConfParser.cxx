@@ -23,134 +23,124 @@
 #include <sstream>
 
 template <typename Derived, typename ConfKey>
-Result<TokenPtr> ConfParser<Derived, ConfKey>::parseProp (TokenPtr startTok, ConfProp& prop)
+Result<LexToken> ConfParser<Derived, ConfKey>::parseProp (LexToken& startTok, ConfProp& prop)
 {
-    TokenPtr curTok = std::move (startTok);
-    assert (curTok->type == TokenType::Identifier);
-    prop.name = std::get<std::string> (std::move (curTok->val));
+    assert (startTok.type == TokenType::Identifier);
+    prop.name = std::get<std::string> (std::move (startTok.val));
 
     // Get the equals sign
     auto res = expectToken (TokenType::Equals);
-    if (!res.IsOk())
-        return res.GetError();
-    curTok = std::move (res.GetValue());
-    assert (curTok);
+    if (!res)
+        return res.Error();
 
     // Now we need to get the value
     // This is where things vary up a little bit
     res = nextToken();
-    if (!res.IsOk())
+    if (!res)
         return res;
-    curTok = std::move (res.GetValue());
-    assert (curTok);
+    LexToken curTok = std::move (res.Value());
 
-    switch (curTok->type)
+    switch (curTok.type)
     {
         case TokenType::Identifier:
-            res = setIdProp (prop, std::move (curTok));
-            if (!res.IsOk())
+            res = setIdProp (prop, curTok);
+            if (!res)
                 return res;
-            curTok = std::move (res.GetValue());
+            curTok = std::move (res.Value());
             break;
         case TokenType::Number: {
             // Grab it
-            res = setNumberProp (prop, curTok.get());
-            if (!res.IsOk())
+            res = setNumberProp (prop, curTok);
+            if (!res)
                 return res;
-            curTok = std::move (res.GetValue());
+            curTok = std::move (res.Value());
             break;
         }
         case TokenType::Obrace:
-            res = setListProp (prop, std::move (curTok));
-            if (!res.IsOk())
+            res = setListProp (prop, curTok);
+            if (!res)
                 return res;
-            curTok = std::move (res.GetValue());
+            curTok = std::move (res.Value());
             break;
         default:
-            return unexpectedToken (curTok->type);
+            return unexpectedToken (curTok.type);
     }
-    return std::move (curTok);
+    return curTok;
 }
 
 template <typename Derived, typename ConfKey>
 ResNone ConfParser<Derived, ConfKey>::parseLoop (std::vector<ConfProp>& props)
 {
-    TokenPtr tok = nullptr;
     while (1)
     {
         // We always expect an ID since the start of every property is the name
         // And EOF is processed here as well
         auto res = nextToken();
-        if (!res.IsOk())
-            return res.GetError();
-        tok = std::move (res.GetValue());
-        assert (tok);
+        if (!res)
+            return res.Error();
+        LexToken tok = std::move (res.Value());
 
-        if (tok->type == TokenType::Eof)
+        if (tok.type == TokenType::Eof)
             break;
-        else if (tok->type != TokenType::Identifier)
-            return unexpectedToken (tok->type);
+        else if (tok.type != TokenType::Identifier)
+            return unexpectedToken (tok.type);
 
         // Parse it now
         ConfProp curProp;
-        res = parseProp (std::move (tok), curProp);
-        if (!res.IsOk())
-            return res.GetError();
+        res = parseProp (tok, curProp);
+        if (!res)
+            return res.Error();
         props.push_back (std::move (curProp));
-
-        tok = std::move (res.GetValue());
-        assert (tok);
     }
     return Success();
 }
 
 template <typename Derived, typename ConfKey>
-Result<TokenPtr> ConfParser<Derived, ConfKey>::setIdProp (ConfProp& prop, TokenPtr tok)
+Result<LexToken> ConfParser<Derived, ConfKey>::setIdProp (ConfProp& prop, LexToken& tok)
 {
-    prop.val = std::get<std::string> (std::move (tok->val));
+    prop.val = std::get<std::string> (std::move (tok.val));
     return expectToken (TokenType::Semicolon);
 }
 
 template <typename Derived, typename ConfKey>
-Result<TokenPtr> ConfParser<Derived, ConfKey>::setListProp (ConfProp& prop, TokenPtr tok)
+Result<LexToken> ConfParser<Derived, ConfKey>::setListProp (ConfProp& prop, LexToken& tok)
 {
     ConfList list;
     while (1)
     {
         auto res = expectToken (TokenType::Identifier);
-        if (!res.IsOk())
+        if (!res)
             return res;
-        tok = std::move (res.GetValue());
-        assert (tok);
+        tok = std::move (res.Value());
         // Add it
-        list.push_back (std::get<std::string> (std::move (tok->val)));
+        list.push_back (std::get<std::string> (std::move (tok.val)));
 
         res = nextToken();
-        if (!res.IsOk())
+        if (!res)
             return res;
-        tok = std::move (res.GetValue());
+        tok = std::move (res.Value());
         // Must be a comma or an ebrace
-        if (tok->type == TokenType::Comma)
+        if (tok.type == TokenType::Comma)
             continue;    // To next item
-        else if (tok->type == TokenType::Ebrace)
+        else if (tok.type == TokenType::Ebrace)
             break;    // ENd it
         else
-            return Error (unexpectedToken (tok->type));
+            return Error (unexpectedToken (tok.type));
     }
     prop.val = std::move (list);
     return expectToken (TokenType::Semicolon);
 }
 
 template <typename Derived, typename ConfKey>
-Result<TokenPtr> ConfParser<Derived, ConfKey>::setNumberProp (ConfProp& prop, LexToken* tok)
+Result<LexToken> ConfParser<Derived, ConfKey>::setNumberProp (ConfProp& prop, LexToken& tok)
 {
     // Narrow it to int, but first give a go at range checking it
-    uint64_t val = std::get<uint64_t> (tok->val);
+    uint64_t val = std::get<uint64_t> (tok.val);
     if (val > INT32_MAX)
     {
         return Error ({ErrorDomain::Log, ErrorCode::ParseError}, "Integer out of range");
     }
-    prop.val = static_cast<int> (std::get<uint64_t> (tok->val));
+    prop.val = static_cast<int> (std::get<uint64_t> (tok.val));
     return expectToken (TokenType::Semicolon);
 }
 
@@ -165,8 +155,8 @@ ResNone ConfParser<Derived, ConfKey>::Parse()
     }
     std::vector<ConfProp> props;
     auto res = parseLoop (props);
-    if (!res.IsOk())
-        return res.GetError();
+    if (!res)
+        return res.Error();
 
     // Now we need to go through the properties and call the appropriate setters
     for (const ConfProp& prop : props)
@@ -176,8 +166,8 @@ ResNone ConfParser<Derived, ConfKey>::Parse()
         // We have the key, now set it. Use the lock-free variant since Parse() already holds
         // parseLock for the entire operation
         auto res = setLocked (key, prop.val, true);
-        if (!res.IsOk())
-            return res.GetError();
+        if (!res)
+            return res.Error();
     }
 
     return Success();

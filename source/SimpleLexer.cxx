@@ -23,11 +23,9 @@
 #include <limits>
 #include <utility>
 
-SimpleLexer::SimpleLexer (const std::string& file, std::string fileData) : file{file}, ownedData{std::move (fileData)}
+SimpleLexer::SimpleLexer (const std::string& file, std::string_view fileData) : file{file}, fileData{fileData}
 {
-    this->fileData = std::string_view (this->ownedData);
     curLine = 1;
-    curTok = nullptr;
     idx = 0;
     isAccepted = false;
     nextChar = 0;
@@ -103,9 +101,7 @@ char SimpleLexer::readChar()
         return '\0';
     }
     // Get from buffer
-    char c = fileData[idx];
-    idx++;
-    return c;
+    return fileData[idx++];
 }
 
 char SimpleLexer::peekChar()
@@ -120,8 +116,7 @@ char SimpleLexer::peekChar()
         return '\0';
     }
     // Get from buffer
-    char c = fileData[idx];
-    idx++;
+    char c = fileData[idx++];
     nextChar = c;
     return c;
 }
@@ -190,6 +185,8 @@ const char* SimpleLexer::NameFromToken (TokenType type)
             return ",";
         case TokenType::Equals:
             return "=";
+        case TokenType::Slash:
+            return "/";
         case TokenType::True:
             return "true";
         case TokenType::False:
@@ -202,29 +199,28 @@ const char* SimpleLexer::NameFromToken (TokenType type)
     return "\0";
 }
 
-void SimpleLexer::prepareEof (LexToken* tok)
+void SimpleLexer::prepareEof (LexToken& tok)
 {
     isAccepted = true;
     isEof = true;
-    tok->type = TokenType::Eof;
+    tok.type = TokenType::Eof;
 }
 
-using TokenResult = Result<std::unique_ptr<LexToken>>;
+using TokenResult = Result<LexToken>;
 
 TokenResult SimpleLexer::NextToken()
 {
     // Make a new token
-    std::unique_ptr<LexToken> tok = std::make_unique<LexToken>();
+    LexToken tok;
     Error err;
     int base = 0;
-    curTok = tok.get();
-    tok->line = curLine;
-    tok->type = TokenType::None;
+    tok.line = curLine;
+    tok.type = TokenType::None;
 
     // Check for EOF
     if (isEof)
     {
-        tok->type = TokenType::Eof;
+        tok.type = TokenType::Eof;
         return TokenResult (std::move (tok));
     }
     assert (!isError);
@@ -241,7 +237,7 @@ TokenResult SimpleLexer::NextToken()
                 // Always accept EOF
                 isEof = true;
                 isAccepted = true;
-                tok->type = TokenType::Eof;
+                tok.type = TokenType::Eof;
                 break;
             // Whitespace
             case '\t':
@@ -277,33 +273,36 @@ TokenResult SimpleLexer::NextToken()
                     // Check for EOF
                     else if (c == '\0')
                     {
-                        prepareEof (tok.get());
+                        prepareEof (tok);
                         break;
                     }
                 } while (1);
                 break;
             // Single-characters
             case '{':
-                tok->type = TokenType::Obrace;
+                tok.type = TokenType::Obrace;
                 goto scharCommon;
             case '}':
-                tok->type = TokenType::Ebrace;
+                tok.type = TokenType::Ebrace;
                 goto scharCommon;
             case ':':
-                tok->type = TokenType::Colon;
+                tok.type = TokenType::Colon;
                 goto scharCommon;
             case ';':
-                tok->type = TokenType::Semicolon;
+                tok.type = TokenType::Semicolon;
                 goto scharCommon;
             case ',':
-                tok->type = TokenType::Comma;
+                tok.type = TokenType::Comma;
                 goto scharCommon;
             case '=':
-                tok->type = TokenType::Equals;
+                tok.type = TokenType::Equals;
+                goto scharCommon;
+            case '/':
+                tok.type = TokenType::Slash;
                 goto scharCommon;
             scharCommon:
                 isAccepted = true;
-                tok->line = curLine;
+                tok.line = curLine;
                 break;
             // ID
             case 'a':
@@ -360,8 +359,8 @@ TokenResult SimpleLexer::NextToken()
             case 'Z':
             case '_': {
                 // This is an identifier
-                tok->type = TokenType::Identifier;
-                tok->line = curLine;
+                tok.type = TokenType::Identifier;
+                tok.line = curLine;
                 std::string id;    // Prepare a string
                 while (isCharId (c))
                 {
@@ -371,11 +370,17 @@ TokenResult SimpleLexer::NextToken()
                 returnChar (c);
                 // Check if the ID is a reserved word
                 if (id == "true")
-                    tok->type = TokenType::True;
+                {
+                    tok.type = TokenType::True;
+                    tok.val = true;
+                }
                 else if (id == "false")
-                    tok->type = TokenType::False;
+                {
+                    tok.type = TokenType::False;
+                    tok.val = false;
+                }
                 else
-                    tok->val = id;
+                    tok.val = id;
                 isAccepted = true;
                 break;
             }
@@ -389,8 +394,8 @@ TokenResult SimpleLexer::NextToken()
             case '7':
             case '8':
             case '9': {
-                tok->type = TokenType::Number;
-                tok->line = curLine;
+                tok.type = TokenType::Number;
+                tok.line = curLine;
                 std::string numStr;
                 base = 10;
                 // Check if a base was specified
@@ -442,13 +447,13 @@ TokenResult SimpleLexer::NextToken()
                         c = readChar();
                     }
                     returnChar (c);
-                    tok->val = LexNumId{val, id};
-                    tok->type = TokenType::NumId;
+                    tok.val = LexNumId{val, id};
+                    tok.type = TokenType::NumId;
                 }
                 else
                 {
                     returnChar (c);
-                    tok->val = val;
+                    tok.val = val;
                 }
                 isAccepted = true;
                 break;
@@ -458,8 +463,8 @@ TokenResult SimpleLexer::NextToken()
                 // This is a string
                 char oc = c;        // Needed later
                 std::string str;    // String we are holding
-                tok->line = curLine;
-                tok->type = TokenType::String;
+                tok.line = curLine;
+                tok.type = TokenType::String;
                 // Now loop through the characters until we find matching quote
                 c = readChar();
                 while (c != oc)
@@ -531,7 +536,7 @@ TokenResult SimpleLexer::NextToken()
                         str += c;
                     c = readChar();
                 }
-                tok->val = str;
+                tok.val = str;
                 isAccepted = true;
                 break;
             }

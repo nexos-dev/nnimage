@@ -50,7 +50,9 @@
     X (ComponentOverwrite, "Attempt to overwrite existing component") \
     X (PropConflict, "Conflicting properties found in registry")      \
     X (MissingPart, "Image requires at least 1 partition")            \
-    X (UnusedArg, "Unused command-line argument found")
+    X (UnusedArg, "Unused command-line argument found")               \
+    X (DuplicateImage, "Duplicate image found")                       \
+    X (CompNotLoaded, "Image component not loaded")
 
 // Make clang-format shut up to prevent it from moving Max to the previous line
 // clang-format off

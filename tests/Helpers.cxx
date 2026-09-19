@@ -19,6 +19,7 @@
 #include "include/sys/LockFile.h"
 #include "include/sys/Iconv.h"
 #include "include/sys/Chardet.h"
+#include "include/KeyValue.h"
 #include "config.h"
 
 #include <sys/wait.h>
@@ -317,35 +318,62 @@ TEST_CASE ("Chardet move construction and assignment do not crash")
     another = std::move (moved);
 
     std::string encoding;
-    float confidence = -1.0f;
-    another.Detect ("plain ascii text", encoding, confidence);
-    CHECK (confidence >= 0.0f);
+    another.Detect ("plain ascii text", encoding);
 }
 
-#ifdef HAVE_CHARDET
+#ifdef HAVE_UCHARDET
 
 TEST_CASE ("Chardet detects an encoding for plain ASCII text when chardet is available")
 {
     Chardet det;
     std::string encoding;
-    float confidence = 0.0f;
-    bool ok = det.Detect ("The quick brown fox jumps over the lazy dog.", encoding, confidence);
+    bool ok = det.Detect ("The quick brown fox jumps over the lazy dog.", encoding);
     CHECK (ok);
     CHECK_FALSE (encoding.empty());
-    CHECK (confidence >= 0.0f);
 }
 
 #else
 
-TEST_CASE ("Chardet::Detect always fails and reports full confidence when chardet is unavailable")
+TEST_CASE ("Chardet::Detect always fails when uchardet is unavailable")
 {
     Chardet det;
     std::string encoding = "unchanged";
-    float confidence = -1.0f;
-    bool ok = det.Detect ("some data", encoding, confidence);
+    bool ok = det.Detect ("some data", encoding);
     CHECK_FALSE (ok);
-    CHECK (confidence == 1.0f);
     CHECK (encoding == "unchanged");
 }
 
 #endif
+
+/********************
+ *
+ * KeyVal test cases
+ *
+ *********************/
+
+TEST_CASE ("KeyVal parses multiple key-value pairs")
+{
+    auto values = KeyVal::Parse ("name=nnimage,mode=test,empty_value=0");
+
+    REQUIRE (values.has_value());
+    REQUIRE (values->size() == 3);
+    CHECK ((*values)[0] == std::pair<std::string_view, std::string_view>{"name", "nnimage"});
+    CHECK ((*values)[1] == std::pair<std::string_view, std::string_view>{"mode", "test"});
+    CHECK ((*values)[2] == std::pair<std::string_view, std::string_view>{"empty_value", "0"});
+}
+
+TEST_CASE ("KeyVal rejects empty and incomplete entries")
+{
+    CHECK_FALSE (KeyVal::Parse ("").has_value());
+    CHECK_FALSE (KeyVal::Parse ("key=value,").has_value());
+    CHECK_FALSE (KeyVal::Parse ("key=value,,other=value").has_value());
+    CHECK_FALSE (KeyVal::Parse ("key").has_value());
+    CHECK_FALSE (KeyVal::Parse ("=value").has_value());
+    CHECK_FALSE (KeyVal::Parse ("key=").has_value());
+}
+
+TEST_CASE ("KeyVal rejects entries with more than one equals sign")
+{
+    CHECK_FALSE (KeyVal::Parse ("key=value=other").has_value());
+    CHECK_FALSE (KeyVal::Parse ("first=value,second=another=value").has_value());
+}

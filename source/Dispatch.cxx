@@ -45,20 +45,20 @@ Result<std::filesystem::path> Dispatch::getLogDir()
 ResNone Dispatch::setupLogs()
 {
     auto resPath = getLogDir();
-    if (!resPath.IsOk())
-        return resPath.GetError();
+    if (!resPath)
+        return resPath.Error();
 
     LogSinkInfo managedSink = {LogLevel::Debug};
-    auto resLog = _log->AddManagedSink (managedSink, resPath.GetValue());
-    if (!resLog.IsOk())
-        return resLog.GetError();
+    auto resLog = Log::The().AddManagedSink (managedSink, resPath.Value());
+    if (!resLog)
+        return resLog.Error();
 
     LogSinkInfo fileSink = {LogLevel::Debug};
     for (const auto& file : options.logFiles)
     {
-        resLog = _log->AddFileSink (fileSink, file);
-        if (!resLog.IsOk())
-            return resLog.GetError();
+        resLog = Log::The().AddFileSink (fileSink, file);
+        if (!resLog)
+            return resLog.Error();
     }
     return Success();
 }
@@ -75,9 +75,9 @@ ResNone Dispatch::setupError()
     ErrorOutput::The()->AddSink (std::move (logSink));
 
     if (options.quiet)
-        _log->SetSinkLogLevel (SinkType::Console, LogLevel::Max);
+        Log::The().SetSinkLogLevel (SinkType::Console, LogLevel::Max);
     else if (options.verbose)
-        _log->SetSinkLogLevel (SinkType::Console, LogLevel::Debug);
+        Log::The().SetSinkLogLevel (SinkType::Console, LogLevel::Debug);
 
     return Success();
 }
@@ -93,34 +93,34 @@ bool Dispatch::Execute (OptionsParser& parser)
     // This is the main driver for the dispatcher. All the main business logic is controlled through here
     // This routine is a little annoying cause it's mostly error checking, but it is what it is
     auto resErr = setupError();
-    if (!resErr.IsOk())
+    if (!resErr)
     {
         // We can't do too much as we don't know if we have errOut avaiable, so just do our best
-        _log->Fatal (resErr.GetError().RootFrame().msg);
+        Log::The().Fatal (resErr.Error().RootFrame().msg);
         return false;
     }
 
     auto resLog = setupLogs();
-    if (!resLog.IsOk())
+    if (!resLog)
     {
-        dispatchFail (resLog.GetError());
+        dispatchFail (resLog.Error());
         return false;
     }
 
     // Invoke the frontend
     auto frontend = frontOpts.CreateFrontend (parser);
     auto resFront = frontend->Parse();
-    if (!resFront.IsOk())
+    if (!resFront)
     {
-        dispatchFail (resFront.GetError());
+        dispatchFail (resFront.Error());
         return false;
     }
 
     // Now verify that there are no unused options
     auto resOpts = parser.CheckUnusedOpts();
-    if (!resOpts.IsOk())
+    if (!resOpts)
     {
-        dispatchFail (resOpts.GetError());
+        dispatchFail (resOpts.Error());
         return false;
     }
 
@@ -172,7 +172,7 @@ ResNone Dispatch::ValidateOptions()
 
     // Validate frontend
     auto res = frontOpts.ValidateOptions();
-    if (!res.IsOk())
+    if (!res)
         return res;
 
     // Check every action
@@ -180,7 +180,7 @@ ResNone Dispatch::ValidateOptions()
     {
         ActionReg& action = *it;
         auto res = action.options->ValidateOptions();
-        if (!res.IsOk())
+        if (!res)
             return res;
     }
 

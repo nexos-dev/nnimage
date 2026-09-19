@@ -63,12 +63,12 @@ class Task
         {
             if (expected == TaskState::Skipped)
                 return true;
-            _log->Error ("task \"" + name + "\" is not in a pending state");
+            Log::The().Error ("task \"" + name + "\" is not in a pending state");
             return false;
         }
 
         if (!msg.empty())
-            _log->Status (msg);
+            Log::The().Status (msg);
 
         result = task();
 

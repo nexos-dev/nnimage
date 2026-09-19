@@ -1,5 +1,5 @@
 /*
-    Chardet.h - contains wrapper over libchardet for RAII usage
+    Chardet.h - contains wrapper over uchardet for RAII usage
     Copyright 2026 Jedidiah Thompson
 
     Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,20 +23,20 @@
 #include <string>
 #include <string_view>
 
-#ifdef HAVE_CHARDET
-#include <chardet/chardet.h>
+#ifdef HAVE_UCHARDET
+#include <uchardet/uchardet.h>
 
 class Chardet
 {
   public:
     Chardet()
     {
-        obj = detect_obj_init();
+        obj = uchardet_new();
     }
     ~Chardet()
     {
         if (obj)
-            detect_obj_free (&obj);
+            uchardet_delete (obj);
     }
 
     // Delete copy constructor and assignment operator to prevent copying
@@ -52,27 +52,27 @@ class Chardet
         if (this == &other)
             return *this;
         if (obj)
-            detect_obj_free (&obj);
+            uchardet_delete (obj);
         obj = other.obj;
         other.obj = nullptr;
         return *this;
     }
-    // API NOTE: if chardet is unavailable, this will always return false and set confidence to 1.0
-    // if false is returned, confidence is set to 0 so the caller can differentiate
-    bool Detect (const std::string_view data, std::string& encoding, float& confidence)
+    bool Detect (std::string_view data, std::string& encoding)
     {
-        confidence = 0.0;    // Reset it
         if (!obj)
             return false;
-        if (detect_r (data.data(), data.size(), &obj))
+        if (uchardet_handle_data (obj, data.data(), data.size()))
             return false;
-        encoding = obj->encoding;
-        confidence = obj->confidence;
+        uchardet_data_end (obj);
+        const char* charset = uchardet_get_charset (obj);
+        if (!charset || *charset == '\0')
+            return false;
+        encoding = charset;
         return true;
     }
 
   private:
-    DetectObj* obj = nullptr;
+    uchardet_t obj = nullptr;
 };
 
 #else
@@ -90,10 +90,8 @@ class Chardet
     Chardet (Chardet&&) noexcept = default;
     Chardet& operator= (Chardet&&) noexcept = default;
 
-    // API NOTE: if chardet is unavailable, this will always return false and set confidence to 1.0
-    bool Detect (std::string_view data, std::string& encoding, float& confidence)
+    bool Detect (std::string_view data, std::string& encoding)
     {
-        confidence = 1.0;
         return false;    // Detection not available
     }
 };

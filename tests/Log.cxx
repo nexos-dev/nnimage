@@ -56,7 +56,7 @@ TEST_CASE ("Log console sink respects per-sink and global log levels")
     LogSinkInfo info;
     info.level = LogLevel::Warning;
     info.maxLevel = LogLevel::Fatal;
-    CHECK (log.AddConsoleSink (info, "prog", out).IsOk());
+    CHECK (log.AddConsoleSink (info, "prog", out));
 
     log.Info ("should be filtered");
     CHECK (out.str().empty());
@@ -72,7 +72,7 @@ TEST_CASE ("Log respects a maxLevel ceiling on a sink")
     LogSinkInfo info;
     info.level = LogLevel::Debug;
     info.maxLevel = LogLevel::Warning;
-    CHECK (log.AddConsoleSink (info, "prog", out).IsOk());
+    CHECK (log.AddConsoleSink (info, "prog", out));
 
     log.Fatal ("too severe for this sink");
     CHECK (out.str().empty());
@@ -88,7 +88,7 @@ TEST_CASE ("Log::SetLogLevel suppresses everything below the global threshold re
     LogSinkInfo info;
     info.level = LogLevel::Debug;
     info.maxLevel = LogLevel::Fatal;
-    CHECK (log.AddConsoleSink (info, "prog", out).IsOk());
+    CHECK (log.AddConsoleSink (info, "prog", out));
 
     log.SetLogLevel (LogLevel::Fatal);
     log.Error ("silenced by global level");
@@ -105,7 +105,7 @@ TEST_CASE ("Log::SetSinkLogLevel and SetSinkMaxLogLevel adjust filtering at runt
     LogSinkInfo info;
     info.level = LogLevel::Info;
     info.maxLevel = LogLevel::Fatal;
-    CHECK (log.AddConsoleSink (info, "prog", out).IsOk());
+    CHECK (log.AddConsoleSink (info, "prog", out));
 
     log.SetSinkLogLevel (SinkType::Console, LogLevel::Error);
     log.Warning ("now filtered out");
@@ -126,12 +126,12 @@ TEST_CASE ("Log::LogWithTag only delivers to sinks of the matching type")
     LogSinkInfo consoleInfo;
     consoleInfo.level = LogLevel::Debug;
     consoleInfo.maxLevel = LogLevel::Fatal;
-    CHECK (log.AddConsoleSink (consoleInfo, "prog", consoleOut).IsOk());
+    CHECK (log.AddConsoleSink (consoleInfo, "prog", consoleOut));
 
     LogSinkInfo fileInfo;
     fileInfo.level = LogLevel::Debug;
     fileInfo.maxLevel = LogLevel::Fatal;
-    CHECK (log.AddFileSink (fileInfo, filePath.string()).IsOk());
+    CHECK (log.AddFileSink (fileInfo, filePath.string()));
 
     log.LogWithTag (SinkType::Console, "console only", LogLevel::Info);
     CHECK (consoleOut.str().find ("console only") != std::string::npos);
@@ -149,7 +149,7 @@ TEST_CASE ("Log::AddFileSink writes prefixed lines and flushes on error severity
         LogSinkInfo info;
         info.level = LogLevel::Debug;
         info.maxLevel = LogLevel::Fatal;
-        REQUIRE (log.AddFileSink (info, filePath.string()).IsOk());
+        REQUIRE (log.AddFileSink (info, filePath.string()));
 
         log.Debug ("dbg message");
         log.Warning ("warn message");
@@ -171,8 +171,8 @@ TEST_CASE ("Log::AddFileSink reports an error when the file cannot be opened")
     info.level = LogLevel::Info;
     info.maxLevel = LogLevel::Fatal;
     auto res = log.AddFileSink (info, "/nonexistent_dir_xyz/impossible/log.txt");
-    CHECK_FALSE (res.IsOk());
-    CHECK (res.GetError().GetSeverity() != ErrorSeverity::Warning);
+    CHECK_FALSE (res);
+    CHECK (res.Error().GetSeverity() != ErrorSeverity::Warning);
 }
 
 TEST_CASE ("Log supports multiple sinks of the same type independently")
@@ -187,8 +187,8 @@ TEST_CASE ("Log supports multiple sinks of the same type independently")
     infoB.level = LogLevel::Error;
     infoB.maxLevel = LogLevel::Fatal;
 
-    CHECK (log.AddConsoleSink (infoA, "progA", outA).IsOk());
-    CHECK (log.AddConsoleSink (infoB, "progB", outB).IsOk());
+    CHECK (log.AddConsoleSink (infoA, "progA", outA));
+    CHECK (log.AddConsoleSink (infoB, "progB", outB));
 
     log.Warning ("only for A");
     CHECK (outA.str().find ("only for A") != std::string::npos);
@@ -210,7 +210,7 @@ TEST_CASE ("Log stress test with many rapid log calls across levels")
         LogSinkInfo info;
         info.level = LogLevel::Debug;
         info.maxLevel = LogLevel::Fatal;
-        REQUIRE (log.AddFileSink (info, filePath.string()).IsOk());
+        REQUIRE (log.AddFileSink (info, filePath.string()));
 
         for (int i = 0; i < iterations; i++)
         {
@@ -243,17 +243,17 @@ TEST_CASE ("ManagedLogCtrl parses max_file and max_age from control file syntax"
 {
     std::string data = "max_file = 12;\nmax_age = 7;\n";
     ManagedLogCtrl ctrl ("test_ctrl", data);
-    REQUIRE (ctrl.Parse().IsOk());
+    REQUIRE (ctrl.Parse());
 
     ConfValue val;
     auto res = ctrl.Get (LogCtrlKey::MaxFiles, val);
-    REQUIRE (res.IsOk());
-    CHECK (res.GetValue());
+    REQUIRE (res);
+    CHECK (res.Value());
     CHECK (std::get<int> (val) == 12);
 
     res = ctrl.Get (LogCtrlKey::MaxAge, val);
-    REQUIRE (res.IsOk());
-    CHECK (res.GetValue());
+    REQUIRE (res);
+    CHECK (res.Value());
     CHECK (std::get<int> (val) == 7);
 }
 
@@ -261,14 +261,14 @@ TEST_CASE ("ManagedLogCtrl reports a parse error for malformed control files")
 {
     ManagedLogCtrl ctrl ("bad_ctrl", "max_file = ;\n");
     auto res = ctrl.Parse();
-    CHECK_FALSE (res.IsOk());
+    CHECK_FALSE (res);
 }
 
 TEST_CASE ("ManagedLogCtrl reports a type mismatch when a key gets the wrong value type")
 {
     ManagedLogCtrl ctrl ("bad_ctrl_type", "max_file = \"not_a_number\";\n");
     auto res = ctrl.Parse();
-    CHECK_FALSE (res.IsOk());
+    CHECK_FALSE (res);
 }
 
 TEST_CASE ("Log::AddManagedSink creates the log directory and an initial log file")
@@ -280,7 +280,7 @@ TEST_CASE ("Log::AddManagedSink creates the log directory and an initial log fil
         LogSinkInfo info;
         info.level = LogLevel::Debug;
         info.maxLevel = LogLevel::Fatal;
-        REQUIRE (log.AddManagedSink (info, dir).IsOk());
+        REQUIRE (log.AddManagedSink (info, dir));
         CHECK (std::filesystem::exists (dir));
 
         log.Info ("hello managed log");
@@ -310,7 +310,7 @@ TEST_CASE ("Log::AddManagedSink fails when the target path exists and is not a d
     info.level = LogLevel::Info;
     info.maxLevel = LogLevel::Fatal;
     auto res = log.AddManagedSink (info, filePath);
-    CHECK_FALSE (res.IsOk());
+    CHECK_FALSE (res);
 
     std::filesystem::remove_all (dir);
 }
@@ -339,7 +339,7 @@ TEST_CASE ("ManagedLogSink maintenance deletes files older than max_age")
         LogSinkInfo info;
         info.level = LogLevel::Debug;
         info.maxLevel = LogLevel::Fatal;
-        REQUIRE (log.AddManagedSink (info, dir).IsOk());
+        REQUIRE (log.AddManagedSink (info, dir));
         // Log destructs at end of scope, joining the maintenance jthread before we inspect the directory
     }
 

@@ -52,30 +52,27 @@ class TextReader
             throw std::runtime_error ("attempt to read from unopened file");
 
         // Grab data
-        const std::string_view data (reinterpret_cast<const char*> (handle.getData()), handle.mappedSize());
+        std::string_view data (reinterpret_cast<const char*> (handle.getData()), handle.mappedSize());
         // Prepare encoding detection
         Chardet chardet;
         std::string enc = "";
-        float confidence = 0;
         if (!fileEnc.empty())
             enc = fileEnc;    // Force it
         else
         {
             // Attempt to detect it
-            if (!chardet.Detect (data, enc, confidence) || confidence < 0.5)
+            if (!chardet.Detect (data, enc))
             {
                 if (!requireEnc)
                 {
                     // If chardet couldn't detect the encoding and the user didn't specify one, warn the user
                     // and force ASCII
-                    Error err =
+                    ErrorOutput::The()->Report (
                         Error ({ErrorDomain::None, ErrorCode::EncMismatch, ErrorLog::Normal, ErrorSeverity::Warning},
                             "unable to detect character set for file {}, assuming ASCII",
-                            file.string());
-                    ErrorOutput::The()->Report (err);
+                            file.string()));
 
                     enc = "ASCII";
-                    confidence = 1.0;    // Force it as ASCII is compatible with everything
                 }
                 else
                 {

@@ -1,3 +1,2 @@
-Look into making a componentFactory class
-Finish ImageCmd implementation
-Make a cxxopts wrapper for unused argument handling
+Make setter/getter interface symmetric via type erasure
+Support ImageVal->spec value translation via per-property howto table

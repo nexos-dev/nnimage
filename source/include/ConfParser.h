@@ -68,14 +68,12 @@ struct ConfProp
     ConfValue val;
 };
 
-using TokenPtr = std::unique_ptr<LexToken>;
-
 template <typename Derived, typename ConfKey>
 class ConfParser
 {
   public:
     ConfParser() = default;
-    ConfParser (const std::string& fileName, std::string data) : lexer (fileName, std::move (data)), fileName (fileName)
+    ConfParser (const std::string& fileName, std::string_view data) : lexer (fileName, data), fileName (fileName)
     {}
     virtual ~ConfParser() = default;
 
@@ -85,12 +83,12 @@ class ConfParser
     ResNone Parse();
     ResNone Serialize (std::string& out);
 
-    void Reset (std::string data, const std::string& fileName = "")
+    void Reset (std::string_view data, const std::string& fileName = "")
     {
         if (!fileName.empty())
             this->fileName = fileName;
         // Reset the lexer
-        lexer = SimpleLexer (this->fileName, std::move (data));
+        lexer = SimpleLexer (this->fileName, data);
     }
 
   protected:
@@ -106,10 +104,10 @@ class ConfParser
   private:
     ResNone readFile();
     ResNone parseLoop (std::vector<ConfProp>& props);
-    Result<TokenPtr> parseProp (TokenPtr startTok, ConfProp& out);
-    Result<TokenPtr> setNumberProp (ConfProp& prop, LexToken* tok);
-    Result<TokenPtr> setIdProp (ConfProp& prop, TokenPtr tok);
-    Result<TokenPtr> setListProp (ConfProp& prop, TokenPtr tok);
+    Result<LexToken> parseProp (LexToken& startTok, ConfProp& out);
+    Result<LexToken> setNumberProp (ConfProp& prop, LexToken& tok);
+    Result<LexToken> setIdProp (ConfProp& prop, LexToken& tok);
+    Result<LexToken> setListProp (ConfProp& prop, LexToken& tok);
     // Does the actual work of Set() without acquiring parseLoc
     ResNone setLocked (ConfKey key, const ConfValue& val, bool overwrite);
 
@@ -118,25 +116,19 @@ class ConfParser
     std::vector<ConfKey> foundKeys;
     mutable std::shared_mutex parseLock;
 
-    Result<TokenPtr> expectToken (TokenType expected)
+    Result<LexToken> expectToken (TokenType expected)
     {
         auto res = lexer.NextToken();
-        if (!res.IsOk())
-            return res.GetError();
-        TokenPtr tok = std::move (res.GetValue());
-        assert (tok);
-        if (tok->type != expected)
-            return unexpectedToken (tok->type);
+        if (!res)
+            return res.Error();
+        LexToken& tok = res.Value();
+        if (tok.type != expected)
+            return unexpectedToken (tok.type);
         return std::move (tok);
     }
-    Result<TokenPtr> nextToken()
+    Result<LexToken> nextToken()
     {
-        auto res = lexer.NextToken();
-        if (!res.IsOk())
-            return res.GetError();
-        TokenPtr tok = std::move (res.GetValue());
-        assert (tok);
-        return std::move (tok);
+        return lexer.NextToken();
     }
 
     Error unexpectedToken (TokenType type)

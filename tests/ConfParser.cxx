@@ -37,29 +37,29 @@
 TEST_CASE ("ConfParser parses valid integer properties and Get reflects them")
 {
     ManagedLogCtrl ctrl ("test.conf", "max_file = 10;\nmax_age = 5;\n");
-    REQUIRE (ctrl.Parse().IsOk());
+    REQUIRE (ctrl.Parse());
 
     ConfValue val;
     auto res = ctrl.Get (LogCtrlKey::MaxFiles, val);
-    REQUIRE (res.IsOk());
-    CHECK (res.GetValue());
+    REQUIRE (res);
+    CHECK (res.Value());
     CHECK (std::get<int> (val) == 10);
 
     res = ctrl.Get (LogCtrlKey::MaxAge, val);
-    REQUIRE (res.IsOk());
-    CHECK (res.GetValue());
+    REQUIRE (res);
+    CHECK (res.Value());
     CHECK (std::get<int> (val) == 5);
 }
 
 TEST_CASE ("ConfParser Get on a never-set key reports no value without failing")
 {
     ManagedLogCtrl ctrl ("test.conf", "max_file = 10;\n");
-    REQUIRE (ctrl.Parse().IsOk());
+    REQUIRE (ctrl.Parse());
 
     ConfValue val;
     auto res = ctrl.Get (LogCtrlKey::MaxAge, val);
-    REQUIRE (res.IsOk());
-    CHECK_FALSE (res.GetValue());
+    REQUIRE (res);
+    CHECK_FALSE (res.Value());
 }
 
 TEST_CASE ("ConfParser Set rejects a value whose type does not match the key's registered type")
@@ -67,23 +67,23 @@ TEST_CASE ("ConfParser Set rejects a value whose type does not match the key's r
     ManagedLogCtrl ctrl;
     ConfValue listVal = ConfList{"a", "b"};
     auto res = ctrl.Set (LogCtrlKey::MaxFiles, listVal);
-    CHECK_FALSE (res.IsOk());
-    CHECK (res.GetError().RootFrame().code == ErrorCode::ParseError);
+    CHECK_FALSE (res);
+    CHECK (res.Error().RootFrame().code == ErrorCode::ParseError);
 
     ConfValue strVal = std::string ("not an int");
     res = ctrl.Set (LogCtrlKey::MaxFiles, strVal);
-    CHECK_FALSE (res.IsOk());
+    CHECK_FALSE (res);
 }
 
 TEST_CASE ("ConfParser Set with overwrite disabled rejects re-writing an existing key")
 {
     ManagedLogCtrl ctrl;
     ConfValue val = 10;
-    REQUIRE (ctrl.Set (LogCtrlKey::MaxFiles, val, true).IsOk());
+    REQUIRE (ctrl.Set (LogCtrlKey::MaxFiles, val, true));
 
     ConfValue second = 20;
     auto res = ctrl.Set (LogCtrlKey::MaxFiles, second, false);
-    CHECK_FALSE (res.IsOk());
+    CHECK_FALSE (res);
 
     // Value must be unchanged after the rejected write
     ConfValue readBack;
@@ -95,9 +95,9 @@ TEST_CASE ("ConfParser Set with overwrite enabled (the default) replaces an exis
 {
     ManagedLogCtrl ctrl;
     ConfValue val = 10;
-    REQUIRE (ctrl.Set (LogCtrlKey::MaxFiles, val).IsOk());
+    REQUIRE (ctrl.Set (LogCtrlKey::MaxFiles, val));
     ConfValue second = 20;
-    REQUIRE (ctrl.Set (LogCtrlKey::MaxFiles, second).IsOk());
+    REQUIRE (ctrl.Set (LogCtrlKey::MaxFiles, second));
 
     ConfValue readBack;
     ctrl.Get (LogCtrlKey::MaxFiles, readBack);
@@ -107,10 +107,10 @@ TEST_CASE ("ConfParser Set with overwrite enabled (the default) replaces an exis
 TEST_CASE ("ConfParser Serialize writes back every previously-set key in \"name = value;\" form")
 {
     ManagedLogCtrl ctrl ("test.conf", "max_file = 10;\nmax_age = 5;\n");
-    REQUIRE (ctrl.Parse().IsOk());
+    REQUIRE (ctrl.Parse());
 
     std::string out;
-    REQUIRE (ctrl.Serialize (out).IsOk());
+    REQUIRE (ctrl.Serialize (out));
     CHECK (out.find ("max_file = 10;\n") != std::string::npos);
     CHECK (out.find ("max_age = 5;\n") != std::string::npos);
 }
@@ -118,10 +118,10 @@ TEST_CASE ("ConfParser Serialize writes back every previously-set key in \"name 
 TEST_CASE ("ConfParser Serialize omits keys that were never set")
 {
     ManagedLogCtrl ctrl ("test.conf", "max_file = 10;\n");
-    REQUIRE (ctrl.Parse().IsOk());
+    REQUIRE (ctrl.Parse());
 
     std::string out;
-    REQUIRE (ctrl.Serialize (out).IsOk());
+    REQUIRE (ctrl.Serialize (out));
     CHECK (out.find ("max_file") != std::string::npos);
     CHECK (out.find ("max_age") == std::string::npos);
 }
@@ -130,14 +130,14 @@ TEST_CASE ("ConfParser::Parse fails on syntactically invalid input and surfaces 
 {
     ManagedLogCtrl ctrl ("bad.conf", "max_file = ;\n");
     auto res = ctrl.Parse();
-    CHECK_FALSE (res.IsOk());
+    CHECK_FALSE (res);
 }
 
 TEST_CASE ("ConfParser::Parse fails when a property is missing its terminating semicolon")
 {
     ManagedLogCtrl ctrl ("bad.conf", "max_file = 10\n");
     auto res = ctrl.Parse();
-    CHECK_FALSE (res.IsOk());
+    CHECK_FALSE (res);
 }
 
 TEST_CASE ("ConfParser::Parse throws when invoked on a default-constructed (unnamed) instance")
@@ -149,10 +149,10 @@ TEST_CASE ("ConfParser::Parse throws when invoked on a default-constructed (unna
 TEST_CASE ("ConfParser::Reset allows reusing an instance for a second, unrelated parse")
 {
     ManagedLogCtrl ctrl ("first.conf", "max_file = 1;\n");
-    REQUIRE (ctrl.Parse().IsOk());
+    REQUIRE (ctrl.Parse());
 
     ctrl.Reset ("max_file = 99;\nmax_age = 3;\n", "second.conf");
-    REQUIRE (ctrl.Parse().IsOk());
+    REQUIRE (ctrl.Parse());
 
     ConfValue val;
     ctrl.Get (LogCtrlKey::MaxFiles, val);
@@ -164,16 +164,16 @@ TEST_CASE ("ConfParser::Reset allows reusing an instance for a second, unrelated
 TEST_CASE ("ConfParser handles an empty configuration body gracefully")
 {
     ManagedLogCtrl ctrl ("empty.conf", "");
-    REQUIRE (ctrl.Parse().IsOk());
+    REQUIRE (ctrl.Parse());
     std::string out;
-    REQUIRE (ctrl.Serialize (out).IsOk());
+    REQUIRE (ctrl.Serialize (out));
     CHECK (out.empty());
 }
 
 TEST_CASE ("ConfParser tolerates comments and blank lines around properties")
 {
     ManagedLogCtrl ctrl ("commented.conf", "# leading comment\n\nmax_file = 7; # trailing comment\n\nmax_age = 2;\n");
-    REQUIRE (ctrl.Parse().IsOk());
+    REQUIRE (ctrl.Parse());
 
     ConfValue val;
     ctrl.Get (LogCtrlKey::MaxFiles, val);
@@ -185,7 +185,7 @@ TEST_CASE ("ConfParser tolerates comments and blank lines around properties")
 TEST_CASE ("ConfParser re-parsing the same key multiple times keeps only the last value")
 {
     ManagedLogCtrl ctrl ("repeat.conf", "max_file = 1;\nmax_file = 2;\nmax_file = 3;\n");
-    REQUIRE (ctrl.Parse().IsOk());
+    REQUIRE (ctrl.Parse());
 
     ConfValue val;
     ctrl.Get (LogCtrlKey::MaxFiles, val);
@@ -207,7 +207,7 @@ TEST_CASE ("ConfParser stress test with a large repeated-property configuration 
         data += "max_file = " + std::to_string (i) + ";\n";
 
     ManagedLogCtrl ctrl ("stress.conf", data);
-    REQUIRE (ctrl.Parse().IsOk());
+    REQUIRE (ctrl.Parse());
 
     ConfValue val;
     ctrl.Get (LogCtrlKey::MaxFiles, val);
@@ -218,7 +218,7 @@ TEST_CASE ("ConfParser Get/Set are safe to call concurrently from multiple threa
 {
     ManagedLogCtrl ctrl;
     ConfValue init = 0;
-    REQUIRE (ctrl.Set (LogCtrlKey::MaxFiles, init).IsOk());
+    REQUIRE (ctrl.Set (LogCtrlKey::MaxFiles, init));
 
     constexpr int threadCount = 8;
     constexpr int itersPerThread = 500;

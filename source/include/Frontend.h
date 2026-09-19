@@ -78,6 +78,15 @@ class Frontend
     }
 
   protected:
+    ResNone addImage (std::unique_ptr<Image> image)
+    {
+        if (images.find (image->GetName()) != images.end())
+            return ImageError (ErrorCode::DuplicateImage, {{"name", image->GetName()}});
+
+        images.emplace (image->GetName(), std::move (image));
+        return Success();
+    }
+
     FrontendOptions opts;
     // These contain all the images/partitions that have been parsed
     std::unordered_map<std::string, std::unique_ptr<Image>> images{};
@@ -86,6 +95,8 @@ class Frontend
     std::vector<GenericRef<Image>> imageRefs{};
     std::vector<GenericRef<Partition>> partRefs{};
 };
+
+class SimpleLexer;
 
 // Frontend for specifying an image on the command line
 class ImageCmd : public Frontend
@@ -97,9 +108,24 @@ class ImageCmd : public Frontend
     ResNone Parse();
 
   private:
+    ResNone assertIsEnd (LexToken& tok);
+    Result<ImageVal> convertStr (const std::string& val);
+    Result<LexToken> getOneToken (const std::string& val);
+    ResNone assertTokenEnd (SimpleLexer& lex);
+
     template <typename T>
-    Result<T> getToken (const std::string& val, const std::string& prop, TokenType type);
-    Result<ImageNumId> getSize();
+    Result<T> getTokenValue (const std::string& val, TokenType type);
+
+    ResNone processNumId (Image& img, ImgProp prop, const std::string& val);
+    ResNone processId (Image& img, ImgProp prop, const std::string& val);
+
+    ResNone processProps (Image& img);
+    ResNone processPartitions (Image& img);
+
+    Error& badArgument (Error& e, const std::string& prop)
+    {
+        return e.Add ({ErrorDomain::Option, ErrorCode::BadArgument}, "Unable to process \"{}\"", prop);
+    }
 };
 
 // Frontend for images coming from a file

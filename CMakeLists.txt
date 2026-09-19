@@ -67,15 +67,16 @@ endif()
 ###################
 
 find_package(PkgConfig REQUIRED)
+find_package(Python COMPONENTS Interpreter REQUIRED)
 
-# Get libchardet
-pkg_check_modules(CHARDET IMPORTED_TARGET chardet)
+# Get uchardet
+pkg_check_modules(UCHARDET IMPORTED_TARGET uchardet)
 # If not found, that's fine
-if(NOT CHARDET_FOUND)
-    set(HAVE_CHARDET OFF)
+if(NOT UCHARDET_FOUND)
+    set(HAVE_UCHARDET OFF)
 else()
-    set(HAVE_CHARDET ON)
-    list(APPEND NNIMAGE_LIBRARIES PkgConfig::CHARDET)
+    set(HAVE_UCHARDET ON)
+    list(APPEND NNIMAGE_LIBRARIES PkgConfig::UCHARDET)
 endif()
 
 # Get iconv
@@ -160,10 +161,10 @@ string(REPLACE ";" "," NNIMAGE_ALL_BACKENDS_STR "${NNIMAGE_ALL_BACKENDS}")
 
 add_custom_command(
     OUTPUT "${BACKEND_TABLE_FILE}" "${BACKEND_TYPES_FILE}" "${BACKENDS_FILE}"
-    COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/scripts/generate_backends.sh 
+    COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/scripts/generate_backends.py 
             "${NNIMAGE_USABLE_BACKENDS_STR}" "${NNIMAGE_ALL_BACKENDS_STR}"
-            "${BACKEND_TABLE_FILE}" "${BACKEND_TYPES_FILE}" "${BACKENDS_FILE}"
-    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/scripts/generate_backends.sh
+            "${CMAKE_CURRENT_BINARY_DIR}"
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/scripts/generate_backends.py
     COMMENT "Generating backend header file..."
 )
 
@@ -175,15 +176,15 @@ set(COMP_TABLE_FILE "${CMAKE_CURRENT_BINARY_DIR}/CompTable.h")
 set(COMP_TYPES_FILE "${CMAKE_CURRENT_BINARY_DIR}/CompTypes.h")
 set(COMPS_FILE "${CMAKE_CURRENT_BINARY_DIR}/Components.h")
 
-file(GLOB COMP_FILES "${CMAKE_CURRENT_SOURCE_DIR}/source/comps/decl/*.comp")
+file(GLOB COMP_FILES "${CMAKE_CURRENT_SOURCE_DIR}/source/comps/slots/*.comp"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/source/comps/slots/*/*.comp")
 file(GLOB SLOT_FILES "${CMAKE_CURRENT_SOURCE_DIR}/source/comps/slots/*.comp")
 
 add_custom_command(
     OUTPUT "${COMP_TABLE_FILE}" "${COMP_TYPES_FILE}" "${COMPS_FILE}"
-    COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/scripts/generate_components.sh
+    COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/scripts/generate_components.py
             "${CMAKE_CURRENT_SOURCE_DIR}/source/comps" "${CMAKE_CURRENT_BINARY_DIR}"
-            "${COMP_TABLE_FILE}" "${COMP_TYPES_FILE}" "${COMPS_FILE}"
-    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/scripts/generate_components.sh ${COMP_FILES}
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/scripts/generate_components.py ${COMP_FILES}
     COMMENT "Generating component tables..."
 )
 
@@ -206,8 +207,9 @@ list(APPEND NNIMAGE_SOURCES source/Log.cxx
                             source/Action.cxx
                             source/ErrorFormat.cxx
                             source/Backend.cxx
-                            source/Image.cxx
                             source/Frontend.cxx
+                            source/Image.cxx
+                            source/ImgBase.cxx
                             source/ImageCmd.cxx
                             source/ImageConf.cxx
                             source/Task.cxx)
@@ -232,7 +234,8 @@ if(NNIMAGE_ENABLE_TESTS)
                                 tests/Image.cxx
                                 tests/SimpleLexer.cxx
                                 tests/ConfParser.cxx
-                                tests/Options.cxx)
+                                tests/Options.cxx
+                                tests/ImageCmd.cxx)
     target_link_libraries(nnimage_test PRIVATE libnnimage libbackend ${NNIMAGE_LIBRARIES})
 
     # Add doctests to CTest

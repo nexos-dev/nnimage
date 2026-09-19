@@ -76,8 +76,8 @@ class Component : public RegElement<Component, ImgProp, CompConfRegistry>
     Image& owner;
 
   private:
-    const std::string& getRegElementName() const override;
-    const std::string& getPropName (ImgProp prop) const override;
+    std::string_view getRegElementName() const override;
+    std::string_view getPropName (ImgProp prop) const override;
 
     // The union of the main and sub registries
     CompConfRegistry mergedRegistry;

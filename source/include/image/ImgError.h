@@ -40,7 +40,7 @@ class ImageError : public Error
         keys.insert (args.begin(), args.end());
         makeMessage (*frame);
     }
-    ImageError (ErrorCode code, std::string msg) : Error ({ErrorDomain::ImageConf, code}, msg)
+    ImageError (ErrorCode code, std::string msg) : Error ({ErrorDomain::ImageConf, code}, std::move (msg))
     {
         frame = &frames[frames.size() - 1];
     }
@@ -63,23 +63,30 @@ class ImageError : public Error
             assert (this->keys.find (key) != this->keys.end());
     }
 
-    const std::string& getString (std::string_view key)
+    std::string_view getString (std::string_view key)
     {
         auto it = keys.find (key);
         assert (it != keys.end());
-        return std::any_cast<const std::string&> (it->second);
+        return std::string_view (std::any_cast<const std::string&> (it->second));
     }
-    const std::string& getString (ErrorKeyMap::iterator it)
+    std::string_view getString (ErrorKeyMap::iterator it)
     {
-        return std::any_cast<const std::string&> (it->second);
+        return std::string_view (std::any_cast<const std::string&> (it->second));
     }
 
     // Helper for adding name to image error output. If image is anonymous, it will not add anything
     std::string getName()
     {
-        std::string name = getString ("name");
+        std::string_view name = getString ("name");
         if (!name.empty())
-            return std::string (" \"") + getString ("name") + "\"";
+        {
+            std::string result;
+            result.reserve (name.size() + 3);
+            result.append (" \"");
+            result.append (name);
+            result.push_back ('"');
+            return result;
+        }
         return {};
     }
 

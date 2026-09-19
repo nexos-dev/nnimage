@@ -215,27 +215,27 @@ TEST_CASE ("ErrorException exposes the root frame message and the wrapped error"
     Error err ({ErrorDomain::Log, ErrorCode::FileError}, "disk on fire");
     ErrorException ex (err);
     CHECK (std::string (ex.what()) == "disk on fire");
-    CHECK (ex.GetError().RootFrame().msg == "disk on fire");
+    CHECK (ex.Error().RootFrame().msg == "disk on fire");
 }
 
 TEST_CASE ("ResCustom stores a value on the success path")
 {
     Result<int> res (42);
-    REQUIRE (res.IsOk());
-    CHECK (res.GetValue() == 42);
+    REQUIRE (res);
+    CHECK (res.Value() == 42);
 }
 
 TEST_CASE ("ResCustom stores an error on the failure path")
 {
     Result<int> res (Error ({ErrorDomain::Conf, ErrorCode::ParseError}, "nope"));
-    REQUIRE_FALSE (res.IsOk());
-    CHECK (res.GetError().RootFrame().msg == "nope");
+    REQUIRE_FALSE (res);
+    CHECK (res.Error().RootFrame().msg == "nope");
 }
 
 TEST_CASE ("ResNone / Success represents a valueless successful result")
 {
     ResNone res = Success();
-    CHECK (res.IsOk());
+    CHECK (res);
 }
 
 TEST_CASE ("UserErrorFormatter prints the last frame first followed by normal-log frames in reverse")

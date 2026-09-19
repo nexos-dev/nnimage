@@ -38,7 +38,7 @@ KrunBackend::KrunBackend()
     krunCtx = krun_create_ctx();
     if (krunCtx == -1)
     {
-        _log->Error ("failed to create krun context");
+        Log::The().Error ("failed to create krun context");
         backendCreated = false;
         return;
     }
@@ -47,12 +47,12 @@ KrunBackend::KrunBackend()
     bool netEnabled = krun_has_feature (KRUN_FEATURE_NET) == 1;
     // Handle failures
     if (!blockEnabled)
-        _log->Error ("libkrun was built without block device support");
+        Log::The().Error ("libkrun was built without block device support");
     if (!netEnabled)
-        _log->Error ("libkrun was built without network device support");
+        Log::The().Error ("libkrun was built without network device support");
     if (!blockEnabled || !netEnabled)
     {
-        _log->Error ("one or more required features are not enabled in libkrun");
+        Log::The().Error ("one or more required features are not enabled in libkrun");
         backendCreated = false;
         return;
     }
@@ -70,7 +70,7 @@ KrunBackend::KrunBackend()
     // Set it
     if (krun_set_vm_config (krunCtx, krunCpus, krunMemMB) == -1)
     {
-        _log->Error ("failed to set krun VM config");
+        Log::The().Error ("failed to set krun VM config");
         backendCreated = false;
         return;
     }
@@ -92,7 +92,7 @@ bool KrunBackend::AddImage (Image& img, const std::string& fileName, bool readon
     // Call the API
     if (krun_add_disk2 (krunCtx, blockDev.c_str(), fileName.c_str(), KRUN_DISK_FORMAT_RAW, readonly) == -1)
     {
-        _log->Error ("failed to add disk \"" + spec.name + "\" to krun");
+        Log::The().Error ("failed to add disk \"" + spec.name + "\" to krun");
         return false;
     }
     // Now set the tag
@@ -104,7 +104,7 @@ std::unique_ptr<Task> KrunBackend::CreatePartTable (Image& img, const std::strin
 {
     auto taskCb = [this, &img, fileName]() {
         const auto& spec = img.GetSpec();
-        _log->Error ("i want to fail");
+        Log::The().Error ("i want to fail");
         return false;
     };
     const auto& spec = img.GetSpec();
