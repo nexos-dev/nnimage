@@ -26,6 +26,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <string>
+#include <string_view>
 #include <vector>
 
 struct ActionReg
@@ -76,7 +77,7 @@ class Dispatch
         ErrorOutput::The()->Report (err);
     }
     // Helper for reporting option validation errors
-    Error makeOptionError (const std::string& msg)
+    Error makeOptionError (std::string_view msg)
     {
         return Error ({ErrorDomain::Option, ErrorCode::InvalidOption}, msg);
     }

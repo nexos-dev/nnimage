@@ -18,19 +18,21 @@
 #include "include/image/ImgBase.h"
 #include "include/SimpleLexer.h"
 
+#include <format>
+
 template <class... Ts>
 struct overloaded : Ts...
 {
     using Ts::operator()...;
 };
 
-Result<ImageVal> ImageVal::FromToken (const LexToken& tok)
+Result<ImageVal> ImageVal::FromToken (LexToken tok)
 {
     return std::visit (overloaded{[&] (const std::string& x) -> Result<ImageVal> {
                                       if (tok.type == TokenType::Identifier)
-                                          return ImageVal (ImageId (x), tok.line);
+                                          return ImageVal (ImageId (std::move (x)), tok.line);
                                       else
-                                          return ImageVal (x, tok.line);
+                                          return ImageVal (std::move (x), tok.line);
                                   },
                            [&] (uint64_t x) -> Result<ImageVal> { return ImageVal (x, tok.line); },
                            [&] (bool x) -> Result<ImageVal> { return ImageVal (x, tok.line); },
@@ -58,16 +60,16 @@ ImageVal ImageVal::Cast (ImageValIdx wantedType) const
 
 void ImageError::makeMessage (ErrorFrame& frame)
 {
-    std::stringstream msg;
+    std::string msg;
     // Check if we have a file/line
     if (auto it = keys.find ("file"); it != keys.end())
     {
-        msg << getString (it) << ":";
+        msg += std::format ("{}:", getString (it));
         // Check for a line now
         if (auto it = keys.find ("line"); it != keys.end())
-            msg << getString (it) << ": ";
+            msg += std::format ("{}: ", getString (it));
         else
-            msg << " ";    // Still place a space
+            msg += " ";    // Still place a space
     }
 
     switch (frame.code)
@@ -75,56 +77,58 @@ void ImageError::makeMessage (ErrorFrame& frame)
         // NOTE: all the below assertKeys calls only do anything on debug builds. That shouldn't be an issue
         case ErrorCode::NameMissing:
             assertKeys ({"block_type"});
-            msg << "Name required for block type \"" << getString ("block_type") << "\"";
+            msg += std::format ("Name required for block type \"{}\"", getString ("block_type"));
             break;
         case ErrorCode::InvalidImgType:
             assertKeys ({"type"});
-            msg << "Invalid image type \"" << getString ("type") << "\" specified on image" << getName();
+            msg += std::format ("Invalid image type \"{}\" specified on image{}", getString ("type"), getName());
             break;
         case ErrorCode::InvalidImgProp:
             assertKeys ({"prop"});
-            msg << "Unrecognized property \"" << getString ("prop") << "\" specified on image" << getName();
+            msg += std::format ("Unrecognized property \"{}\" specified on image{}", getString ("prop"), getName());
             break;
         case ErrorCode::BadFloppySize:
-            msg << "Floppy disc" << getName() << " must have size 720K, 1.44M, or 2.88M";
+            msg += std::format ("Floppy disc{} must have size 720K, 1.44M, or 2.88M", getName());
             break;
         case ErrorCode::InvalidPartProp:
             assertKeys ({"prop"});
-            msg << "Unrecognized property \"" << getString ("prop") << "\" specified on partition" << getName();
+            msg += std::format ("Unrecognized property \"{}\" specified on partition{}", getString ("prop"), getName());
             break;
         case ErrorCode::PropTypeMismatch:
             assertKeys ({"prop"});
-            msg << "Invalid type specified on property \"" << getString ("prop") << "\"";
+            msg += std::format ("Invalid type specified on property \"{}\"", getString ("prop"));
             break;
         case ErrorCode::InvalidId:
             assertKeys ({"id", "prop"});
-            msg << "Invalid ID \"" << getString ("id") << "\" specified for property \"" << getString ("prop")
-                << "\" on image" << getName();
+            msg += std::format ("Invalid ID \"{}\" specified for property \"{}\" on image{}",
+                getString ("id"),
+                getString ("prop"),
+                getName());
             break;
         case ErrorCode::ImgMissingProp:
             assertKeys ({"prop"});
-            msg << "Missing required property \"" << getString ("prop") << "\" on image " << getName();
+            msg += std::format ("Missing required property \"{}\" on image {}", getString ("prop"), getName());
             break;
         case ErrorCode::PartMissingProp:
             assertKeys ({"prop"});
-            msg << "Missing required property \"" << getString ("prop") << "\" on partition " << getName();
+            msg += std::format ("Missing required property \"{}\" on partition {}", getString ("prop"), getName());
             break;
         case ErrorCode::MissingPart:
-            msg << "Image" << getName() << " requires at least one partition";
+            msg += std::format ("Image{} requires at least one partition", getName());
             break;
         case ErrorCode::DuplicateImage:
-            msg << "Image" << getName() << " already exists";
+            msg += std::format ("Image{} already exists", getName());
             break;
         case ErrorCode::CompNotLoaded:
-            msg << "Attempt to use unloaded component on image" << getName();
+            msg += std::format ("Attempt to use unloaded component on image{}", getName());
             break;
         default:
-            msg << frame.msg;
+            msg += frame.msg;
     }
-    frame.msg = msg.str();
+    frame.msg = std::move (msg);
 }
 
-const std::unordered_map<std::string, size_t> ImageNumId::mulMap = {{"B", 1},
+const std::unordered_map<std::string_view, size_t> ImageNumId::mulMap = {{"B", 1},
     {"KiB", 1024},
     {"KB", 1000},
     {"MiB", 1024 * 1024},

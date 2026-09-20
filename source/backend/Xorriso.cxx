@@ -22,7 +22,7 @@ XorrisoBackend::XorrisoBackend()
     backendCreated = true;
 }
 
-bool XorrisoBackend::AddImage (Image& img, const std::string& fileName, bool readonly)
+bool XorrisoBackend::AddImage (Image& img, std::string_view fileName, bool readonly)
 {
     return false;
 }

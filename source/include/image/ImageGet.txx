@@ -59,7 +59,7 @@ ResCustom<T*, ImageError> Image::GetComponent (CompType type)
 }
 
 template <typename T>
-ResCustom<std::optional<T>, ImageError> Partition::Get (const std::string& name)
+ResCustom<std::optional<T>, ImageError> Partition::Get (std::string_view name)
 {
     return dispatchByName (name, spec.name, [&] (PartProp prop) { return Get<T> (prop); });
 }

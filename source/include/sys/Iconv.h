@@ -82,6 +82,7 @@ class Iconv
         size_t result = iconv (cd, &inBuf, &inBytesLeft, &outBuf, &outBytesLeft);
         if (result == (size_t) -1)
             return false;
+        // NOTE: copies it here
         out = std::string (outBuffer.data(), outBuffer.size() - outBytesLeft);
         return true;
     }

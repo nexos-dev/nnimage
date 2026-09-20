@@ -29,7 +29,7 @@
 Log::~Log() = default;
 Log::Log() = default;
 
-void Log::LogAt (const std::string& message, LogLevel level, LogTime time)
+void Log::LogAt (std::string_view message, LogLevel level, LogTime time)
 {
     if (time == LogTime{})
         time = std::chrono::system_clock::now();
@@ -46,7 +46,7 @@ void Log::LogAt (const std::string& message, LogLevel level, LogTime time)
     }
 }
 
-void Log::LogWithTag (SinkType type, const std::string& message, LogLevel level, LogTime time)
+void Log::LogWithTag (SinkType type, std::string_view message, LogLevel level, LogTime time)
 {
     if (time == LogTime{})
         time = std::chrono::system_clock::now();
@@ -92,12 +92,12 @@ void Log::SetSinkMaxLogLevel (SinkType type, LogLevel level)
     }
 }
 
-Result<LogStream> Log::StreamIntoSink (SinkType type, const std::string& msgPrefix, LogLevel level)
+Result<LogStream> Log::StreamIntoSink (SinkType type, std::string_view msgPrefix, LogLevel level)
 {
     return -1;
 }
 
-ResNone Log::AddFileSink (LogSinkInfo& info, const std::string& filename)
+ResNone Log::AddFileSink (LogSinkInfo& info, const std::filesystem::path& filename)
 {
     // Validate the sink info
     assert (info.maxLevel >= info.level);
@@ -154,11 +154,12 @@ ResNone Log::AddManagedSink (LogSinkInfo& info, std::filesystem::path logDir)
 }
 
 // Log sink implementations
-FileLogSink::FileLogSink (const std::string& filename) : file (filename)
+FileLogSink::FileLogSink (const std::filesystem::path& filename) : file (filename)
 {
     if (!file.is_open())
     {
-        throw ErrorException (Error ({ErrorDomain::Log, ErrorCode::FileError}, "Failed to open log file: " + filename)
+        throw ErrorException (
+            Error ({ErrorDomain::Log, ErrorCode::FileError}, "Failed to open log file: " + filename.string())
                 .AddByCode ({ErrorDomain::Log, ErrorCode::FileError, ErrorLog::Debug}, true));
     }
 }
@@ -168,7 +169,7 @@ FileLogSink::~FileLogSink()
         file.close();
 }
 
-void FileLogSink::Log (const std::string& message, LogLevel level, LogTime time)
+void FileLogSink::Log (std::string_view message, LogLevel level, LogTime time)
 {
     file << logParams[level] << message << "\n";
     if (level >= LogLevel::Error)
@@ -183,7 +184,7 @@ ConsoleLogSink::ConsoleLogSink (const char* progName, std::ostream& out) : out (
         Log::The().Debug ("Output stream is not a color terminal, disabling color output");
 }
 
-void ConsoleLogSink::Log (const std::string& message, LogLevel level, LogTime time)
+void ConsoleLogSink::Log (std::string_view message, LogLevel level, LogTime time)
 {
     // Grab our parameters for this log level
     const ConsLogParams& params = logParams[level];
@@ -241,7 +242,7 @@ ManagedLogSink::ManagedLogSink (std::filesystem::path logDir) : logDir{logDir}
     ctrlPath = logDir / logCtrlFile;
 }
 
-void ManagedLogSink::Log (const std::string& message, LogLevel level, LogTime time)
+void ManagedLogSink::Log (std::string_view message, LogLevel level, LogTime time)
 {
     curLog << "[" << Timestamp::MakeTimestampNow().View() << "]" << logParams[level] << message << "\n";
     if (level >= LogLevel::Error)
@@ -271,22 +272,23 @@ ResNone ManagedLogSink::Prepare()
     return Success();
 }
 
-ResNone ManagedLogSink::openLogCtrl (ManagedLogSink& inst, const std::filesystem::path& ctrl, int& maxAge, int& maxLogs)
+ResNone ManagedLogSink::openLogCtrl (ManagedLogSink& inst, int& maxAge, int& maxLogs)
 {
     std::string data;
     try
     {
         TextReader ctrlReader = TextReader (inst.ctrlPath);
-        auto res = ctrlReader.Read (data);
+        auto res = ctrlReader.Read();
         if (!res)
             return res.Error();
+        data = std::move (res.Value());
     }
     catch (const ErrorException& e)
     {
         return e.Error();
     }
 
-    ManagedLogCtrl logCtrl = ManagedLogCtrl (inst.ctrlPath, data);
+    ManagedLogCtrl logCtrl = ManagedLogCtrl (inst.ctrlPath.string(), data);
     auto resParse = logCtrl.Parse();
     if (!resParse)
         return resParse.Error();
@@ -339,10 +341,10 @@ void ManagedLogSink::logMaintWorker (ManagedLogSink& inst)
 {
     int maxAge = MAX_LOG_AGE, maxLogs = MAX_LOG_COUNT;
 
-    // First parse the control file
+    // First parse the control
     if (std::filesystem::exists (inst.ctrlPath))
     {
-        auto res = openLogCtrl (inst, inst.ctrlPath, maxAge, maxLogs);
+        auto res = openLogCtrl (inst, maxAge, maxLogs);
         if (!res)
         {
             ErrorOutput::The()->Report (

@@ -47,7 +47,8 @@ enum class TaskState
 class Task
 {
   public:
-    Task (TaskFunc func, const std::string& name, const std::string& msg = "") : task{func}, name{name}, msg{msg}
+    Task (TaskFunc func, std::string name, std::string msg = "")
+        : task{func}, name{std::move (name)}, msg{std::move (msg)}
     {}
     void SetId (TaskId id)
     {
@@ -98,9 +99,9 @@ class Task
     {
         return state.load();
     }
-    static std::unique_ptr<Task> EmptyTask (const std::string& name = "NoopTask")
+    static std::unique_ptr<Task> EmptyTask (std::string name = "NoopTask")
     {
-        return std::make_unique<Task> ([]() { return true; }, name);
+        return std::make_unique<Task> ([]() { return true; }, std::move (name));
     }
 
   private:

@@ -74,9 +74,14 @@ class SimpleLexer
 {
   public:
     SimpleLexer() = default;
-    SimpleLexer (const std::string& file, std::string_view data);
+    SimpleLexer (std::string file, std::string data);
     Result<LexToken> NextToken();
     const char* NameFromToken (TokenType type);
+
+    std::string_view GetFileName()
+    {
+        return file;
+    }
 
   private:
     char readChar();
@@ -87,11 +92,11 @@ class SimpleLexer
     bool isCharNum (char c, int base);
     bool isCharSpace (char c);
     void prepareEof (LexToken& tok);
-    void lexError (Error& err, LexError errCode, const std::string& extra);
-    void lexWarn (LexWarning err, const std::string& extra);
+    void lexError (Error& err, LexError errCode, std::string_view extra);
+    void lexWarn (LexWarning err, std::string_view extra);
     std::string file;
-    std::string_view fileData;    // File data (in UTF-8)
-    std::size_t idx;              // Index in file data
+    std::string fileData;    // File data (in UTF-8)
+    std::size_t idx;         // Index in file data
     int curLine;
     bool isAccepted;
     bool isEof;

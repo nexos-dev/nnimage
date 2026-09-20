@@ -26,6 +26,7 @@
 
 #include <memory>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -51,7 +52,7 @@ class FrontendOptions : public Options
     PartitionStrings partSpecs{};
 
   private:
-    Error makeOptionError (const std::string& msg)
+    Error makeOptionError (std::string_view msg)
     {
         return Error ({ErrorDomain::Option, ErrorCode::InvalidOption}, msg);
     }
@@ -109,20 +110,20 @@ class ImageCmd : public Frontend
 
   private:
     ResNone assertIsEnd (LexToken& tok);
-    Result<ImageVal> convertStr (const std::string& val);
-    Result<LexToken> getOneToken (const std::string& val);
+    Result<ImageVal> convertStr (std::string val);
+    Result<LexToken> getOneToken (std::string val);
     ResNone assertTokenEnd (SimpleLexer& lex);
 
     template <typename T>
-    Result<T> getTokenValue (const std::string& val, TokenType type);
+    Result<T> getTokenValue (std::string val, TokenType type);
 
-    ResNone processNumId (Image& img, ImgProp prop, const std::string& val);
-    ResNone processId (Image& img, ImgProp prop, const std::string& val);
+    ResNone processNumId (Image& img, ImgProp prop, std::string val);
+    ResNone processId (Image& img, ImgProp prop, std::string val);
 
     ResNone processProps (Image& img);
     ResNone processPartitions (Image& img);
 
-    Error& badArgument (Error& e, const std::string& prop)
+    Error& badArgument (Error& e, std::string_view prop)
     {
         return e.Add ({ErrorDomain::Option, ErrorCode::BadArgument}, "Unable to process \"{}\"", prop);
     }

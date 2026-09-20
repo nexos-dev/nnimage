@@ -84,13 +84,13 @@ KrunBackend::~KrunBackend()
         krun_free_ctx (krunCtx);
 }
 
-bool KrunBackend::AddImage (Image& img, const std::string& fileName, bool readonly)
+bool KrunBackend::AddImage (Image& img, std::string_view fileName, bool readonly)
 {
     const auto& spec = img.GetSpec();
     // Get the block device
     std::string blockDev = blockDevGen++;
-    // Call the API
-    if (krun_add_disk2 (krunCtx, blockDev.c_str(), fileName.c_str(), KRUN_DISK_FORMAT_RAW, readonly) == -1)
+    // Call the API (krun's C interface needs a NUL-terminated string)
+    if (krun_add_disk2 (krunCtx, blockDev.c_str(), std::string (fileName).c_str(), KRUN_DISK_FORMAT_RAW, readonly) == -1)
     {
         Log::The().Error ("failed to add disk \"" + spec.name + "\" to krun");
         return false;
@@ -100,9 +100,10 @@ bool KrunBackend::AddImage (Image& img, const std::string& fileName, bool readon
     return true;
 }
 
-std::unique_ptr<Task> KrunBackend::CreatePartTable (Image& img, const std::string& fileName)
+std::unique_ptr<Task> KrunBackend::CreatePartTable (Image& img, std::string_view fileName)
 {
-    auto taskCb = [this, &img, fileName]() {
+    // The task runs later, so capture an owned copy rather than the view
+    auto taskCb = [this, &img, fileName = std::string (fileName)]() {
         const auto& spec = img.GetSpec();
         Log::The().Error ("i want to fail");
         return false;

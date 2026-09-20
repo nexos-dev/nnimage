@@ -21,6 +21,7 @@
 #include "include/Error.h"
 #include "include/EnumArray.h"
 #include "include/SimpleLexer.h"
+#include "include/StringHash.h"
 #include "MemoryMapped.h"
 
 #include <algorithm>
@@ -28,6 +29,7 @@
 #include <memory>
 #include <shared_mutex>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <variant>
@@ -73,7 +75,7 @@ class ConfParser
 {
   public:
     ConfParser() = default;
-    ConfParser (const std::string& fileName, std::string_view data) : lexer (fileName, data), fileName (fileName)
+    ConfParser (std::string fileName, std::string data) : lexer (std::move (fileName), std::move (data))
     {}
     virtual ~ConfParser() = default;
 
@@ -83,14 +85,6 @@ class ConfParser
     ResNone Parse();
     ResNone Serialize (std::string& out);
 
-    void Reset (std::string_view data, const std::string& fileName = "")
-    {
-        if (!fileName.empty())
-            this->fileName = fileName;
-        // Reset the lexer
-        lexer = SimpleLexer (this->fileName, data);
-    }
-
   protected:
     // CRTP function
     Derived& derived()
@@ -99,7 +93,7 @@ class ConfParser
     }
 
     virtual const EnumArray<ConfKey, ConfInstance<Derived, ConfKey>, ConfKey::Max>& getKeyRegistry() = 0;
-    virtual const std::unordered_map<std::string, ConfKey>& getNameToKey() = 0;
+    virtual const std::unordered_map<std::string, ConfKey, StringHash, std::equal_to<>>& getNameToKey() = 0;
 
   private:
     ResNone readFile();
@@ -112,7 +106,6 @@ class ConfParser
     ResNone setLocked (ConfKey key, const ConfValue& val, bool overwrite);
 
     SimpleLexer lexer;
-    std::string fileName;
     std::vector<ConfKey> foundKeys;
     mutable std::shared_mutex parseLock;
 
@@ -136,7 +129,7 @@ class ConfParser
         return Error ({ErrorDomain::Log, ErrorCode::ParseError}, "Unexpected token \"{}\"", lexer.NameFromToken (type));
     }
 
-    ConfKey getPropKey (const std::string& name)
+    ConfKey getPropKey (std::string_view name)
     {
         auto& nameToKey = getNameToKey();
         auto it = nameToKey.find (name);

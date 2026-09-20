@@ -23,7 +23,8 @@
 #include <limits>
 #include <utility>
 
-SimpleLexer::SimpleLexer (const std::string& file, std::string_view fileData) : file{file}, fileData{fileData}
+SimpleLexer::SimpleLexer (std::string file, std::string fileData)
+    : file{std::move (file)}, fileData{std::move (fileData)}
 {
     curLine = 1;
     idx = 0;
@@ -33,52 +34,46 @@ SimpleLexer::SimpleLexer (const std::string& file, std::string_view fileData) : 
     isError = false;
 }
 
-void SimpleLexer::lexError (Error& err, LexError errCode, const std::string& extra)
+void SimpleLexer::lexError (Error& err, LexError errCode, std::string_view extra)
 {
-    std::string msg;
+    std::string prefix;
     if (!file.empty())
-    {
-        msg += file;
-        msg += ":";
-        // Add the line
-        msg += std::to_string (curLine);
-        msg += ": ";
-    }
+        prefix = std::format ("{}:{}: ", file, curLine);
     // Now add the code
+    // NOTE: concatenation is quite slow but it should be fine for error handling
+    std::string msg;
     switch (errCode)
     {
         case LexError::InvalidChar:
-            msg += "Invalid character \"" + extra + "\"";
+            msg = std::format ("Invalid character \"{}\"", extra);
             break;
         case LexError::InvalidNum:
-            msg += "Invalid number \"" + extra + "\"";
+            msg = std::format ("Invalid number \"{}\"", extra);
             break;
         case LexError::UnexpectedChar:
-            msg += "Unexpected character \"" + extra + "\"";
+            msg = std::format ("Unexpected character \"{}\"", extra);
             break;
         case LexError::UnexpectedEof:
-            msg += "Unexpected EOF";
+            msg = std::format ("Unexpected EOF");
             break;
     }
-    err.Add ({ErrorDomain::Conf, ErrorCode::LexError}, msg);
+    err.Add ({ErrorDomain::Conf, ErrorCode::LexError}, "{}{}", std::move (prefix), std::move (msg));
     // Unconditionally accept and also make sure any further lexer access gets caught
     isAccepted = true;
     isError = true;
 }
 
-void SimpleLexer::lexWarn (LexWarning err, const std::string& extra)
+void SimpleLexer::lexWarn (LexWarning err, std::string_view extra)
 {
-    std::string msg;
-    msg = file;
-    msg += ":";
-    // Add the line
-    msg += std::to_string (curLine);
-    msg += ": ";
+    std::string prefix;
+    if (!file.empty())
+        prefix = std::format ("{}:{}: ", file, curLine);
     // Now add the code
+    std::string msg;
     switch (err)
     {
         case LexWarning::InvalidEsc:
-            msg += "Invalid escape sequence \"" + extra + "\", ignoring";
+            msg = std::format ("Invalid escape sequence \"{}\"", extra);
             break;
     }
     ErrorOutput::The()->Report (

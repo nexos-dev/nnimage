@@ -31,13 +31,14 @@ class LockFile
 {
   public:
     LockFile() = default;
-    LockFile (const std::string& path)
+    LockFile (std::string path)
     {
-        this->path = path;
-        fd = open (path.c_str(), O_CREAT | O_RDWR, 0666);
+        this->path = std::move (path);
+        fd = open (this->path.c_str(), O_CREAT | O_RDWR, 0666);
         if (fd == -1)
         {
-            throw ErrorException (Error ({ErrorDomain::None, ErrorCode::FileError}, "Failed to open lock file: " + path)
+            throw ErrorException (
+                Error ({ErrorDomain::None, ErrorCode::FileError}, "Failed to open lock file: " + this->path)
                     .AddByCode ({ErrorDomain::None, ErrorCode::FileError, ErrorLog::Debug}, true));
         }
     }
@@ -82,7 +83,7 @@ class LockFile
     LockFile (const LockFile& other) = delete;
     LockFile& operator= (const LockFile& other) = delete;
 
-    LockFile (LockFile&& other) : fd{other.fd}, path{other.path}, locked{other.locked}
+    LockFile (LockFile&& other) : fd{other.fd}, path{std::move (other.path)}, locked{other.locked}
     {
         other.fd = -1;
         other.locked = false;
@@ -145,10 +146,10 @@ class LockFileShared
     {
         lock.Unlock();
     }
-    static std::optional<LockFileShared> TryAcquire (const std::string& path)
+    static std::optional<LockFileShared> TryAcquire (std::string path)
     {
         LockFileShared lock;
-        lock.lock = LockFile (path);
+        lock.lock = LockFile (std::move (path));
         bool res = lock.lock.ReadLock();
         if (!res)
             return {};
@@ -184,10 +185,10 @@ class LockFileUnique
     {
         lock.Unlock();
     }
-    static std::optional<LockFileUnique> TryAcquire (const std::string& path)
+    static std::optional<LockFileUnique> TryAcquire (std::string path)
     {
         LockFileUnique lock;
-        lock.lock = LockFile (path);
+        lock.lock = LockFile (std::move (path));
         bool res = lock.lock.WriteLock();
         if (!res)
             return {};

@@ -148,11 +148,6 @@ template <typename Derived, typename ConfKey>
 ResNone ConfParser<Derived, ConfKey>::Parse()
 {
     std::unique_lock<std::shared_mutex> lock (parseLock);
-    if (fileName.empty())
-    {
-        throw ErrorException (
-            Error ({ErrorDomain::Conf, ErrorCode::Internal}, "Attempt to parse unitialized configuration"));
-    }
     std::vector<ConfProp> props;
     auto res = parseLoop (props);
     if (!res)
@@ -265,7 +260,7 @@ ResNone ConfParser<Derived, ConfKey>::Serialize (std::string& out)
         data << ";\n";
     }
     // Return the data
-    out = std::move (data.str());
+    out = data.str();
     return Success();
 }
 

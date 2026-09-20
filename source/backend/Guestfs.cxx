@@ -23,12 +23,12 @@ GuestfsBackend::GuestfsBackend()
     backendCreated = true;
 }
 
-std::unique_ptr<Task> GuestfsBackend::CreatePartTable (Image& img, const std::string& fileName)
+std::unique_ptr<Task> GuestfsBackend::CreatePartTable (Image& img, std::string_view fileName)
 {
     return nullptr;
 }
 
-bool GuestfsBackend::AddImage (Image& img, const std::string& fileName, bool readonly)
+bool GuestfsBackend::AddImage (Image& img, std::string_view fileName, bool readonly)
 {
     return false;
 }

@@ -22,6 +22,7 @@
 #include "include/EnumArray.h"
 #include "include/sys/Timestamp.h"
 #include "include/ConfParser.h"
+#include "include/StringHash.h"
 #include "config.h"
 
 #include <atomic>
@@ -32,6 +33,7 @@
 #include <ostream>
 #include <shared_mutex>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <unordered_map>
 #include <utility>
@@ -84,32 +86,32 @@ class Log
     ~Log();
     Log();
 
-    void LogAt (const std::string& message, LogLevel level, LogTime time = LogTime{});
+    void LogAt (std::string_view message, LogLevel level, LogTime time = LogTime{});
     // Only log message to sinks with the given tag. If no sinks have that tag, nothing will be
     // logged
-    void LogWithTag (SinkType type, const std::string& message, LogLevel level, LogTime time = LogTime{});
+    void LogWithTag (SinkType type, std::string_view message, LogLevel level, LogTime time = LogTime{});
 
-    void Fatal (const std::string& message)
+    void Fatal (std::string_view message)
     {
         LogAt (message, LogLevel::Fatal);
     }
-    void Error (const std::string& message)
+    void Error (std::string_view message)
     {
         LogAt (message, LogLevel::Error);
     }
-    void Warning (const std::string& message)
+    void Warning (std::string_view message)
     {
         LogAt (message, LogLevel::Warning);
     }
-    void Info (const std::string& message)
+    void Info (std::string_view message)
     {
         LogAt (message, LogLevel::Info);
     }
-    void Status (const std::string& message)
+    void Status (std::string_view message)
     {
         LogAt (message, LogLevel::Status);
     }
-    void Debug (const std::string& message)
+    void Debug (std::string_view message)
     {
         LogAt (message, LogLevel::Debug);
     }
@@ -124,9 +126,9 @@ class Log
 
     // Sets up a stream for all sinks with the specified type. All messages written to stream will
     // be logged to those sinks. Returns file descriptor for write end of the pipe
-    Result<LogStream> StreamIntoSink (SinkType type, const std::string& msgPrefix, LogLevel level = LogLevel::Debug);
+    Result<LogStream> StreamIntoSink (SinkType type, std::string_view msgPrefix, LogLevel level = LogLevel::Debug);
 
-    ResNone AddFileSink (LogSinkInfo& info, const std::string& filename);
+    ResNone AddFileSink (LogSinkInfo& info, const std::filesystem::path& filename);
     ResNone AddConsoleSink (LogSinkInfo& info, const char* progName, std::ostream& out);
     ResNone AddManagedSink (LogSinkInfo& info, std::filesystem::path logDir);
 
@@ -151,7 +153,7 @@ class LogSink
     LogSink() = default;
     virtual ~LogSink() = default;
 
-    virtual void Log (const std::string& message, LogLevel level, LogTime time) = 0;
+    virtual void Log (std::string_view message, LogLevel level, LogTime time) = 0;
     std::unique_lock<std::mutex> LockSink()
     {
         return std::unique_lock<std::mutex> (sinkMtx);
@@ -176,7 +178,7 @@ class ConsoleLogSink : public LogSink
   public:
     ConsoleLogSink (const char* progName, std::ostream& out);
 
-    void Log (const std::string& message, LogLevel level, LogTime time) override;
+    void Log (std::string_view message, LogLevel level, LogTime time) override;
 
   private:
     bool checkIsOutColor() const;
@@ -198,10 +200,10 @@ class ConsoleLogSink : public LogSink
 class FileLogSink : public LogSink
 {
   public:
-    FileLogSink (const std::string& filename);
+    FileLogSink (const std::filesystem::path& filename);
     ~FileLogSink() override;
 
-    void Log (const std::string& message, LogLevel level, LogTime time) override;
+    void Log (std::string_view message, LogLevel level, LogTime time) override;
 
   private:
     std::ofstream file;
@@ -230,10 +232,10 @@ class ManagedLogCtrl : public ConfParser<ManagedLogCtrl, LogCtrlKey>
 {
   public:
     ManagedLogCtrl() = default;
-    ManagedLogCtrl (const std::string& fileName, std::string_view data)
-        : ConfParser<ManagedLogCtrl, LogCtrlKey> (fileName, data)
+    ManagedLogCtrl (std::string fileName, std::string data)
+        : ConfParser<ManagedLogCtrl, LogCtrlKey> (std::move (fileName), std::move (data))
     {}
-    void Log (const std::string& message, LogLevel level, LogTime time);
+    void Log (std::string_view message, LogLevel level, LogTime time);
 
   protected:
     const EnumArray<LogCtrlKey, ConfInstance<ManagedLogCtrl, LogCtrlKey>, LogCtrlKey::Max>& getKeyRegistry()
@@ -241,7 +243,7 @@ class ManagedLogCtrl : public ConfParser<ManagedLogCtrl, LogCtrlKey>
         return keys;
     }
 
-    const std::unordered_map<std::string, LogCtrlKey>& getNameToKey()
+    const std::unordered_map<std::string, LogCtrlKey, StringHash, std::equal_to<>>& getNameToKey()
     {
         return nameToKey;
     }
@@ -251,7 +253,8 @@ class ManagedLogCtrl : public ConfParser<ManagedLogCtrl, LogCtrlKey>
 
     static const EnumArray<LogCtrlKey, ConfInstance<ManagedLogCtrl, LogCtrlKey>, LogCtrlKey::Max> keys;
     // Table to convert property names to keys, so we can get to the setter
-    inline static const std::unordered_map<std::string, LogCtrlKey> nameToKey = {{"max_file", LogCtrlKey::MaxFiles},
+    inline static const std::unordered_map<std::string, LogCtrlKey, StringHash, std::equal_to<>> nameToKey = {
+        {"max_file", LogCtrlKey::MaxFiles},
         {"max_age", LogCtrlKey::MaxAge}};
 };
 
@@ -260,7 +263,7 @@ class ManagedLogSink : public LogSink
   public:
     ManagedLogSink (std::filesystem::path logDir);
     ResNone Prepare();
-    void Log (const std::string& message, LogLevel level, LogTime time) override;
+    void Log (std::string_view message, LogLevel level, LogTime time) override;
 
   private:
     std::string getLogName()
@@ -272,7 +275,7 @@ class ManagedLogSink : public LogSink
     }
     static void logMaintWorker (ManagedLogSink& inst);
     static bool checkLog (const std::filesystem::path& log, int maxAge);
-    static ResNone openLogCtrl (ManagedLogSink& inst, const std::filesystem::path& ctrl, int& maxAge, int& maxLogs);
+    static ResNone openLogCtrl (ManagedLogSink& inst, int& maxAge, int& maxLogs);
     static void deleteOldestLogs (std::vector<std::filesystem::path>& files, int count);
 
     std::filesystem::path ctrlPath;
@@ -284,7 +287,7 @@ class ManagedLogSink : public LogSink
     std::jthread maintThread;
 
     inline static const std::string logCtrlFile = "nnimage_logctrl";
-    inline static const EnumArray<LogLevel, std::string, LogLevel::Max> logParams = {{LogLevel::Debug, "[NOTE] "},
+    inline static const EnumArray<LogLevel, std::string_view, LogLevel::Max> logParams = {{LogLevel::Debug, "[NOTE] "},
         {LogLevel::Info, "[INFO] "},
         {LogLevel::Status, "[STATUS] "},
         {LogLevel::Warning, "[WARNING] "},

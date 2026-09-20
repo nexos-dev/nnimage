@@ -64,10 +64,10 @@ def outputTable (backends: list[str], enabledBackends: list[str]) -> str:
         "",
         "#include <functional>",
         "#include <memory>",
-        "#include <string>",
+        "#include <string_view>",
         "#include <unordered_map>",
         "",
-        "static const std::unordered_map<std::string, BackendType> BackendNameRegistry = {"
+        "static const std::unordered_map<std::string_view, BackendType> BackendNameRegistry = {"
     ]
 
     for backend in enabledBackends:

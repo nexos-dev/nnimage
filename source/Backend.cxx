@@ -20,7 +20,7 @@
 
 #include <algorithm>
 
-BackendType Backend::ResolveBackend (const std::string& name)
+BackendType Backend::ResolveBackend (std::string_view name)
 {
     auto it = BackendNameRegistry.find (name);
     // TODO: should communicate the error better
@@ -29,7 +29,7 @@ BackendType Backend::ResolveBackend (const std::string& name)
     return it->second;
 }
 
-const std::string Backend::GetBackendName (BackendType type)
+std::string_view Backend::GetBackendName (BackendType type)
 {
     auto it = std::find_if (BackendNameRegistry.begin(), BackendNameRegistry.end(), [type] (const auto& pair) {
         return pair.second == type;
@@ -45,12 +45,12 @@ std::unique_ptr<Backend> Backend::BackendFactory (BackendType type)
     return (factory != nullptr) ? factory() : nullptr;
 }
 
-std::unique_ptr<Task> Backend::CreateImage (Image& img, const std::string& fileName)
+std::unique_ptr<Task> Backend::CreateImage (Image& img, std::string_view fileName)
 {
     return Task::EmptyTask();
 }
 
-std::unique_ptr<Task> Backend::CreatePartTable (Image& img, const std::string& fileName)
+std::unique_ptr<Task> Backend::CreatePartTable (Image& img, std::string_view fileName)
 {
     return Task::EmptyTask();
 }

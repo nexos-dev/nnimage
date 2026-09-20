@@ -20,6 +20,7 @@
 
 #include "include/Error.h"
 #include "include/Log.h"
+#include "include/StringHash.h"
 
 #include <memory>
 #include <vector>
@@ -40,16 +41,16 @@ struct CommaString
 class OptionTracker
 {
   public:
-    void MapOption (const std::string& opt, const std::string& set)
+    void MapOption (std::string opt, std::string set)
     {
         assert (map.find (opt) == map.end());
-        map[opt] = set;
+        map[std::move (opt)] = std::move (set);
     }
-    void UseSet (const std::string& set)
+    void UseSet (std::string set)
     {
-        usedSets.insert (set);
+        usedSets.insert (std::move (set));
     }
-    bool IsOptionUsed (const std::string& option)
+    bool IsOptionUsed (std::string_view option)
     {
         auto it = map.find (option);
         assert (it != map.end());
@@ -60,9 +61,9 @@ class OptionTracker
 
   private:
     // Maps an option to it's set
-    std::unordered_map<std::string, std::string> map;
+    std::unordered_map<std::string, std::string, StringHash, std::equal_to<>> map;
     // List of option sets that have been used
-    std::unordered_set<std::string> usedSets;
+    std::unordered_set<std::string, StringHash, std::equal_to<>> usedSets;
 };
 
 class OptionAdder;
@@ -77,7 +78,7 @@ enum class OptionsResult
 class OptionsParser
 {
   public:
-    OptionsParser (const std::string& progName, int argc, const char* const* argv);
+    OptionsParser (std::string_view progName, int argc, const char* const* argv);
     ~OptionsParser();
 
     OptionsParser (const OptionsParser&) = delete;
@@ -86,17 +87,17 @@ class OptionsParser
     OptionsParser& operator= (OptionsParser&&) noexcept;
 
     OptionsResult Parse();
-    OptionAdder AddOptions (const std::string& helpGroup, const std::string& trackSet);
-    void AddPositional (const std::string& option);
+    OptionAdder AddOptions (std::string_view helpGroup, std::string trackSet);
+    void AddPositional (std::string_view option);
 
-    void UseSet (const std::string& set)
+    void UseSet (std::string set)
     {
-        track.UseSet (set);
+        track.UseSet (std::move (set));
     }
 
-    void OptError (const std::string& msg)
+    void OptError (std::string_view msg)
     {
-        Log::The().Error (msg + "\nRun " + argv[0] + " --help for usage");
+        Log::The().Error (std::format ("{}\nRun \"{}\" --help for usage", msg, argv[0]));
     }
 
     ResNone CheckUnusedOpts();
@@ -114,6 +115,7 @@ class OptionsParser
     const char* const* argv;
 
     // Pre-defined strings
+    // FIXME: change to string_view
     inline static const std::string progHelp = "An all-in-one, powerful, easy to use disk image manager";
     inline static const std::string usage = "<operation> [-f conf_file] [-i image] [-o output] [options]";
     inline static const std::string explanation =
@@ -134,7 +136,7 @@ concept AllowedArgVal = std::same_as<T, std::string> || std::same_as<T, int> || 
 class OptionAdder
 {
   public:
-    OptionAdder (OptionsParser& parser, OptionTracker& tracker, const std::string& helpGroup, const std::string& set);
+    OptionAdder (OptionsParser& parser, OptionTracker& tracker, std::string_view helpGroup, std::string set);
     ~OptionAdder();
 
     OptionAdder (const OptionAdder&) = delete;
@@ -143,7 +145,7 @@ class OptionAdder
     OptionAdder& operator= (OptionAdder&&) noexcept;
 
     template <AllowedArgVal V>
-    OptionAdder& operator() (const std::string& args, const std::string& desc, V& out, const std::string& help = "");
+    OptionAdder& operator() (std::string_view args, std::string_view desc, V& out, std::string_view help = "");
 
   private:
     // PIMPL for cxxopts internals

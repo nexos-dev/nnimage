@@ -25,6 +25,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 
 enum class ActionType
@@ -45,7 +46,7 @@ class Action
     Action (ActionType action) : type{action}
     {}
 
-    static Result<ActionType> ResolveName (std::string name)
+    static Result<ActionType> ResolveName (std::string_view name)
     {
         auto it = actionNameTable.find (name);
         if (it == actionNameTable.end())
@@ -60,7 +61,8 @@ class Action
     ActionType type;
 
   private:
-    inline static const std::unordered_map<std::string, ActionType> actionNameTable = {{"create", ActionType::Create},
+    inline static const std::unordered_map<std::string_view, ActionType> actionNameTable = {
+        {"create", ActionType::Create},
         {"init", ActionType::Init},
         {"partition", ActionType::Partition},
         {"format", ActionType::Format},

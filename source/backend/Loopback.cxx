@@ -22,12 +22,12 @@ LoopbackBackend::LoopbackBackend()
     backendCreated = true;
 }
 
-std::unique_ptr<Task> LoopbackBackend::CreatePartTable (Image& img, const std::string& fileName)
+std::unique_ptr<Task> LoopbackBackend::CreatePartTable (Image& img, std::string_view fileName)
 {
     return nullptr;
 }
 
-bool LoopbackBackend::AddImage (Image& img, const std::string& fileName, bool readonly)
+bool LoopbackBackend::AddImage (Image& img, std::string_view fileName, bool readonly)
 {
     return false;
 }

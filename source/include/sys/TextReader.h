@@ -32,20 +32,21 @@ class TextReader
 {
   public:
     TextReader() = default;
-    TextReader (std::filesystem::path file, const std::string& forceEnc = "") : file{file}, fileEnc{forceEnc}
+    TextReader (std::filesystem::path file, std::string forceEnc = "")
+        : file{std::move (file)}, fileEnc{std::move (forceEnc)}
     {
-        if (!handle.open (file.c_str()))
+        if (!handle.open (this->file.c_str()))
         {
             throw ErrorException (Error ({ErrorDomain::None, ErrorCode::FileError},
                 "{}: {}",
-                file.filename().string(),
+                this->file.filename().string(),
                 handle.getError()));
         }
     }
-    TextReader (const std::string& file, const std::string& forceEnc = "")
-        : TextReader (std::filesystem::path (file), forceEnc)
+    TextReader (std::string file, std::string forceEnc = "")
+        : TextReader (std::filesystem::path (std::move (file)), std::move (forceEnc))
     {}
-    ResNone Read (std::string& buf, bool requireEnc = false)
+    Result<std::string> Read (bool requireEnc = false)
     {
         // Make sure handle is valid
         if (!handle.isValid())
@@ -55,13 +56,10 @@ class TextReader
         std::string_view data (reinterpret_cast<const char*> (handle.getData()), handle.mappedSize());
         // Prepare encoding detection
         Chardet chardet;
-        std::string enc = "";
-        if (!fileEnc.empty())
-            enc = fileEnc;    // Force it
-        else
+        if (fileEnc.empty())
         {
             // Attempt to detect it
-            if (!chardet.Detect (data, enc))
+            if (!chardet.Detect (data, fileEnc))
             {
                 if (!requireEnc)
                 {
@@ -72,7 +70,7 @@ class TextReader
                             "unable to detect character set for file {}, assuming ASCII",
                             file.string()));
 
-                    enc = "ASCII";
+                    fileEnc = "ASCII";
                 }
                 else
                 {
@@ -85,18 +83,19 @@ class TextReader
         }
         // We now have a valid encoding, now we need to convert it
         // And then we are done
-        Iconv conv (enc, "UTF-8");
+        std::string buf;
+        Iconv conv (fileEnc, "UTF-8");
         if (!conv.Convert (data, buf))
         {
             return Error ({ErrorDomain::None, ErrorCode::SysFailure}, "failed to convert file: {}", strerror (errno));
         }
         // We are done as iconv put it in the output buffer for us
-        return Success();
+        return buf;
     }
 
   private:
     std::filesystem::path file;
-    const std::string fileEnc;
+    std::string fileEnc;
     MemoryMapped handle;
 };
 

@@ -19,12 +19,13 @@
 #define BLOCKDEVSTR_H
 
 #include <string>
+#include <utility>
 
 class BlockDevFactory
 {
   public:
     BlockDevFactory() = default;
-    BlockDevFactory (const std::string& prefix) : prefix (prefix), idx (0)
+    BlockDevFactory (std::string prefix) : prefix (std::move (prefix)), idx (0)
     {}
 
     std::string operator++ (int)

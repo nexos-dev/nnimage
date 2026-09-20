@@ -77,7 +77,7 @@ class Partition : public RegElement<Partition, PartProp, PartConfRegistry>
     ImageResult Set (std::string_view name, const ImageVal& val);
 
     template <typename T>
-    ResCustom<std::optional<T>, ImageError> Get (const std::string& name);
+    ResCustom<std::optional<T>, ImageError> Get (std::string_view name);
 
     template <typename T>
     ResCustom<std::optional<T>, ImageError> Get (PartProp prop);
@@ -105,12 +105,12 @@ class Partition : public RegElement<Partition, PartProp, PartConfRegistry>
   private:
     // Resolves name to a PartProp and dispatches func(prop)
     template <typename Func>
-    auto dispatchByName (std::string_view name, const std::string& partName, Func&& func)
+    auto dispatchByName (std::string_view name, std::string_view partName, Func&& func)
         -> decltype (func (PartProp::Max))
     {
         PartProp prop = ResolveName (name);
         if (prop == PartProp::Max)
-            return ImageError (ErrorCode::InvalidPartProp, {{"prop", std::string (name)}, {"name", partName}});
+            return ImageError (ErrorCode::InvalidPartProp, {{"prop", std::string (name)}, {"name", std::string (partName)}});
         return func (prop);
     }
 
@@ -163,18 +163,18 @@ struct ImgSpec
 class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
 {
   public:
-    Image (const std::string& name) : RegElement{ErrorCode::InvalidImgProp, ErrorCode::ImgMissingProp}
+    Image (std::string name) : RegElement{ErrorCode::InvalidImgProp, ErrorCode::ImgMissingProp}
     {
-        spec.name = name;
+        spec.name = std::move (name);
     }
     const std::string& GetName() const
     {
         return spec.name;
     }
 
-    void SetName (const std::string& name)
+    void SetName (std::string name)
     {
-        spec.name = name;
+        spec.name = std::move (name);
     }
 
     bool SetBackend (BackendType backend)
@@ -185,9 +185,9 @@ class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
         return true;
     }
     // Used by backends to identify the image, e.g. the block device name
-    void SetBackendTag (const std::string& tag)
+    void SetBackendTag (std::string tag)
     {
-        backendTag = tag;
+        backendTag = std::move (tag);
     }
     BackendType GetBackendType (BackendType suggestion) const;
 
@@ -241,9 +241,10 @@ class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
     Image& operator= (const Image&) = delete;
 
     // Error maker helpers
-    static ImageError InvalidId (const std::string& prop, const std::string& name, const std::string& id)
+    static ImageError InvalidId (std::string_view prop, std::string_view name, std::string_view id)
     {
-        return ImageError (ErrorCode::InvalidId, {{"prop", prop}, {"name", name}, {"id", id}});
+        return ImageError (
+            ErrorCode::InvalidId, {{"prop", std::string (prop)}, {"name", std::string (name)}, {"id", std::string (id)}});
     }
 
   private:
@@ -261,12 +262,12 @@ class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
 
     // Resolves name to an ImgProp and dispatches func(prop)
     template <typename Func>
-    static auto dispatchByName (std::string_view name, const std::string& imgName, Func&& func)
+    static auto dispatchByName (std::string_view name, std::string_view imgName, Func&& func)
         -> decltype (func (ImgProp::Max))
     {
         ImgProp prop = ResolveProp (name);
         if (prop == ImgProp::Max)
-            return ImageError (ErrorCode::InvalidImgProp, {{"prop", std::string (name)}, {"name", imgName}});
+            return ImageError (ErrorCode::InvalidImgProp, {{"prop", std::string (name)}, {"name", std::string (imgName)}});
         return func (prop);
     }
 

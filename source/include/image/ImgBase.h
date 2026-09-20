@@ -129,7 +129,7 @@ class ImageNumId
     bool valid = false;
     size_t num = 0;
     std::string mul{};
-    static const std::unordered_map<std::string, size_t> mulMap;
+    static const std::unordered_map<std::string_view, size_t> mulMap;
 };
 
 // HACK: used purely to differentiate between a quoted string and an ID in the variant
@@ -222,7 +222,7 @@ class ImageVal
         return idx;
     }
 
-    static Result<ImageVal> FromToken (const LexToken& tok);
+    static Result<ImageVal> FromToken (LexToken tok);
 
   private:
     ImageValType val = std::monostate{};

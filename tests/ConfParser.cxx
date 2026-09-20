@@ -140,27 +140,6 @@ TEST_CASE ("ConfParser::Parse fails when a property is missing its terminating s
     CHECK_FALSE (res);
 }
 
-TEST_CASE ("ConfParser::Parse throws when invoked on a default-constructed (unnamed) instance")
-{
-    ManagedLogCtrl ctrl;
-    CHECK_THROWS_AS (ctrl.Parse(), ErrorException);
-}
-
-TEST_CASE ("ConfParser::Reset allows reusing an instance for a second, unrelated parse")
-{
-    ManagedLogCtrl ctrl ("first.conf", "max_file = 1;\n");
-    REQUIRE (ctrl.Parse());
-
-    ctrl.Reset ("max_file = 99;\nmax_age = 3;\n", "second.conf");
-    REQUIRE (ctrl.Parse());
-
-    ConfValue val;
-    ctrl.Get (LogCtrlKey::MaxFiles, val);
-    CHECK (std::get<int> (val) == 99);
-    ctrl.Get (LogCtrlKey::MaxAge, val);
-    CHECK (std::get<int> (val) == 3);
-}
-
 TEST_CASE ("ConfParser handles an empty configuration body gracefully")
 {
     ManagedLogCtrl ctrl ("empty.conf", "");

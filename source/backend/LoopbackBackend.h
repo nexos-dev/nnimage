@@ -24,8 +24,8 @@ class LoopbackBackend : public Backend
 {
   public:
     LoopbackBackend();
-    std::unique_ptr<Task> CreatePartTable (Image& img, const std::string& fileName) override;
-    bool AddImage (Image& img, const std::string& fileName, bool readonly) override;
+    std::unique_ptr<Task> CreatePartTable (Image& img, std::string_view fileName) override;
+    bool AddImage (Image& img, std::string_view fileName, bool readonly) override;
 };
 
 #endif

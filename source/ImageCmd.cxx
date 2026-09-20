@@ -19,10 +19,10 @@
 #include "include/SimpleLexer.h"
 #include "include/KeyValue.h"
 
-Result<LexToken> ImageCmd::getOneToken (const std::string& val)
+Result<LexToken> ImageCmd::getOneToken (std::string val)
 {
     assert (!val.empty());
-    SimpleLexer lexer ("", val);
+    SimpleLexer lexer ("", std::move (val));
 
     auto resTok = lexer.NextToken();
     if (!resTok)
@@ -56,9 +56,9 @@ ResNone ImageCmd::assertTokenEnd (SimpleLexer& lex)
 }
 
 template <typename T>
-Result<T> ImageCmd::getTokenValue (const std::string& val, TokenType type)
+Result<T> ImageCmd::getTokenValue (std::string val, TokenType type)
 {
-    auto resTok = getOneToken (val);
+    auto resTok = getOneToken (std::move (val));
     if (!resTok)
         return resTok.Error();
 
@@ -69,7 +69,7 @@ Result<T> ImageCmd::getTokenValue (const std::string& val, TokenType type)
     return std::get<T> (tok.val);
 }
 
-Result<ImageVal> ImageCmd::convertStr (const std::string& val)
+Result<ImageVal> ImageCmd::convertStr (std::string val)
 {
     assert (!val.empty());
     // This function is a very small parser. Basically, we usually only accept one token of any time
@@ -78,7 +78,7 @@ Result<ImageVal> ImageCmd::convertStr (const std::string& val)
     // NOTE: we don't have a good way of differentiating between a string and an ID since the user probably doesn't
     // quote all string types, so that's why ImageVal allows implicit casting from ImageId to std::string
 
-    SimpleLexer lexer ("", val);
+    SimpleLexer lexer ("", std::move (val));
 
     auto resTok = lexer.NextToken();
     if (!resTok)
@@ -104,7 +104,7 @@ Result<ImageVal> ImageCmd::convertStr (const std::string& val)
             auto resNext = lexer.NextToken();
             if (!resNext)
                 return resNext.Error();
-            LexToken nextTok = std::move (resNext.Value());
+            LexToken& nextTok = resNext.Value();
 
             if (nextTok.type == TokenType::Slash)
                 filePath = std::get<std::string> (token.val);    // This will fall through
@@ -154,36 +154,36 @@ Result<ImageVal> ImageCmd::convertStr (const std::string& val)
             if (!resEnd)
                 return resEnd.Error();
 
-            return ImageVal (filePath);
+            return ImageVal (std::move (filePath));
         }
         default:
             return Error ({ErrorDomain::Option, ErrorCode::BadArgument}, "Specified in invalid format");
     }
-    return ImageVal::FromToken (token);
+    return ImageVal::FromToken (std::move (token));
 }
 
-ResNone ImageCmd::processId (Image& image, ImgProp prop, const std::string& val)
+ResNone ImageCmd::processId (Image& image, ImgProp prop, std::string val)
 {
     if (val.empty())
         return Success();
 
-    auto resTok = getTokenValue<std::string> (val, TokenType::Identifier);
+    auto resTok = getTokenValue<std::string> (std::move (val), TokenType::Identifier);
     if (!resTok)
         return resTok.Error();
 
-    auto resSet = image.Set (prop, ImageId (resTok.Value()));
+    auto resSet = image.Set (prop, ImageId (std::move (resTok.Value())));
     if (!resSet)
         return resSet.Error();
 
     return Success();
 }
 
-ResNone ImageCmd::processNumId (Image& image, ImgProp prop, const std::string& val)
+ResNone ImageCmd::processNumId (Image& image, ImgProp prop, std::string val)
 {
     if (val.empty())
         return Success();
 
-    auto resTok = getTokenValue<LexNumId> (val, TokenType::NumId);
+    auto resTok = getTokenValue<LexNumId> (std::move (val), TokenType::NumId);
     if (!resTok)
         return resTok.Error();
 

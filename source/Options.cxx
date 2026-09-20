@@ -34,14 +34,14 @@ std::istream& operator>> (std::istream& is, CommaString& val)
 
 struct OptionAdder::OptionAddImpl
 {
-    OptionAddImpl (cxxopts::Options& opts, const std::string& helpGroup) : adder{opts, helpGroup}
+    OptionAddImpl (cxxopts::Options& opts, std::string_view helpGroup) : adder{opts, std::string (helpGroup)}
     {}
     cxxopts::OptionAdder adder;
 };
 
 struct OptionsParser::OptionParseImpl
 {
-    OptionParseImpl (const std::string& progName, const std::string& help) : opts (progName, help)
+    OptionParseImpl (std::string_view progName, std::string_view help) : opts (std::string (progName), std::string (help))
     {}
 
     cxxopts::Options opts;
@@ -50,9 +50,9 @@ struct OptionsParser::OptionParseImpl
 
 OptionAdder::OptionAdder (OptionsParser& parser,
     OptionTracker& tracker,
-    const std::string& helpGroup,
-    const std::string& set)
-    : tracker{tracker}, parser{parser}, set{set}
+    std::string_view helpGroup,
+    std::string set)
+    : tracker{tracker}, parser{parser}, set{std::move (set)}
 {
     impl = std::make_unique<OptionAddImpl> (parser.impl->opts, helpGroup);
 }
@@ -72,24 +72,24 @@ OptionAdder& OptionAdder::operator= (OptionAdder&& other) noexcept
 }
 
 template <AllowedArgVal V>
-OptionAdder& OptionAdder::operator() (const std::string& args, const std::string& desc, V& out, const std::string& help)
+OptionAdder& OptionAdder::operator() (std::string_view args, std::string_view desc, V& out, std::string_view help)
 {
-    impl->adder (args, desc, cxxopts::value<V> (out), help);
+    impl->adder (std::string (args), std::string (desc), cxxopts::value<V> (out), std::string (help));
 
     // Get long option from args
     // First split short/long option
     size_t pos = args.find (',');
     std::string longOpt;
-    if (pos == std::string::npos)
+    if (pos == std::string_view::npos)
         longOpt = args;    // It's just a long option
     else
         longOpt = args.substr (pos + 1);
 
-    tracker.MapOption (longOpt, set);
+    tracker.MapOption (std::move (longOpt), set);
     return *this;
 }
 
-OptionsParser::OptionsParser (const std::string& progName, int argc, const char* const* argv) : argc{argc}, argv{argv}
+OptionsParser::OptionsParser (std::string_view progName, int argc, const char* const* argv) : argc{argc}, argv{argv}
 {
     impl = std::make_unique<OptionParseImpl> (progName, progHelp);
 }
@@ -100,9 +100,9 @@ OptionsParser::OptionsParser (OptionsParser&&) noexcept = default;
 
 OptionsParser& OptionsParser::operator= (OptionsParser&&) noexcept = default;
 
-OptionAdder OptionsParser::AddOptions (const std::string& helpGroup, const std::string& trackSet)
+OptionAdder OptionsParser::AddOptions (std::string_view helpGroup, std::string trackSet)
 {
-    return OptionAdder (*this, track, helpGroup, trackSet);
+    return OptionAdder (*this, track, helpGroup, std::move (trackSet));
 }
 
 OptionsResult OptionsParser::Parse()
@@ -144,9 +144,9 @@ OptionsResult OptionsParser::Parse()
     return OptionsResult::Normal;
 }
 
-void OptionsParser::AddPositional (const std::string& option)
+void OptionsParser::AddPositional (std::string_view option)
 {
-    impl->opts.parse_positional ({option});
+    impl->opts.parse_positional ({std::string (option)});
 }
 
 ResNone OptionsParser::CheckUnusedOpts()
@@ -198,11 +198,11 @@ void OptionsParser::prepareHelp()
 // Macro to define a template for operator()
 // NOTE: I'm sure theres a more modern way to do this, but this feels the most clear intent-wise to me
 
-#define MAKE_ADDER(_T_)                                                     \
-    template OptionAdder& OptionAdder::operator()<_T_> (const std::string&, \
-        const std::string&,                                                 \
-        _T_&,                                                               \
-        const std::string&);
+#define MAKE_ADDER(_T_)                                                 \
+    template OptionAdder& OptionAdder::operator()<_T_> (std::string_view, \
+        std::string_view,                                              \
+        _T_&,                                                          \
+        std::string_view);
 
 MAKE_ADDER (std::string);
 MAKE_ADDER (int);

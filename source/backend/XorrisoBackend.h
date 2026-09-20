@@ -24,7 +24,7 @@ class XorrisoBackend : public Backend
 {
   public:
     XorrisoBackend();
-    bool AddImage (Image& img, const std::string& fileName, bool readonly) override;
+    bool AddImage (Image& img, std::string_view fileName, bool readonly) override;
 };
 
 #endif

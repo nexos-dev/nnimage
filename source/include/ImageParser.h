@@ -1,5 +1,5 @@
 /*
-    KrunBackend.h - contains Krun backend class
+    ImageParser.h - contains ImageParser header
     Copyright 2026 Jedidiah Thompson
 
     Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,24 +15,20 @@
     limitations under the License.
 */
 
-#ifndef KRUNBACKEND_H
-#define KRUNBACKEND_H
+#ifndef IMAGEPARSER_H
+#define IMAGEPARSER_H
 
-#include "include/Backend.h"
-#include "include/sys/BlockDevGen.h"
+#include "include/SimpleLexer.h"
 
-class KrunBackend : public Backend
+class ImageParser
 {
   public:
-    KrunBackend();
-    ~KrunBackend() override;
-    std::unique_ptr<Task> CreatePartTable (Image& img, std::string_view fileName) override;
-    bool AddImage (Image& img, std::string_view fileName, bool readonly) override;
+    ImageParser (std::string fileName, std::string_view data) : lexer{fileName, data}, fileName{std::move (fileName)}
+    {}
 
   private:
-    bool runKrunCommand (std::string_view cmd, const std::vector<std::string>& args);
-    BlockDevFactory blockDevGen{"vd"};
-    int32_t krunCtx = -1;
+    SimpleLexer lexer;
+    std::string fileName;
 };
 
 #endif
