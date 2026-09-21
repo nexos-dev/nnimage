@@ -218,6 +218,7 @@ list(APPEND NNIMAGE_EXT_SOURCES external/MemoryMapped.cpp)
 
 add_library(libnnimage OBJECT ${NNIMAGE_SOURCES} ${NNIMAGE_COMP_SOURCES} ${NNIMAGE_EXT_SOURCES})
 target_compile_features(libnnimage PUBLIC cxx_std_23)
+target_link_libraries(libnnimage PUBLIC ${NNIMAGE_LIBRARIES})
 
 # Ensure nnimage is dependent on the backend header file
 add_dependencies(libnnimage GenerateBackendHeader GenerateComponentHeader)
@@ -236,7 +237,7 @@ if(NNIMAGE_ENABLE_TESTS)
                                 tests/ConfParser.cxx
                                 tests/Options.cxx
                                 tests/ImageCmd.cxx)
-    target_link_libraries(nnimage_test PRIVATE libnnimage libbackend ${NNIMAGE_LIBRARIES})
+    target_link_libraries(nnimage_test PRIVATE libnnimage libbackend)
 
     # Add doctests to CTest
     doctest_discover_tests(nnimage_test)
@@ -248,9 +249,7 @@ endif()
 
 # Create the program
 add_executable(nnimage source/main.cxx)
-
-# Add all libraries
-target_link_libraries(nnimage PRIVATE libnnimage libbackend ${NNIMAGE_LIBRARIES})
+target_link_libraries(nnimage PRIVATE libnnimage libbackend)
 
 if(NNIMAGE_ENABLE_PROFILING)
     target_compile_options(nnimage PRIVATE -pg)
