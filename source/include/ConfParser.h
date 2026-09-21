@@ -126,7 +126,7 @@ class ConfParser
 
     Error unexpectedToken (TokenType type)
     {
-        return Error ({ErrorDomain::Log, ErrorCode::ParseError}, "Unexpected token \"{}\"", lexer.NameFromToken (type));
+        return Error ({ErrorDomain::Conf, ErrorCode::UnexpectedToken}, {{"token", lexer.NameFromToken (type)}});
     }
 
     ConfKey getPropKey (std::string_view name)
@@ -145,8 +145,7 @@ class ConfParser
             std::find_if (nameToKey.begin(), nameToKey.end(), [&key] (const auto& pair) { return pair.second == key; });
         if (it == nameToKey.end())
         {
-            throw ErrorException (
-                Error ({ErrorDomain::Log, ErrorCode::Internal}, "Access to non-existant log control key"));
+            throw ErrorException (Error ({ErrorDomain::Conf, ErrorCode::InternalMissingKey}, {}));
         }
         return it->first;
     }

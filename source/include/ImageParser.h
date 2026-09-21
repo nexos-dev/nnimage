@@ -19,16 +19,33 @@
 #define IMAGEPARSER_H
 
 #include "include/SimpleLexer.h"
+#include "include/StringHash.h"
+#include "include/image/ImgBase.h"
+
+struct ImgParseProp
+{
+    std::string propName;
+    std::vector<std::vector<ImageVal>> vals;
+};
+
+struct ImgParseBlock
+{
+    std::string type;
+    std::string name;
+    std::unordered_map<std::string, ImgParseProp, StringHash, std::equal_to<>> props;
+};
 
 class ImageParser
 {
   public:
-    ImageParser (std::string fileName, std::string_view data) : lexer{fileName, data}, fileName{std::move (fileName)}
+    ImageParser() = default;
+    ImageParser (std::string fileName, std::string data) : lexer{std::move (fileName), std::move (data)}
     {}
+
+    Result<ImgParseBlock> ParseBlock();
 
   private:
     SimpleLexer lexer;
-    std::string fileName;
 };
 
 #endif

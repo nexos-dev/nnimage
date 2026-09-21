@@ -50,7 +50,7 @@ class Action
     {
         auto it = actionNameTable.find (name);
         if (it == actionNameTable.end())
-            return Error ({ErrorDomain::Action, ErrorCode::BadAction}, "invalid action name specfied");
+            return Error ({ErrorDomain::Action, ErrorCode::BadAction}, {});
         return it->second;
     }
 

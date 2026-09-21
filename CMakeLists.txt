@@ -68,6 +68,7 @@ endif()
 
 find_package(PkgConfig REQUIRED)
 find_package(Python COMPONENTS Interpreter REQUIRED)
+find_package(fmt REQUIRED)
 
 # Get uchardet
 pkg_check_modules(UCHARDET IMPORTED_TARGET uchardet)
@@ -81,7 +82,7 @@ endif()
 
 # Get iconv
 find_package(Iconv REQUIRED)
-list(APPEND NNIMAGE_LIBRARIES Iconv::Iconv)
+list(APPEND NNIMAGE_LIBRARIES Iconv::Iconv fmt::fmt)
 
 # Define backend configurations
 
@@ -209,7 +210,6 @@ list(APPEND NNIMAGE_SOURCES source/Log.cxx
                             source/Backend.cxx
                             source/Frontend.cxx
                             source/Image.cxx
-                            source/ImgBase.cxx
                             source/ImageCmd.cxx
                             source/ImageConf.cxx
                             source/Task.cxx)

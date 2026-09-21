@@ -36,11 +36,6 @@ SimpleLexer::SimpleLexer (std::string file, std::string fileData)
 
 void SimpleLexer::lexError (Error& err, LexError errCode, std::string_view extra)
 {
-    std::string prefix;
-    if (!file.empty())
-        prefix = std::format ("{}:{}: ", file, curLine);
-    // Now add the code
-    // NOTE: concatenation is quite slow but it should be fine for error handling
     std::string msg;
     switch (errCode)
     {
@@ -54,10 +49,12 @@ void SimpleLexer::lexError (Error& err, LexError errCode, std::string_view extra
             msg = std::format ("Unexpected character \"{}\"", extra);
             break;
         case LexError::UnexpectedEof:
-            msg = std::format ("Unexpected EOF");
+            msg = "Unexpected EOF";
             break;
     }
-    err.Add ({ErrorDomain::Conf, ErrorCode::LexError}, "{}{}", std::move (prefix), std::move (msg));
+    err.Add ({ErrorDomain::Conf, ErrorCode::LexError}, {{"message", std::move (msg)}});
+    if (!file.empty())
+        err.AddContext ({{"file", file}, {"line", std::to_string (curLine)}});
     // Unconditionally accept and also make sure any further lexer access gets caught
     isAccepted = true;
     isError = true;
@@ -65,10 +62,6 @@ void SimpleLexer::lexError (Error& err, LexError errCode, std::string_view extra
 
 void SimpleLexer::lexWarn (LexWarning err, std::string_view extra)
 {
-    std::string prefix;
-    if (!file.empty())
-        prefix = std::format ("{}:{}: ", file, curLine);
-    // Now add the code
     std::string msg;
     switch (err)
     {
@@ -76,8 +69,11 @@ void SimpleLexer::lexWarn (LexWarning err, std::string_view extra)
             msg = std::format ("Invalid escape sequence \"{}\"", extra);
             break;
     }
-    ErrorOutput::The()->Report (
-        Error ({ErrorDomain::Conf, ErrorCode::LexError, ErrorLog::Normal, ErrorSeverity::Warning}, msg));
+    Error warning ({ErrorDomain::Conf, ErrorCode::LexError, ErrorLog::Normal, ErrorSeverity::Warning},
+        {{"message", std::move (msg)}});
+    if (!file.empty())
+        warning.AddContext ({{"file", file}, {"line", std::to_string (curLine)}});
+    ErrorOutput::The()->Report (warning);
 }
 
 char SimpleLexer::readChar()

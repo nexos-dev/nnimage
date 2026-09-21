@@ -21,42 +21,75 @@
 #include "include/EnumArray.h"
 
 #include <string>
+#include <vector>
+#include <string_view>
 
-#define ERROR_CODE_LIST(X)                                            \
-    X (None, "No error")                                              \
-    X (FileError, "File failure")                                     \
-    X (PathError, "Path failure")                                     \
-    X (ParseError, "Parser error")                                    \
-    X (LexError, "Lexer error")                                       \
-    X (LogCtrlLocked, "Log control file is locked")                   \
-    X (EncMismatch, "Unable to retrieve character encoding")          \
-    X (SysFailure, "Call to system failed")                           \
-    X (Internal, "Internal error")                                    \
-    X (BadAction, "Invalid action specified")                         \
-    X (InvalidOption, "Invalid option configuration")                 \
-    X (OpFailed, "Operation failed")                                  \
-    X (NameMissing, "Component name missing")                         \
-    X (InvalidImgType, "Invalid image type")                          \
-    X (MissingRequiredProp, "Missing required property")              \
-    X (InvalidImgProp, "Invalid image property")                      \
-    X (BadFloppySize, "Invalid floppy disc size")                     \
-    X (PropTypeMismatch, "Unexpected property type")                  \
-    X (ImgInvalid, "Image validation failure")                        \
-    X (InvalidPartProp, "Invalid partition property")                 \
-    X (InvalidId, "Invalid indentifier")                              \
-    X (BadArgument, "Bad argument format")                            \
-    X (ImgMissingProp, "Required image property missing")             \
-    X (PartMissingProp, "Required partition property missing")        \
-    X (ComponentOverwrite, "Attempt to overwrite existing component") \
-    X (PropConflict, "Conflicting properties found in registry")      \
-    X (MissingPart, "Image requires at least 1 partition")            \
-    X (UnusedArg, "Unused command-line argument found")               \
-    X (DuplicateImage, "Duplicate image found")                       \
-    X (CompNotLoaded, "Image component not loaded")
+#define ERROR_CODE_LIST(X)                                                                                   \
+    X (None, "No error")                                                                                     \
+    X (FileError, "File failure")                                                                            \
+    X (PathError, "Path failure")                                                                            \
+    X (ParseError, "{}", "message")                                                                          \
+    X (LexError, "{}", "message")                                                                            \
+    X (LogCtrlLocked, "Log control file is locked")                                                          \
+    X (FileConvFailure, "Text encoding conversion failed for file \"{}\"", "file")                           \
+    X (EncMismatch, "Unable to retrieve character encoding")                                                 \
+    X (SysFailure, "{}", "error")                                                                            \
+    X (LockFileOpen, "Failed to open lock file: {}", "path")                                                 \
+    X (LockFileAcquire, "Failed to acquire lock on file \"{}\"", "path")                                     \
+    X (TextFileOpen, "{}: {}", "file", "error")                                                              \
+    X (EncodingUndetected, "unable to detect character set for file {}, assuming ASCII", "file")             \
+    X (Internal, "{}", "message")                                                                            \
+    X (BadAction, "invalid action name specfied")                                                            \
+    X (InvalidOption, "{}", "message")                                                                       \
+    X (OpFailed, "Operation aborted")                                                                        \
+    X (NameMissing, "Name required for block type \"{}\"", "block_type")                                     \
+    X (InvalidImgType, "Invalid image type \"{}\" specified on image{}", "type", "name_suffix")              \
+    X (MissingRequiredProp, "Missing required property")                                                     \
+    X (InvalidImgProp, "Unrecognized property \"{}\" specified on image{}", "prop", "name_suffix")           \
+    X (BadFloppySize, "Floppy disc{} must have size 720K, 1.44M, or 2.88M", "name_suffix")                   \
+    X (PropTypeMismatch, "Invalid type specified on property \"{}\"", "prop")                                \
+    X (ImgInvalid, "{}", "message")                                                                          \
+    X (InvalidPartProp, "Unrecognized property \"{}\" specified on partition{}", "prop", "name_suffix")      \
+    X (InvalidId, "Invalid ID \"{}\" specified for property \"{}\" on image{}", "id", "prop", "name_suffix") \
+    X (BadArgument, "{}", "message")                                                                         \
+    X (ImgMissingProp, "Missing required property \"{}\" on image{}", "prop", "name_suffix")                 \
+    X (PartMissingProp, "Missing required property \"{}\" on partition{}", "prop", "name_suffix")            \
+    X (ComponentOverwrite, "Attempt to overwrite existing component")                                        \
+    X (PropConflict, "Conflicting properties found in registry")                                             \
+    X (MissingPart, "Image{} requires at least one partition", "name_suffix")                                \
+    X (UnusedArg, "Unused command-line option \"{}\"", "option")                                             \
+    X (DuplicateImage, "Image{} already exists", "name_suffix")                                              \
+    X (CompNotLoaded, "Attempt to use unloaded component on image{}", "name_suffix")                         \
+    X (ImgParseFailed, "Failed to parse image spec file")                                                    \
+    X (InvalidMultiplier, "Invalid multiplier \"{}\" specified", "multiplier")                               \
+    X (SizeOverflow, "Size overflow")                                                                        \
+    X (UnexpectedComponentType, "Requested image component has an unexpected type")                          \
+    X (DirectoryCreate, "Unable to create log directory")                                                    \
+    X (UnexpectedToken, "Unexpected token \"{}\"", "token")                                                  \
+    X (IntegerOutOfRange, "Integer out of range")                                                            \
+    X (InternalMissingKey, "Access to non-existant log control key")                                         \
+    X (ErrorReportMissing, "No such file or directory")                                                      \
+    X (ErrorReportOpen, "Unable to open error reporting file \"{}\"", "file")                                \
+    X (LogFileOpen, "Failed to open log file: {}", "file")                                                   \
+    X (LogPathCreate, "Unable to create log directory")                                                      \
+    X (LogPathNotDirectory, "Log path is not a directory")                                                   \
+    X (ManagedLogOpen, "Failed to open log")                                                                 \
+    X (ManagedLogControlOpen, "unable to open log control file")                                             \
+    X (ExtraneousToken, "Extraneous token")                                                                  \
+    X (InvalidArgumentFormat, "Specified in invalid format")                                                 \
+    X (MalformedImageProperty, "Malformed image property")                                                   \
+    X (MalformedPartitionSpec, "Malformed partition specification")                                          \
+    X (UnableToProcessOption, "Unable to process \"{}\"", "option")
+
+struct ErrorEntry
+{
+    std::string_view str;
+    std::vector<std::string_view> params;
+};
 
 // Make clang-format shut up to prevent it from moving Max to the previous line
 // clang-format off
-#define ERROR_CODE_ENUM(code, message) code,
+#define ERROR_CODE_ENUM(code, message, ...) code,
 enum class ErrorCode
 {
     ERROR_CODE_LIST (ERROR_CODE_ENUM)
@@ -64,8 +97,8 @@ enum class ErrorCode
 };
 #undef ERROR_CODE_ENUM
 
-#define ERROR_CODE_STRING(code, message) {ErrorCode::code, message},
-static const EnumArray<ErrorCode, std::string, ErrorCode::Max> _errorCodeStrings = {
+#define ERROR_CODE_STRING(code, message, ...) {ErrorCode::code, {message, {__VA_ARGS__}}},
+static const EnumArray<ErrorCode, ErrorEntry, ErrorCode::Max> _errorCodeStrings = {
     ERROR_CODE_LIST (ERROR_CODE_STRING)};
 #undef ERROR_CODE_STRING
 #undef ERROR_CODE_LIST

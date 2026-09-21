@@ -19,6 +19,7 @@
 #define ERROR_H
 
 #include "sys/ErrorCode.h"
+#include "include/StringHash.h"
 
 #include <cassert>
 #include <cerrno>
@@ -35,8 +36,13 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <unordered_map>
+#include <utility>
 #include <variant>
 #include <vector>
+
+#include <fmt/core.h>
+#include <fmt/args.h>
 
 enum class ErrorDomain
 {
@@ -47,7 +53,7 @@ enum class ErrorDomain
     Task,
     Option,
     Operation,
-    ImageConf,
+    Image,
     Backend
 };
 
@@ -64,16 +70,20 @@ enum class ErrorLog
     Debug
 };
 
+using ErrorProp = std::pair<std::string, std::string>;
+using ErrorKeyMap = std::unordered_map<std::string, std::string, StringHash, std::equal_to<>>;
+
 struct ErrorFrame
 {
-    ErrorFrame (ErrorDomain domain, ErrorCode code, std::string_view msg, ErrorLog log = ErrorLog::Normal)
-        : domain (domain), code (code), log (log), msg (msg), timestamp (std::chrono::system_clock::now())
+    ErrorFrame (ErrorDomain domain, ErrorCode code, std::string_view msg, ErrorLog log, ErrorKeyMap props = {})
+        : domain (domain), code (code), log (log), msg (msg), timestamp (std::chrono::system_clock::now()), keys (props)
     {}
     ErrorDomain domain;
     ErrorCode code;
     ErrorLog log;
     std::string msg;
     std::chrono::system_clock::time_point timestamp;
+    ErrorKeyMap keys;
 };
 
 struct ErrorInfo
@@ -89,25 +99,52 @@ class Error
   public:
     Error() : severity (ErrorSeverity::Error)
     {}
+
     Error (const ErrorInfo& info, std::string_view msg) : severity (info.severity)
     {
         frames.emplace_back (info.domain, info.code, msg, info.log);
     }
+
     template <typename... Args>
         requires (sizeof...(Args) > 0)
     Error (const ErrorInfo& info, std::string_view fmt, const Args&... args)
         : Error (info, formatMessage (fmt, args...))
     {}
+
     Error (const Error& other)
-        : severity (other.severity), frames (other.frames),
+        : severity (other.severity), frames (other.frames), context (other.context),
           cause (other.cause ? std::make_unique<Error> (*other.cause) : nullptr)
     {}
+
+    Error (const ErrorInfo& info, std::initializer_list<ErrorProp> props) : severity (info.severity)
+    {
+        ErrorKeyMap map{props.begin(), props.end()};
+        // Make the message
+        std::string msg = makeMessage (info.code, map);
+        frames.emplace_back (info.domain, info.code, msg, info.log, std::move (map));
+    }
+
+    // Property-based interface with a caller-supplied message, skipping the default lookup-table formatting
+    Error (const ErrorInfo& info, std::string_view msg, std::initializer_list<ErrorProp> props)
+        : severity (info.severity)
+    {
+        ErrorKeyMap map{props.begin(), props.end()};
+        frames.emplace_back (info.domain, info.code, msg, info.log, std::move (map));
+    }
+
+    template <typename... Args>
+        requires (sizeof...(Args) > 0)
+    Error (const ErrorInfo& info, std::string_view fmt, std::initializer_list<ErrorProp> props, const Args&... args)
+        : Error (info, formatMessage (fmt, args...), props)
+    {}
+
     Error& operator= (const Error& other)
     {
         if (this != &other)
         {
             severity = other.severity;
             frames = other.frames;
+            context = other.context;
             cause = other.cause ? std::make_unique<Error> (*other.cause) : nullptr;
         }
         return *this;
@@ -124,12 +161,53 @@ class Error
         frames.emplace_back (info.domain, info.code, msg, info.log);
         return *this;
     }
+
     template <typename... Args>
         requires (sizeof...(Args) > 0)
     Error& Add (const ErrorInfo& info, std::string_view fmt, const Args&... args)
     {
         return Add (info, formatMessage (fmt, args...));
     }
+    // Property-based interface with a caller-supplied message, skipping the default lookup-table formatting
+    virtual Error& Add (const ErrorInfo& info, std::string_view msg, std::initializer_list<ErrorProp> props)
+    {
+        if (this->severity != ErrorSeverity::Fatal)
+            this->severity = info.severity;
+        ErrorKeyMap map{props.begin(), props.end()};
+        frames.emplace_back (info.domain, info.code, msg, info.log, std::move (map));
+        return *this;
+    }
+
+    template <typename... Args>
+        requires (sizeof...(Args) > 0)
+    Error& Add (const ErrorInfo& info,
+        std::string_view fmt,
+        std::initializer_list<ErrorProp> props,
+        const Args&... args)
+    {
+        return Add (info, formatMessage (fmt, args...), props);
+    }
+
+    Error& Add (const ErrorInfo& info, std::initializer_list<ErrorProp> props)
+    {
+        if (this->severity != ErrorSeverity::Fatal)
+            this->severity = info.severity;
+
+        ErrorKeyMap map{props.begin(), props.end()};
+        std::string msg = makeMessage (info.code, map);
+        frames.emplace_back (info.domain, info.code, msg, info.log, std::move (map));
+        return *this;
+    }
+
+    Error& AddContext (std::initializer_list<ErrorProp> props)
+    {
+        for (const auto& [key, value] : props)
+            context[key] = value;
+        if (cause)
+            cause->AddContext (props);
+        return *this;
+    }
+
     // Used mostly so we can pass on overrided class to Add. Parameter must be rvalue
     // TODO: maybe we should allow lvalues?
     Error& Add (const Error&& err)
@@ -141,13 +219,10 @@ class Error
         return *this;
     }
 
-    // Helper to add an error based strictly off of a code
-    Error& AddByCode (const ErrorInfo& info, bool includeErrno = false)
+    // Helper to add an error based off errno
+    Error& AddByErrno (const ErrorInfo& info)
     {
-        std::string msg = _errorCodeStrings[info.code];
-        if (includeErrno)
-            msg += std::string (": ") + std::strerror (errno);
-        return Add (info, msg);
+        return Add (info, std::strerror (errno));
     }
 
     // These functions are for error chaining. This is where one error creates a whole new error that is
@@ -155,14 +230,44 @@ class Error
     virtual Error Chain (const ErrorInfo& info, std::string_view msg)
     {
         Error err = Error (info, msg);
+        err.context = context;
         err.cause = std::make_unique<Error> (std::move (*this));
         return err;
     }
+
     template <typename... Args>
         requires (sizeof...(Args) > 0)
     Error Chain (const ErrorInfo& info, std::string_view fmt, const Args&... args)
     {
         return Chain (info, formatMessage (fmt, args...));
+    }
+
+    // Property-based interface with a caller-supplied message, skipping the default lookup-table formatting
+    virtual Error Chain (const ErrorInfo& info, std::string_view msg, std::initializer_list<ErrorProp> props)
+    {
+        Error err = Error (info, msg, props);
+        err.context = context;
+        err.cause = std::make_unique<Error> (std::move (*this));
+        return err;
+    }
+
+    template <typename... Args>
+        requires (sizeof...(Args) > 0)
+    Error Chain (const ErrorInfo& info,
+        std::string_view fmt,
+        std::initializer_list<ErrorProp> props,
+        const Args&... args)
+    {
+        return Chain (info, formatMessage (fmt, args...), props);
+    }
+
+    // Table-driven chaining
+    Error Chain (const ErrorInfo& info, std::initializer_list<ErrorProp> props)
+    {
+        Error err = Error (info, props);
+        err.context = context;
+        err.cause = std::make_unique<Error> (std::move (*this));
+        return err;
     }
 
     ErrorSeverity GetSeverity() const
@@ -189,6 +294,40 @@ class Error
     {
         return frames.size();
     }
+    const ErrorKeyMap& GetContext() const
+    {
+        return context;
+    }
+
+    // TODO: this function needs to be re-thought out
+    std::string MakeContextStr() const
+    {
+        std::string result;
+        auto file = context.find ("file");
+        auto line = context.find ("line");
+        if (file != context.end())
+        {
+            result = file->second;
+            if (line != context.end())
+                result += ":" + line->second;
+        }
+        else if (line != context.end())
+        {
+            result = line->second;
+        }
+
+        for (const auto& [key, value] : context)
+        {
+            if (key == "file" || key == "line")
+                continue;
+            if (!result.empty())
+                result += " ";
+            result += std::format ("{}:{}", key, value);
+        }
+        if (!result.empty())
+            result += ": ";
+        return result;
+    }
     const Error& Cause()
     {
         return *cause;
@@ -214,7 +353,9 @@ class Error
     // images, its not fatal. If it's the only one then from the user's perspective, it is fatal
     ErrorSeverity severity;
     std::vector<ErrorFrame> frames;
+    ErrorKeyMap context;
     std::unique_ptr<Error> cause = nullptr;    // For casual chaining, so one error has multiple messages
+
   private:
     template <typename... Args>
     static std::string formatMessage (std::string_view fmt, const Args&... args)
@@ -223,15 +364,46 @@ class Error
             return {};
         try
         {
-            return std::vformat (fmt, std::make_format_args (args...));
+            return fmt::vformat (fmt, fmt::make_format_args (args...));
         }
-        catch (const std::format_error&)
+        catch (const fmt::format_error&)
         {
             return std::string (fmt);
         }
     }
+
+    static std::string formatMessage (std::string_view fmt,
+        const fmt::dynamic_format_arg_store<fmt::format_context>& store)
+    {
+        if (fmt.empty())
+            return {};
+        try
+        {
+            return fmt::vformat (fmt, store);
+        }
+        catch (const fmt::format_error&)
+        {
+            return std::string (fmt);
+        }
+    }
+
+    std::string makeMessage (ErrorCode code, const ErrorKeyMap& map)
+    {
+        const ErrorEntry& entry = _errorCodeStrings[code];
+        fmt::dynamic_format_arg_store<fmt::format_context> store;
+        for (std::string_view param : entry.params)
+        {
+            auto it = map.find (param);
+            if (it == map.end())
+                throw std::runtime_error ("Required error paramter not passed");
+
+            store.push_back (it->second);
+        }
+        return formatMessage (entry.str, store);
+    }
+
     // Used when there are no frames to report
-    inline static const ErrorFrame emptyFrame{ErrorDomain::None, ErrorCode::None, ""};
+    inline static const ErrorFrame emptyFrame{ErrorDomain::None, ErrorCode::None, "", ErrorLog::Normal};
 };
 
 // NOTE: This is to be used sparingly. Exceptions are only meant for programming errors and not
@@ -249,6 +421,10 @@ class ErrorException : public std::exception
     const char* what() const noexcept override
     {
         return error.RootFrame().msg.c_str();
+    }
+    ::Error& Error() noexcept
+    {
+        return error;
     }
     const ::Error& Error() const noexcept
     {
@@ -374,9 +550,9 @@ class FileErrorSink : public ErrorSink
         {
             Error e;
             if (!std::filesystem::exists (file))
-                e = e.Add ({ErrorDomain::None, ErrorCode::FileError}, "No such file or directory");
+                e = e.Add ({ErrorDomain::None, ErrorCode::ErrorReportMissing}, {});
 
-            e = e.Add ({ErrorDomain::None, ErrorCode::FileError}, "Unable to open error reporting file \"{}\"", file);
+            e = e.Add ({ErrorDomain::None, ErrorCode::ErrorReportOpen}, {{"file", file}});
 
             throw ErrorException (e);
         }

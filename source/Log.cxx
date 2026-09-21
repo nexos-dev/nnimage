@@ -158,9 +158,8 @@ FileLogSink::FileLogSink (const std::filesystem::path& filename) : file (filenam
 {
     if (!file.is_open())
     {
-        throw ErrorException (
-            Error ({ErrorDomain::Log, ErrorCode::FileError}, "Failed to open log file: " + filename.string())
-                .AddByCode ({ErrorDomain::Log, ErrorCode::FileError, ErrorLog::Debug}, true));
+        throw ErrorException (Error ({ErrorDomain::Log, ErrorCode::LogFileOpen}, {{"file", filename.string()}})
+                .Add ({ErrorDomain::Log, ErrorCode::SysFailure, ErrorLog::Debug}, {{"error", std::strerror (errno)}}));
     }
 }
 FileLogSink::~FileLogSink()
@@ -204,7 +203,7 @@ bool ConsoleLogSink::checkIsOutColor() const
         return false;
 
     // Check if the output stream is cerr or cout
-    int unixFd = 0;
+    int unixFd = -1;
     if (&out == &std::cout)
         unixFd = STDOUT_FILENO;
     else if (&out == &std::cerr)
@@ -232,12 +231,12 @@ ManagedLogSink::ManagedLogSink (std::filesystem::path logDir) : logDir{logDir}
     {
         if (!std::filesystem::create_directories (logDir))    // Go ahead and create it
         {
-            throw ErrorException (Error ({ErrorDomain::Log, ErrorCode::PathError}, "Unable to create log directory"));
+            throw ErrorException (Error ({ErrorDomain::Log, ErrorCode::LogPathCreate}, {}));
         }
     }
     else if (!std::filesystem::is_directory (logDir))
     {
-        throw ErrorException (Error ({ErrorDomain::Log, ErrorCode::PathError}, "Log path is not a directory"));
+        throw ErrorException (Error ({ErrorDomain::Log, ErrorCode::LogPathNotDirectory}, {}));
     }
     ctrlPath = logDir / logCtrlFile;
 }
@@ -264,7 +263,7 @@ ResNone ManagedLogSink::Prepare()
 
     curLog = std::ofstream (log, std::ios::trunc);
     if (!curLog.is_open())
-        return Error ({ErrorDomain::Log, ErrorCode::FileError}, "Failed to open log");
+        return Error ({ErrorDomain::Log, ErrorCode::ManagedLogOpen}, {});
 
     // Create log worker
     maintThread = std::jthread (logMaintWorker, std::ref (*this));
@@ -283,7 +282,7 @@ ResNone ManagedLogSink::openLogCtrl (ManagedLogSink& inst, int& maxAge, int& max
             return res.Error();
         data = std::move (res.Value());
     }
-    catch (const ErrorException& e)
+    catch (ErrorException& e)
     {
         return e.Error();
     }
@@ -347,8 +346,7 @@ void ManagedLogSink::logMaintWorker (ManagedLogSink& inst)
         auto res = openLogCtrl (inst, maxAge, maxLogs);
         if (!res)
         {
-            ErrorOutput::The()->Report (
-                res.Error().Add ({ErrorDomain::Log, ErrorCode::FileError}, "unable to open log control file"));
+            ErrorOutput::The()->Report (res.Error().Add ({ErrorDomain::Log, ErrorCode::ManagedLogControlOpen}, {}));
             return;
         }
     }

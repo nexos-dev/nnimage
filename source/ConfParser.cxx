@@ -138,7 +138,7 @@ Result<LexToken> ConfParser<Derived, ConfKey>::setNumberProp (ConfProp& prop, Le
     uint64_t val = std::get<uint64_t> (tok.val);
     if (val > INT32_MAX)
     {
-        return Error ({ErrorDomain::Log, ErrorCode::ParseError}, "Integer out of range");
+        return Error ({ErrorDomain::Conf, ErrorCode::IntegerOutOfRange}, {});
     }
     prop.val = static_cast<int> (std::get<uint64_t> (tok.val));
     return expectToken (TokenType::Semicolon);
@@ -182,15 +182,15 @@ ResNone ConfParser<Derived, ConfKey>::setLocked (ConfKey key, const ConfValue& v
     // Check if key already exists and is overwritable
     if (!overwrite && (ctrl.getter (derived()).index() < static_cast<size_t> (ConfType::Max)))
     {
-        return Error ({ErrorDomain::Log, ErrorCode::ParseError},
-            "Attempt to write key \"{}\" and overwrite is not enabled",
-            nameFromKey (key));
+        return Error ({ErrorDomain::Conf, ErrorCode::ParseError},
+            {{"message", std::format ("Attempt to write key \"{}\" and overwrite is not enabled", nameFromKey (key))}});
     }
 
     ConfType type = getValueType (val);
     if (type != ctrl.type)
     {
-        return Error ({ErrorDomain::Log, ErrorCode::ParseError}, "Type mismatch on key \"{}\"", nameFromKey (key));
+        return Error ({ErrorDomain::Conf, ErrorCode::ParseError},
+            {{"message", std::format ("Type mismatch on key \"{}\"", nameFromKey (key))}});
     }
 
     // Add it to our list of keys if it isn't in there

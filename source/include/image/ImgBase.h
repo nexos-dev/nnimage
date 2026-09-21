@@ -107,10 +107,10 @@ class ImageNumId
     {
         auto it = mulMap.find (mul);
         if (it == mulMap.end())
-            return Error ({ErrorDomain::ImageConf, ErrorCode::BadArgument}, "Invalid multiplier \"{}\" specified", mul);
+            return Error ({ErrorDomain::Image, ErrorCode::InvalidMultiplier}, {{"multiplier", mul}});
 
         if (__builtin_mul_overflow (num, it->second, &val))
-            return Error ({ErrorDomain::ImageConf, ErrorCode::BadArgument}, "Size overflow");
+            return Error ({ErrorDomain::Image, ErrorCode::SizeOverflow}, {});
 
         valid = true;
         return Success();
@@ -233,7 +233,7 @@ class ImageVal
 
 // Generic property setters/getters
 template <typename T>
-using PropSetter = ImageResult (*) (T&, const ImageVal&);
+using PropSetter = ResNone (*) (T&, const ImageVal&);
 
 template <typename T>
 using PropGetter = std::optional<std::any> (*) (T&);
@@ -256,10 +256,10 @@ class RegElement
   public:
     virtual ~RegElement() = default;
 
-    virtual ImageResult Set (Property prop, const ImageVal& val);
-    virtual ResCustom<std::optional<std::any>, ImageError> Get (Property prop);
-    virtual ResCustom<bool, ImageError> IsSet (Property prop);
-    virtual ImageResult SetDefaults();
+    virtual ResNone Set (Property prop, const ImageVal& val);
+    virtual Result<std::optional<std::any>> Get (Property prop);
+    virtual Result<bool> IsSet (Property prop);
+    virtual ResNone SetDefaults();
 
   protected:
     RegElement (ErrorCode invalidPropertyCode, ErrorCode missingPropertyCode)
@@ -271,9 +271,10 @@ class RegElement
         return static_cast<Element&> (*this);
     }
 
-    static ImageError makeRegElementError (ErrorCode code, std::string_view elementName, std::string_view propName)
+    static Error makeRegElementError (ErrorCode code, std::string_view elementName, std::string_view propName)
     {
-        return ImageError (code, {{"prop", std::string (propName)}, {"name", std::string (elementName)}});
+        return ImageError::Make (code,
+            {{"prop", std::string (propName)}, {"name_suffix", ImageError::NameSuffix (elementName)}});
     }
 
     bool hasProperty (Property prop)

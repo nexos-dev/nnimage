@@ -38,8 +38,9 @@ class LockFile
         if (fd == -1)
         {
             throw ErrorException (
-                Error ({ErrorDomain::None, ErrorCode::FileError}, "Failed to open lock file: " + this->path)
-                    .AddByCode ({ErrorDomain::None, ErrorCode::FileError, ErrorLog::Debug}, true));
+                Error ({ErrorDomain::None, ErrorCode::LockFileOpen}, { {"path", this->path} })
+                    .Add ({ErrorDomain::None, ErrorCode::SysFailure, ErrorLog::Debug},
+                        { {"error", std::strerror (errno)} }));
         }
     }
     LockFile (const std::filesystem::path& path) : LockFile (path.string())
@@ -115,8 +116,9 @@ class LockFile
             if (errno == EACCES || errno == EAGAIN)
                 return false;
             throw ErrorException (
-                Error ({ErrorDomain::Log, ErrorCode::FileError}, "Failed to acquire lock on file \"{}\": ", path)
-                    .AddByCode ({ErrorDomain::Log, ErrorCode::FileError, ErrorLog::Debug}, true));
+                Error ({ErrorDomain::None, ErrorCode::LockFileAcquire}, { {"path", path} })
+                    .Add ({ErrorDomain::None, ErrorCode::SysFailure, ErrorLog::Debug},
+                        { {"error", std::strerror (errno)} }));
         }
         return true;
     }

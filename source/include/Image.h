@@ -74,15 +74,15 @@ class Partition : public RegElement<Partition, PartProp, PartConfRegistry>
         return spec.name;
     }
 
-    ImageResult Set (std::string_view name, const ImageVal& val);
+    ResNone Set (std::string_view name, const ImageVal& val);
 
     template <typename T>
-    ResCustom<std::optional<T>, ImageError> Get (std::string_view name);
+    Result<std::optional<T>> Get (std::string_view name);
 
     template <typename T>
-    ResCustom<std::optional<T>, ImageError> Get (PartProp prop);
+    Result<std::optional<T>> Get (PartProp prop);
 
-    ResCustom<bool, ImageError> IsSet (std::string_view name);
+    Result<bool> IsSet (std::string_view name);
 
     using RegElement<Partition, PartProp, PartConfRegistry>::IsSet;
     using RegElement<Partition, PartProp, PartConfRegistry>::Set;
@@ -110,7 +110,8 @@ class Partition : public RegElement<Partition, PartProp, PartConfRegistry>
     {
         PartProp prop = ResolveName (name);
         if (prop == PartProp::Max)
-            return ImageError (ErrorCode::InvalidPartProp, {{"prop", std::string (name)}, {"name", std::string (partName)}});
+            return ImageError::Make (ErrorCode::InvalidPartProp,
+                {{"prop", std::string (name)}, {"name_suffix", ImageError::NameSuffix (partName)}});
         return func (prop);
     }
 
@@ -191,24 +192,24 @@ class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
     }
     BackendType GetBackendType (BackendType suggestion) const;
 
-    ImageResult AddComponent (std::unique_ptr<Component> comp);
+    ResNone AddComponent (std::unique_ptr<Component> comp);
     template <class T>
-    ResCustom<T*, ImageError> GetComponent (CompType type);
+    Result<T*> GetComponent (CompType type);
     bool CheckComponent (CompType type);
 
     // Set accepts parser-shaped values, Get returns the property's translated value.
-    ImageResult Set (std::string_view name, const ImageVal& val);
-    ImageResult Set (ImgProp prop, const ImageVal& val) override;
+    ResNone Set (std::string_view name, const ImageVal& val);
+    ResNone Set (ImgProp prop, const ImageVal& val) override;
 
     template <typename T>
-    ResCustom<std::optional<T>, ImageError> Get (std::string_view name);
+    Result<std::optional<T>> Get (std::string_view name);
     template <typename T>
-    ResCustom<std::optional<T>, ImageError> Get (ImgProp prop);
+    Result<std::optional<T>> Get (ImgProp prop);
 
-    ResCustom<bool, ImageError> IsSet (std::string_view name);
-    ResCustom<bool, ImageError> IsSet (ImgProp prop) override;
+    Result<bool> IsSet (std::string_view name);
+    Result<bool> IsSet (ImgProp prop) override;
 
-    ImageResult SetDefaults() override;
+    ResNone SetDefaults() override;
 
     void AddPartition (std::unique_ptr<Partition> part)
     {
@@ -224,7 +225,7 @@ class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
         return spec;
     }
 
-    ImageResult Finalize();
+    ResNone Finalize();
 
     static ImgProp ResolveProp (std::string_view name)
     {
@@ -241,10 +242,9 @@ class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
     Image& operator= (const Image&) = delete;
 
     // Error maker helpers
-    static ImageError InvalidId (std::string_view prop, std::string_view name, std::string_view id)
+    static Error InvalidId (std::string_view prop, std::string_view name, std::string_view id)
     {
-        return ImageError (
-            ErrorCode::InvalidId, {{"prop", std::string (prop)}, {"name", std::string (name)}, {"id", std::string (id)}});
+        return ImageError::InvalidId (prop, name, id);
     }
 
   private:
@@ -267,7 +267,8 @@ class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
     {
         ImgProp prop = ResolveProp (name);
         if (prop == ImgProp::Max)
-            return ImageError (ErrorCode::InvalidImgProp, {{"prop", std::string (name)}, {"name", std::string (imgName)}});
+            return ImageError::Make (ErrorCode::InvalidImgProp,
+                {{"prop", std::string (name)}, {"name_suffix", ImageError::NameSuffix (imgName)}});
         return func (prop);
     }
 
@@ -275,14 +276,14 @@ class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
     std::optional<Component*> resolveComponent (ImgProp prop);
 
     // Replays deferred properties
-    ImageResult runDeferred();
-    ImageResult validate();
+    ResNone runDeferred();
+    ResNone validate();
 
-    ResCustom<std::optional<std::any>, ImageError> getInternal (ImgProp prop);
+    Result<std::optional<std::any>> getInternal (ImgProp prop);
 
     // Getter/setter for setting a property that adds a component
     template <typename CompT>
-    ImageResult setCompProp (ImgProp prop, const ImageVal& val);
+    ResNone setCompProp (ImgProp prop, const ImageVal& val);
 
     template <typename CompT>
     CompT* getCompProp (CompType type);

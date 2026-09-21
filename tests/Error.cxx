@@ -117,20 +117,12 @@ TEST_CASE ("Error::Add(Error&&) copies only the first frame of the argument")
     CHECK (err.GetSeverity() == ErrorSeverity::Fatal);
 }
 
-TEST_CASE ("Error::AddByCode uses the error code string table")
-{
-    Error err;
-    err.AddByCode ({ErrorDomain::None, ErrorCode::FileError});
-    CHECK (err.LastFrame().msg == "File failure");
-}
-
-TEST_CASE ("Error::AddByCode can append errno text")
+TEST_CASE ("Error::AddByErrno propertly reports errno")
 {
     errno = ENOENT;
     Error err;
-    err.AddByCode ({ErrorDomain::None, ErrorCode::FileError}, true);
-    CHECK (err.LastFrame().msg.starts_with ("File failure: "));
-    CHECK (err.LastFrame().msg.size() > std::string ("File failure: ").size());
+    err.AddByErrno ({ErrorDomain::None, ErrorCode::FileError});
+    CHECK (err.LastFrame().msg == std::strerror (ENOENT));
 }
 
 TEST_CASE ("Error::Chain wraps the current error as a cause of a new error")

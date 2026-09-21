@@ -41,17 +41,15 @@ struct OptionAdder::OptionAddImpl
 
 struct OptionsParser::OptionParseImpl
 {
-    OptionParseImpl (std::string_view progName, std::string_view help) : opts (std::string (progName), std::string (help))
+    OptionParseImpl (std::string_view progName, std::string_view help)
+        : opts (std::string (progName), std::string (help))
     {}
 
     cxxopts::Options opts;
     cxxopts::ParseResult result;
 };
 
-OptionAdder::OptionAdder (OptionsParser& parser,
-    OptionTracker& tracker,
-    std::string_view helpGroup,
-    std::string set)
+OptionAdder::OptionAdder (OptionsParser& parser, OptionTracker& tracker, std::string_view helpGroup, std::string set)
     : tracker{tracker}, parser{parser}, set{std::move (set)}
 {
     impl = std::make_unique<OptionAddImpl> (parser.impl->opts, helpGroup);
@@ -159,7 +157,7 @@ ResNone OptionsParser::CheckUnusedOpts()
     {
         const auto& argName = arg.key();
         if (!track.IsOptionUsed (argName))
-            return Error ({ErrorDomain::Option, ErrorCode::UnusedArg}, "Unused command-line option \"{}\"", argName);
+            return Error ({ErrorDomain::Option, ErrorCode::UnusedArg}, {{"option", argName}});
     }
     return Success();
 }
@@ -184,8 +182,8 @@ void OptionsParser::version()
 void OptionsParser::prepareHelp()
 {
     cxxopts::Options& opts = impl->opts;
-    opts.custom_help (usage);
-    opts.positional_help (explanation);
+    opts.custom_help (std::string (usage));
+    opts.positional_help (std::string (explanation));
     opts.set_width (helpWidth);
 
     // clang-format off
@@ -196,13 +194,9 @@ void OptionsParser::prepareHelp()
 }
 
 // Macro to define a template for operator()
-// NOTE: I'm sure theres a more modern way to do this, but this feels the most clear intent-wise to me
 
-#define MAKE_ADDER(_T_)                                                 \
-    template OptionAdder& OptionAdder::operator()<_T_> (std::string_view, \
-        std::string_view,                                              \
-        _T_&,                                                          \
-        std::string_view);
+#define MAKE_ADDER(_T_) \
+    template OptionAdder& OptionAdder::operator()<_T_> (std::string_view, std::string_view, _T_&, std::string_view);
 
 MAKE_ADDER (std::string);
 MAKE_ADDER (int);

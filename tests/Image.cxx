@@ -29,7 +29,7 @@ class TestComponent : public Component
     TestComponent (Image& img) : Component (CompType::Format, img)
     {}
 
-    ImageResult Validate() override
+    ResNone Validate() override
     {
         return Success();
     }
@@ -54,7 +54,7 @@ class OtherTestComponent : public Component
     OtherTestComponent (Image& img) : Component (CompType::Encryption, img)
     {}
 
-    ImageResult Validate() override
+    ResNone Validate() override
     {
         return Success();
     }
@@ -489,29 +489,27 @@ TEST_CASE ("Image partitions can be added and enumerated")
 
 TEST_CASE ("ImageError formats a named-image message with the image name quoted")
 {
-    ImageError err (ErrorCode::InvalidImgProp, {{"prop", std::string ("bogus")}, {"name", std::string ("disk1")}});
+    Error err = ImageError::Make (ErrorCode::InvalidImgProp,
+        {{"prop", "bogus"}, {"name_suffix", ImageError::NameSuffix ("disk1")}});
     CHECK (err.RootFrame().msg.find ("\"disk1\"") != std::string::npos);
     CHECK (err.RootFrame().msg.find ("bogus") != std::string::npos);
 }
 
 TEST_CASE ("ImageError formats an anonymous-image message without a stray name")
 {
-    ImageError err (ErrorCode::InvalidImgProp, {{"prop", std::string ("bogus")}, {"name", std::string ("")}});
+    Error err =
+        ImageError::Make (ErrorCode::InvalidImgProp, {{"prop", "bogus"}, {"name_suffix", ImageError::NameSuffix ("")}});
     CHECK (err.RootFrame().msg.find ("\"\"") == std::string::npos);
 }
 
-TEST_CASE ("ImageError::AddKey enriches the message with context added after construction")
+TEST_CASE ("Error context enriches formatted messages after construction")
 {
-    // std::unordered_map::insert (used by AddKey) never overwrites an already-present key, so AddKey
-    // is only useful for adding keys that weren't supplied at construction time. The generic
-    // file/line prefix in makeMessage is a good example: it's independent of the error code's
-    // required keys, so it can be attached later without needing to satisfy assertKeys() again.
-    ImageError err (ErrorCode::PropTypeMismatch, {{"prop", std::string ("boot_mode")}});
+    Error err = ImageError::Make (ErrorCode::PropTypeMismatch, {{"prop", "boot_mode"}});
     CHECK (err.RootFrame().msg.find ("boot_mode") != std::string::npos);
-    CHECK (err.RootFrame().msg.find ("myfile.conf") == std::string::npos);
+    CHECK (err.MakeContextStr().empty());
 
-    err.AddKey ({{"file", std::string ("myfile.conf")}});
-    CHECK (err.RootFrame().msg.find ("myfile.conf:") != std::string::npos);
+    err.AddContext ({{"file", "myfile.conf"}, {"line", "12"}});
+    CHECK (err.MakeContextStr() == "myfile.conf:12: ");
     CHECK (err.RootFrame().msg.find ("boot_mode") != std::string::npos);
 }
 

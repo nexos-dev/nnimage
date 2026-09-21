@@ -66,7 +66,7 @@ class IsoPartComp final : public PartTypeComp
     IsoPartComp (Image& img) : PartTypeComp{PartType::Iso9660, img}
     {}
 
-    ImageResult Validate() override;
+    ResNone Validate() override;
 
   protected:
     const CompConfRegistry& getSubRegistry() const override

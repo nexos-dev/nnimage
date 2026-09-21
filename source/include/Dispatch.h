@@ -72,14 +72,13 @@ class Dispatch
     // This function is the end of the line for most errors that occur in this program
     void dispatchFail (Error& err)
     {
-        err = err.Chain ({ErrorDomain::Operation, ErrorCode::OpFailed, ErrorLog::Normal, ErrorSeverity::Fatal},
-            "Operation aborted");
+        err = err.Chain ({ErrorDomain::Operation, ErrorCode::OpFailed, ErrorLog::Normal, ErrorSeverity::Fatal}, {});
         ErrorOutput::The()->Report (err);
     }
     // Helper for reporting option validation errors
     Error makeOptionError (std::string_view msg)
     {
-        return Error ({ErrorDomain::Option, ErrorCode::InvalidOption}, msg);
+        return Error ({ErrorDomain::Option, ErrorCode::InvalidOption}, {{"message", std::string (msg)}});
     }
 
     std::filesystem::path logDir;

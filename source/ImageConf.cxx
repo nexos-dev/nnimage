@@ -16,8 +16,35 @@
 */
 
 #include "include/Frontend.h"
+#include "include/sys/TextReader.h"
+
+Result<std::string> ImageConf::readConfFile()
+{
+    std::filesystem::path fileName = opts.confFile;
+    assert (!fileName.empty());
+
+    // Read in the file
+    std::string data;
+    try
+    {
+        auto reader = TextReader (fileName, opts.confEnc);
+        auto readRes = reader.Read();
+        if (!readRes)
+            return readRes.Error();
+
+        data = std::move (readRes.Value());
+    }
+    catch (ErrorException& e)
+    {
+        return e.Error();
+    }
+    return data;
+}
 
 ResNone ImageConf::Parse()
 {
+    auto resRead = readConfFile();
+    if (!resRead)
+        return parseFailed();
     return Success();
 }

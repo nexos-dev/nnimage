@@ -22,13 +22,13 @@
 #include <optional>
 
 template <typename T>
-ResCustom<std::optional<T>, ImageError> Image::Get (std::string_view name)
+Result<std::optional<T>> Image::Get (std::string_view name)
 {
     return dispatchByName (name, spec.name, [&] (ImgProp prop) { return Get<T> (prop); });
 }
 
 template <typename T>
-ResCustom<std::optional<T>, ImageError> Image::Get (ImgProp prop)
+Result<std::optional<T>> Image::Get (ImgProp prop)
 {
     auto resGet = getInternal (prop);
     if (!resGet)
@@ -39,33 +39,32 @@ ResCustom<std::optional<T>, ImageError> Image::Get (ImgProp prop)
     if (T* ptr = std::any_cast<T> (&*val))
         return std::optional<T> (*ptr);
 
-    return ImageError (ErrorCode::PropTypeMismatch, {{"prop", GetPropName (prop)}, {"name", spec.name}});
+    return ImageError::Make (ErrorCode::PropTypeMismatch, {{"prop", GetPropName (prop)}});
 }
 
 template <typename T>
-ResCustom<T*, ImageError> Image::GetComponent (CompType type)
+Result<T*> Image::GetComponent (CompType type)
 {
     if (!comps[type])
-        return ImageError (ErrorCode::CompNotLoaded, {{"name", spec.name}});
+        return ImageError::Make (ErrorCode::CompNotLoaded, {{"name_suffix", ImageError::NameSuffix (spec.name)}});
 
     T* component = dynamic_cast<T*> (comps[type].get());
     if (!component)
     {
-        throw ErrorException (Error ({ErrorDomain::ImageConf, ErrorCode::BadArgument},
-            "Requested image component has an unexpected type"));
+        throw ErrorException (Error ({ErrorDomain::Image, ErrorCode::UnexpectedComponentType}, {}));
     }
 
     return component;
 }
 
 template <typename T>
-ResCustom<std::optional<T>, ImageError> Partition::Get (std::string_view name)
+Result<std::optional<T>> Partition::Get (std::string_view name)
 {
     return dispatchByName (name, spec.name, [&] (PartProp prop) { return Get<T> (prop); });
 }
 
 template <typename T>
-ResCustom<std::optional<T>, ImageError> Partition::Get (PartProp prop)
+Result<std::optional<T>> Partition::Get (PartProp prop)
 {
     auto res = RegElement::Get (prop);
     if (!res)
@@ -78,5 +77,5 @@ ResCustom<std::optional<T>, ImageError> Partition::Get (PartProp prop)
     if (T* ptr = std::any_cast<T> (&*val))
         return std::optional<T> (*ptr);
 
-    return ImageError (ErrorCode::PropTypeMismatch, {{"prop", GetPropName (prop)}, {"name", spec.name}});
+    return ImageError::Make (ErrorCode::PropTypeMismatch, {{"prop", GetPropName (prop)}});
 }

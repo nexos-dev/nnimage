@@ -56,6 +56,8 @@ std::string UserErrorFormatter::Format (const Error& err)
 {
     // Start with last message
     std::stringstream out;
+    std::string context = err.MakeContextStr();
+    out << context;
     const ErrorFrame& lastFrame = err.LastFrame();
     out << lastFrame.msg;
 
@@ -75,6 +77,8 @@ std::string TraceErrorFormatter::Format (const Error& err)
 {
     // Start with last message
     std::stringstream out;
+    std::string context = err.MakeContextStr();
+    out << context;
     const ErrorFrame& lastFrame = err.LastFrame();
     out << lastFrame.msg;
 

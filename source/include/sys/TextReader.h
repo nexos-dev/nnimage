@@ -37,10 +37,8 @@ class TextReader
     {
         if (!handle.open (this->file.c_str()))
         {
-            throw ErrorException (Error ({ErrorDomain::None, ErrorCode::FileError},
-                "{}: {}",
-                this->file.filename().string(),
-                handle.getError()));
+            throw ErrorException (Error ({ErrorDomain::None, ErrorCode::TextFileOpen},
+                {{"file", getFileName()}, {"error", handle.getError()}}));
         }
     }
     TextReader (std::string file, std::string forceEnc = "")
@@ -65,19 +63,16 @@ class TextReader
                 {
                     // If chardet couldn't detect the encoding and the user didn't specify one, warn the user
                     // and force ASCII
-                    ErrorOutput::The()->Report (
-                        Error ({ErrorDomain::None, ErrorCode::EncMismatch, ErrorLog::Normal, ErrorSeverity::Warning},
-                            "unable to detect character set for file {}, assuming ASCII",
-                            file.string()));
+                    ErrorOutput::The()->Report (Error (
+                        {ErrorDomain::None, ErrorCode::EncodingUndetected, ErrorLog::Normal, ErrorSeverity::Warning},
+                        {{"file", file.string()}}));
 
                     fileEnc = "ASCII";
                 }
                 else
                 {
                     // If the user didn't want us to force the encoding, then just do as they say
-                    return Error ({ErrorDomain::None, ErrorCode::EncMismatch},
-                        "Unable to detect character encoding of file \"{}\"",
-                        file.filename().string());
+                    return Error ({ErrorDomain::None, ErrorCode::EncMismatch}, {{"file", getFileName()}});
                 }
             }
         }
@@ -87,13 +82,18 @@ class TextReader
         Iconv conv (fileEnc, "UTF-8");
         if (!conv.Convert (data, buf))
         {
-            return Error ({ErrorDomain::None, ErrorCode::SysFailure}, "failed to convert file: {}", strerror (errno));
+            return Error ({ErrorDomain::None, ErrorCode::FileConvFailure}, {{"file", getFileName()}})
+                .Add ({ErrorDomain::None, ErrorCode::SysFailure}, {{"error", std::strerror (errno)}});
         }
         // We are done as iconv put it in the output buffer for us
         return buf;
     }
 
   private:
+    std::string getFileName()
+    {
+        return file.filename().string();
+    }
     std::filesystem::path file;
     std::string fileEnc;
     MemoryMapped handle;

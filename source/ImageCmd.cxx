@@ -40,7 +40,7 @@ Result<LexToken> ImageCmd::getOneToken (std::string val)
 ResNone ImageCmd::assertIsEnd (LexToken& tok)
 {
     if (tok.type != TokenType::Eof)
-        return Error ({ErrorDomain::Option, ErrorCode::BadArgument}, "Extraneous token");
+        return Error ({ErrorDomain::Option, ErrorCode::ExtraneousToken}, {});
     return Success();
 }
 
@@ -64,7 +64,7 @@ Result<T> ImageCmd::getTokenValue (std::string val, TokenType type)
 
     LexToken tok = std::move (resTok.Value());
     if (tok.type != type)
-        return Error ({ErrorDomain::Option, ErrorCode::BadArgument}, "Specified in invalid format");
+        return Error ({ErrorDomain::Option, ErrorCode::InvalidArgumentFormat}, {});
 
     return std::get<T> (tok.val);
 }
@@ -157,7 +157,7 @@ Result<ImageVal> ImageCmd::convertStr (std::string val)
             return ImageVal (std::move (filePath));
         }
         default:
-            return Error ({ErrorDomain::Option, ErrorCode::BadArgument}, "Specified in invalid format");
+            return Error ({ErrorDomain::Option, ErrorCode::InvalidArgumentFormat}, {});
     }
     return ImageVal::FromToken (std::move (token));
 }
@@ -207,7 +207,7 @@ ResNone ImageCmd::processProps (Image& image)
     {
         auto valRes = KeyVal::Parse (prop);
         if (!valRes.has_value())
-            return Error ({ErrorDomain::Option, ErrorCode::BadArgument}, "Malformed image property");
+            return Error ({ErrorDomain::Option, ErrorCode::MalformedImageProperty}, {});
 
         const auto& vals = *valRes;
         // We can only have only value because cxxopts comma splits, ensure that
@@ -238,12 +238,12 @@ ResNone ImageCmd::processPartitions (Image& image)
         // Parse it
         auto resParse = KeyVal::Parse (partSpec);
         if (!resParse.has_value())
-            return Error ({ErrorDomain::Option, ErrorCode::BadArgument}, "Malformed partition specification");
+            return Error ({ErrorDomain::Option, ErrorCode::MalformedPartitionSpec}, {});
 
         const auto& vals = *resParse;
 
         if (vals.empty())
-            return Error ({ErrorDomain::Option, ErrorCode::BadArgument}, "Malformed partition specification");
+            return Error ({ErrorDomain::Option, ErrorCode::MalformedPartitionSpec}, {});
 
         for (const auto& partProp : vals)
         {

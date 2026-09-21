@@ -223,14 +223,13 @@ TEST_CASE ("SimpleLexer reports an unterminated string as a lex error")
     CHECK (res.Error().RootFrame().msg.find ("Unexpected EOF") != std::string::npos);
 }
 
-TEST_CASE ("SimpleLexer reports an invalid character as a lex error including file and line")
+TEST_CASE ("SimpleLexer reports an invalid character with file and line context")
 {
     SimpleLexer lexer ("myfile.conf", "\n\n$");
     auto res = lexer.NextToken();
     REQUIRE_FALSE (res);
-    const std::string& msg = res.Error().RootFrame().msg;
-    CHECK (msg.find ("myfile.conf:3:") != std::string::npos);
-    CHECK (msg.find ("Invalid character \"$\"") != std::string::npos);
+    CHECK (res.Error().MakeContextStr() == "myfile.conf:3: ");
+    CHECK (res.Error().RootFrame().msg.find ("Invalid character \"$\"") != std::string::npos);
 }
 
 TEST_CASE ("SimpleLexer skips single-line comments and continues lexing")

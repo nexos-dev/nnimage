@@ -25,7 +25,7 @@
 // Pardon all the template noise
 
 template <typename Element, typename Property, typename Registry>
-ImageResult RegElement<Element, Property, Registry>::Set (Property prop, const ImageVal& val)
+ResNone RegElement<Element, Property, Registry>::Set (Property prop, const ImageVal& val)
 {
     const auto& registry = getRegistry();
     auto it = registry.find (prop);
@@ -48,7 +48,7 @@ ImageResult RegElement<Element, Property, Registry>::Set (Property prop, const I
 }
 
 template <typename Element, typename Property, typename Registry>
-ResCustom<std::optional<std::any>, ImageError> RegElement<Element, Property, Registry>::Get (Property prop)
+Result<std::optional<std::any>> RegElement<Element, Property, Registry>::Get (Property prop)
 {
     const auto& registry = getRegistry();
     auto it = registry.find (prop);
@@ -59,7 +59,7 @@ ResCustom<std::optional<std::any>, ImageError> RegElement<Element, Property, Reg
 }
 
 template <typename Element, typename Property, typename Registry>
-ResCustom<bool, ImageError> RegElement<Element, Property, Registry>::IsSet (Property prop)
+Result<bool> RegElement<Element, Property, Registry>::IsSet (Property prop)
 {
     auto value = Get (prop);
     if (!value)
@@ -68,7 +68,7 @@ ResCustom<bool, ImageError> RegElement<Element, Property, Registry>::IsSet (Prop
 }
 
 template <typename Element, typename Property, typename Registry>
-ImageResult RegElement<Element, Property, Registry>::SetDefaults()
+ResNone RegElement<Element, Property, Registry>::SetDefaults()
 {
     for (const auto& [prop, conf] : getRegistry())
     {
@@ -95,7 +95,7 @@ BackendType Image::GetBackendType (BackendType suggestion) const
     return BackendType::None;
 }
 
-ImageResult Image::AddComponent (std::unique_ptr<Component> comp)
+ResNone Image::AddComponent (std::unique_ptr<Component> comp)
 {
     assert (comp);
 
@@ -103,7 +103,7 @@ ImageResult Image::AddComponent (std::unique_ptr<Component> comp)
     assert (type != CompType::Max);
 
     if (comps[type])
-        return ImageError (ErrorCode::ComponentOverwrite, "Can't overwrite component");
+        return ImageError::Make (ErrorCode::ComponentOverwrite, {});
 
     comps[type] = std::move (comp);
     return Success();
@@ -114,12 +114,12 @@ bool Image::CheckComponent (CompType type)
     return type != CompType::Max && comps[type] != nullptr;
 }
 
-ImageResult Image::Set (std::string_view name, const ImageVal& val)
+ResNone Image::Set (std::string_view name, const ImageVal& val)
 {
     return dispatchByName (name, spec.name, [&] (ImgProp prop) { return Set (prop, val); });
 }
 
-ImageResult Image::Set (ImgProp prop, const ImageVal& val)
+ResNone Image::Set (ImgProp prop, const ImageVal& val)
 {
     // First try component
     auto comp = resolveComponent (prop);
@@ -136,12 +136,12 @@ ImageResult Image::Set (ImgProp prop, const ImageVal& val)
     return Success();
 }
 
-ResCustom<bool, ImageError> Image::IsSet (std::string_view name)
+Result<bool> Image::IsSet (std::string_view name)
 {
     return dispatchByName (name, spec.name, [&] (ImgProp prop) { return IsSet (prop); });
 }
 
-ResCustom<bool, ImageError> Image::IsSet (ImgProp prop)
+Result<bool> Image::IsSet (ImgProp prop)
 {
     auto comp = resolveComponent (prop);
     if (comp.has_value())
@@ -155,7 +155,7 @@ ResCustom<bool, ImageError> Image::IsSet (ImgProp prop)
     return RegElement::IsSet (prop);
 }
 
-ImageResult Image::SetDefaults()
+ResNone Image::SetDefaults()
 {
     // Apply base level defaults
     auto res = RegElement::SetDefaults();
@@ -177,7 +177,7 @@ ImageResult Image::SetDefaults()
     return Success();
 }
 
-ImageResult Image::Finalize()
+ResNone Image::Finalize()
 {
     // Handle all deferred properties now
     auto defRes = runDeferred();
@@ -204,7 +204,7 @@ ImageResult Image::Finalize()
     return Success();
 }
 
-ResCustom<std::optional<std::any>, ImageError> Image::getInternal (ImgProp prop)
+Result<std::optional<std::any>> Image::getInternal (ImgProp prop)
 {
     std::optional<std::any> val{};
     auto comp = resolveComponent (prop);
@@ -235,7 +235,7 @@ ResCustom<std::optional<std::any>, ImageError> Image::getInternal (ImgProp prop)
 }
 
 template <typename CompT>
-ImageResult Image::setCompProp (ImgProp prop, const ImageVal& val)
+ResNone Image::setCompProp (ImgProp prop, const ImageVal& val)
 {
     std::string id = std::string (*val.Get<ImageId>());
     auto comp = CompT::Factory (id, *this);
@@ -274,7 +274,7 @@ std::optional<Component*> Image::resolveComponent (ImgProp prop)
     return comp;
 }
 
-ImageResult Image::runDeferred()
+ResNone Image::runDeferred()
 {
     for (const auto& prop : deferredProps)
     {
@@ -287,21 +287,21 @@ ImageResult Image::runDeferred()
     return Success();
 }
 
-ImageResult Image::validate()
+ResNone Image::validate()
 {
     // Ensure a partition exists
     if (parts.size() < 1)
-        return ImageError (ErrorCode::MissingPart, {{"name", spec.name}});
+        return ImageError::Make (ErrorCode::MissingPart, {{"name_suffix", ImageError::NameSuffix (spec.name)}});
     return Success();
 }
 
 // Partition functions
-ImageResult Partition::Set (std::string_view name, const ImageVal& val)
+ResNone Partition::Set (std::string_view name, const ImageVal& val)
 {
     return dispatchByName (name, spec.name, [&] (PartProp prop) { return Set (prop, val); });
 }
 
-ResCustom<bool, ImageError> Partition::IsSet (std::string_view name)
+Result<bool> Partition::IsSet (std::string_view name)
 {
     return dispatchByName (name, spec.name, [&] (PartProp prop) { return IsSet (prop); });
 }
@@ -336,12 +336,51 @@ const CompConfRegistry& Component::getRegistry()
             // We throw here as this is a programming error, but I don't really want to assert it
             // in case it did seep through
             if (mergedRegistry.find (conf.first) != mergedRegistry.end())
-                throw ErrorException (ImageError (ErrorCode::PropConflict, ""));
+                throw ErrorException (ImageError::Make (ErrorCode::PropConflict, {}));
 
             mergedRegistry.insert (conf);
         }
     }
     return mergedRegistry;
+}
+
+// ImageVal stuff
+template <class... Ts>
+struct overloaded : Ts...
+{
+    using Ts::operator()...;
+};
+
+Result<ImageVal> ImageVal::FromToken (LexToken tok)
+{
+    return std::visit (overloaded{[&] (const std::string& x) -> Result<ImageVal> {
+                                      if (tok.type == TokenType::Identifier)
+                                          return ImageVal (ImageId (std::move (x)), tok.line);
+                                      else
+                                          return ImageVal (std::move (x), tok.line);
+                                  },
+                           [&] (uint64_t x) -> Result<ImageVal> { return ImageVal (x, tok.line); },
+                           [&] (bool x) -> Result<ImageVal> { return ImageVal (x, tok.line); },
+                           [&] (const LexNumId& x) -> Result<ImageVal> {
+                               ImageNumId numId = ImageNumId (x.num, x.id);
+                               auto res = numId.Parse();
+                               if (!res)
+                                   return res.Error();
+                               return ImageVal (numId);
+                           }},
+        tok.val);
+}
+
+ImageVal ImageVal::Cast (ImageValIdx wantedType) const
+{
+    // Currently, the only valid cast is from ID->std::string
+    return std::visit (overloaded{[&] (const ImageId& x) -> ImageVal {
+                                      if (wantedType == ImageVal::GetTypeIndex<std::string>())
+                                          return ImageVal (std::string (x), line);
+                                      return ImageVal::Invalid;
+                                  },
+                           [&] (auto&&) -> ImageVal { return ImageVal::Invalid; }},
+        val);
 }
 
 // Now begins the all-important registries
@@ -359,6 +398,18 @@ const std::unordered_map<ImgProp, CompType> Image::keyMap = [](){
 
 // Keyword tables
 
+const std::unordered_map<std::string_view, size_t> ImageNumId::mulMap = {
+    {"B", 1},
+    {"KiB", 1024},
+    {"KB", 1000},
+    {"MiB", 1024 * 1024},
+    {"MB", 1000 * 1000},
+    {"GiB", 1024 * 1024 * 1024},
+    {"GB", 1000 * 1000 * 1000},
+    {"TiB", static_cast<size_t> (1024) * 1024 * 1024 * 1024},
+    {"TB", static_cast<size_t> (1000) * 1000 * 1000 * 1000}
+};
+
 const NameRegistry<BootMode> Image::bootModes = {
     {"none", BootMode::None},
     {"bios", BootMode::Bios},
@@ -373,7 +424,7 @@ const ImgConfRegistry Image::baseRegistry = {
     {ImgProp::Size,
         {ImageVal::GetTypeIndex<ImageNumId>(),
             std::monostate{},
-            [] (Image& img, const ImageVal& val) -> ImageResult 
+            [] (Image& img, const ImageVal& val) -> ResNone
             {
                 img.spec.size = (*val.Get<ImageNumId>()).Get();
                 return Success();
@@ -389,7 +440,7 @@ const ImgConfRegistry Image::baseRegistry = {
     {ImgProp::BootMode,
         {ImageVal::GetTypeIndex<ImageId>(),
             ImageId ("none"),
-            [] (Image& img, const ImageVal& val) -> ImageResult
+            [] (Image& img, const ImageVal& val) -> ResNone
             {
                 std::string id = std::move((*val.Get<ImageId>()).Str());
                 BootMode mode = bootModes.Resolve (id);
@@ -410,7 +461,7 @@ const ImgConfRegistry Image::baseRegistry = {
     {ImgProp::PartType,
         {ImageVal::GetTypeIndex<ImageId>(),
             ImageId ("gpt"),
-            [] (Image& img, const ImageVal& val) -> ImageResult
+            [] (Image& img, const ImageVal& val) -> ResNone
             {
                 return img.setCompProp<PartTypeComp> (ImgProp::PartType, val);
             },
@@ -427,7 +478,7 @@ const ImgConfRegistry Image::baseRegistry = {
     {ImgProp::BootLoad,
         {ImageVal::GetTypeIndex<ImageId>(),
             ImageId ("none"),
-            [] (Image& img, const ImageVal& val) -> ImageResult
+            [] (Image& img, const ImageVal& val) -> ResNone
             {
                 return img.setCompProp<BootLoadComp> (ImgProp::BootLoad, val);
             },
@@ -451,7 +502,7 @@ const PartConfRegistry Partition::registry = {
     {PartProp::Start,
         {ImageVal::GetTypeIndex<ImageNumId>(),
             std::monostate{},
-            [] (Partition& part, const ImageVal& val) -> ImageResult 
+            [] (Partition& part, const ImageVal& val) -> ResNone
             {
                 part.spec.start = (*val.Get<ImageNumId>()).Get();
                 return Success();
@@ -467,7 +518,7 @@ const PartConfRegistry Partition::registry = {
     {PartProp::Size,
         {ImageVal::GetTypeIndex<ImageNumId>(),
             std::monostate{},
-            [] (Partition& part, const ImageVal& val) -> ImageResult 
+            [] (Partition& part, const ImageVal& val) -> ResNone
             {
                 part.spec.size = (*val.Get<ImageNumId>()).Get();
                 return Success();
@@ -483,7 +534,7 @@ const PartConfRegistry Partition::registry = {
     {PartProp::Format,
         {ImageVal::GetTypeIndex<ImageId>(),
             ImageId (""),
-            [] (Partition& part, const ImageVal& val) -> ImageResult 
+            [] (Partition& part, const ImageVal& val) -> ResNone
             {
                 part.spec.format = std::move((*val.Get<ImageId>()).Str());
                 return Success();
@@ -499,7 +550,7 @@ const PartConfRegistry Partition::registry = {
     {PartProp::Prefix,
         {ImageVal::GetTypeIndex<std::string>(),
             "",
-            [] (Partition& part, const ImageVal& val) -> ImageResult 
+            [] (Partition& part, const ImageVal& val) -> ResNone
             {
                 part.spec.prefix = *val.Get<std::string>();
                 return Success();
@@ -515,7 +566,7 @@ const PartConfRegistry Partition::registry = {
     {PartProp::IsBoot,
         {ImageVal::GetTypeIndex<bool>(),
             false,
-            [] (Partition& part, const ImageVal& val) -> ImageResult 
+            [] (Partition& part, const ImageVal& val) -> ResNone
             {
                 part.spec.isBoot = *val.Get<bool>();
                 return Success();

@@ -31,12 +31,12 @@ std::unique_ptr<PartTypeComp> PartTypeComp::Factory (std::string_view type, Imag
     return factory[typeVal](owner);
 }
 
-ImageResult PartTypeComp::Validate()
+ResNone PartTypeComp::Validate()
 {
     return Success();
 }
 
-ImageResult IsoPartComp::Validate()
+ResNone IsoPartComp::Validate()
 {
     assert (bootEmu != IsoBootEmu::Max);
     // If use boot emulation other than noemu, check that an image was provided and resolved
@@ -44,8 +44,7 @@ ImageResult IsoPartComp::Validate()
     {
         if (bootImageName.empty())
         {
-            // TODO: custom ImageError handlers
-            return ImageError (ErrorCode::ImgInvalid, "ISO9660 image missing boot image");
+            return ImageError::Invalid ("ISO9660 image missing boot image");
         }
         assert (bootImage);
 
@@ -55,9 +54,8 @@ ImageResult IsoPartComp::Validate()
         {
             if (!owner.GetName().empty())
             {
-                res.Error().Add ({ErrorDomain::ImageConf, ErrorCode::ImgInvalid},
-                    "Failed to query boot image for image \"{}\"",
-                    owner.GetName());
+                res.Error().Add (
+                    ImageError::Invalid (std::format ("Failed to query boot image for image \"{}\"", owner.GetName())));
             }
             return res.Error();
         }
@@ -69,9 +67,8 @@ ImageResult IsoPartComp::Validate()
         if (it == validTypes.end())
         {
             // TODO better diagnostic here
-            return ImageError (ErrorCode::ImgInvalid,
-                "Partition layout \"" + getTypeName (type) +
-                    "\" is invalid for ISO9660 image given specified boot emulation");
+            return ImageError::Invalid ("Partition layout \"" + getTypeName (type) +
+                                        "\" is invalid for ISO9660 image given specified boot emulation");
         }
     }
     else
@@ -79,8 +76,7 @@ ImageResult IsoPartComp::Validate()
         // Noemu can't accept a boot image
         if (!bootImageName.empty())
         {
-            return ImageError (ErrorCode::ImgInvalid,
-                "ISO9660 image can't take boot image given specified boot emulation");
+            return ImageError::Invalid ("ISO9660 image can't take boot image given specified boot emulation");
         }
     }
     return Success();
@@ -106,7 +102,7 @@ const CompConfRegistry IsoPartComp::registry = {
     {ImgProp::BootEmu, 
         {ImageVal::GetTypeIndex<ImageId>(),
             ImageId ("noemu"),
-            [] (Component& comp, const ImageVal& val) -> ImageResult
+            [] (Component& comp, const ImageVal& val) -> ResNone
             {
                 IsoPartComp& isoComp = derived<IsoPartComp> (comp);
                 // Resolve the ID
@@ -132,7 +128,7 @@ const CompConfRegistry IsoPartComp::registry = {
     {ImgProp::BootImage,
         {ImageVal::GetTypeIndex<ImageId>(),
             "",
-            [] (Component& comp, const ImageVal& val) -> ImageResult
+            [] (Component& comp, const ImageVal& val) -> ResNone
             {
                 IsoPartComp& isoComp = derived<IsoPartComp&> (comp);
                 isoComp.bootImageName = *val.Get<std::string>();

@@ -23,6 +23,7 @@
 #include "include/Options.h"
 #include "include/OptionParser.h"
 #include "include/SimpleLexer.h"
+#include "include/ImageParser.h"
 
 #include <memory>
 #include <string>
@@ -54,7 +55,7 @@ class FrontendOptions : public Options
   private:
     Error makeOptionError (std::string_view msg)
     {
-        return Error ({ErrorDomain::Option, ErrorCode::InvalidOption}, msg);
+        return Error ({ErrorDomain::Option, ErrorCode::InvalidOption}, {{"message", std::string (msg)}});
     }
 };
 
@@ -82,7 +83,8 @@ class Frontend
     ResNone addImage (std::unique_ptr<Image> image)
     {
         if (images.find (image->GetName()) != images.end())
-            return ImageError (ErrorCode::DuplicateImage, {{"name", image->GetName()}});
+            return ImageError::Make (ErrorCode::DuplicateImage,
+                {{"name_suffix", ImageError::NameSuffix (image->GetName())}});
 
         images.emplace (image->GetName(), std::move (image));
         return Success();
@@ -125,7 +127,7 @@ class ImageCmd : public Frontend
 
     Error& badArgument (Error& e, std::string_view prop)
     {
-        return e.Add ({ErrorDomain::Option, ErrorCode::BadArgument}, "Unable to process \"{}\"", prop);
+        return e.Add ({ErrorDomain::Option, ErrorCode::UnableToProcessOption}, {{"option", std::string (prop)}});
     }
 };
 
@@ -137,6 +139,16 @@ class ImageConf : public Frontend
     ImageConf (FrontendOptions& opts) : Frontend (opts)
     {}
     ResNone Parse();
+
+  private:
+    Result<std::string> readConfFile();
+
+    Error parseFailed (ErrorLog verbosity = ErrorLog::Normal)
+    {
+        return ImageError::Make (ErrorCode::ImgParseFailed, {}, verbosity);
+    }
+
+    ImageParser parser;
 };
 
 #endif

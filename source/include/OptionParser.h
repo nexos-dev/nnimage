@@ -97,7 +97,7 @@ class OptionsParser
 
     void OptError (std::string_view msg)
     {
-        Log::The().Error (std::format ("{}\nRun \"{}\" --help for usage", msg, argv[0]));
+        Log::The().Error (std::format ("{}\nRun \"{} --help\" for usage", msg, argv[0]));
     }
 
     ResNone CheckUnusedOpts();
@@ -116,9 +116,9 @@ class OptionsParser
 
     // Pre-defined strings
     // FIXME: change to string_view
-    inline static const std::string progHelp = "An all-in-one, powerful, easy to use disk image manager";
-    inline static const std::string usage = "<operation> [-f conf_file] [-i image] [-o output] [options]";
-    inline static const std::string explanation =
+    inline static std::string_view progHelp = "An all-in-one, powerful, easy to use disk image manager";
+    inline static std::string_view usage = "<operation> [-f conf_file] [-i image] [-o output] [options]";
+    inline static std::string_view explanation =
         "\nTakes configuration found in conf_file, or configuration specified on the command "
         "line and outputs it into specified output file.\nFor mult-image configurations, "
         "use -i to specify which images to generate";

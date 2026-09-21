@@ -37,7 +37,7 @@ Result<std::filesystem::path> Dispatch::getLogDir()
     if (!std::filesystem::exists (dir))
     {
         if (!std::filesystem::create_directories (dir))
-            return Error ({ErrorDomain::Conf, ErrorCode::PathError}, "unable to create log directories");
+            return Error ({ErrorDomain::Conf, ErrorCode::DirectoryCreate}, {});
     }
     return dir;
 }

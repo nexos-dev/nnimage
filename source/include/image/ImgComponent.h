@@ -54,7 +54,7 @@ class Component : public RegElement<Component, ImgProp, CompConfRegistry>
         return owner;
     }
 
-    virtual ImageResult Validate() = 0;
+    virtual ResNone Validate() = 0;
 
   protected:
     Component (CompType type, Image& img)
@@ -102,7 +102,7 @@ class PartTypeComp : public Component
 
     static std::unique_ptr<PartTypeComp> Factory (PartType type, Image& owner);
     static std::unique_ptr<PartTypeComp> Factory (std::string_view type, Image& owner);
-    virtual ImageResult Validate() override;
+    virtual ResNone Validate() override;
 
   protected:
     PartTypeComp (PartType type, Image& img) : type{type}, Component{CompType::PartType, img}
@@ -142,7 +142,7 @@ class BootLoadComp : public Component
 
     static std::unique_ptr<BootLoadComp> Factory (BootLoadType type, Image& owner);
     static std::unique_ptr<BootLoadComp> Factory (std::string_view type, Image& owner);
-    virtual ImageResult Validate() override;
+    virtual ResNone Validate() override;
 
   protected:
     BootLoadComp (BootLoadType type, Image& img) : type{type}, Component{CompType::Boot, img}

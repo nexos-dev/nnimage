@@ -1,5 +1,5 @@
 /*
-    ImgError.h - contains ImageError type
+    ImgError.h - contains image error construction helpers
     Copyright 2026 Jedidiah Thompson
 
     Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,89 +19,39 @@
 #define IMGERROR_H
 
 #include "include/Error.h"
-#include "include/StringHash.h"
 
-#include <any>
+#include <format>
 #include <initializer_list>
 #include <string>
 #include <string_view>
-#include <unordered_map>
-#include <utility>
 
-using ImageErrProp = std::pair<std::string, std::any>;
-
-class ImageError : public Error
+class ImageError
 {
   public:
-    ImageError() = default;
-    ImageError (ErrorCode code, std::initializer_list<ImageErrProp> args) : Error ({ErrorDomain::ImageConf, code}, "")
+    static Error Make (ErrorCode code,
+        std::initializer_list<ErrorProp> props,
+        ErrorLog log = ErrorLog::Normal,
+        ErrorSeverity severity = ErrorSeverity::Error)
     {
-        frame = &frames[frames.size() - 1];
-        keys.insert (args.begin(), args.end());
-        makeMessage (*frame);
-    }
-    ImageError (ErrorCode code, std::string msg) : Error ({ErrorDomain::ImageConf, code}, std::move (msg))
-    {
-        frame = &frames[frames.size() - 1];
+        return Error ({ErrorDomain::Image, code, log, severity}, props);
     }
 
-    ImageError& AddKey (std::initializer_list<ImageErrProp> args)
+    static std::string NameSuffix (std::string_view name)
     {
-        keys.insert (args.begin(), args.end());
-        makeMessage (*frame);    // Reset the message
-        return *this;
+        if (name.empty())
+            return {};
+        return std::format (" \"{}\"", name);
     }
 
-  private:
-    using ErrorKeyMap = std::unordered_map<std::string, std::any, StringHash, std::equal_to<>>;
-
-    void makeMessage (ErrorFrame& frame);
-
-    void assertKeys (const std::vector<std::string>& keys)
+    static Error InvalidId (std::string_view prop, std::string_view name, std::string_view id)
     {
-        for (const auto& key : keys)
-            assert (this->keys.find (key) != this->keys.end());
+        return Make (ErrorCode::InvalidId,
+            {{"prop", std::string (prop)}, {"name_suffix", NameSuffix (name)}, {"id", std::string (id)}});
     }
-
-    std::string_view getString (std::string_view key)
+    static Error Invalid (std::string_view message, ErrorLog log = ErrorLog::Normal)
     {
-        auto it = keys.find (key);
-        assert (it != keys.end());
-        return std::string_view (std::any_cast<const std::string&> (it->second));
+        return Make (ErrorCode::ImgInvalid, {{"message", std::string (message)}}, log);
     }
-    std::string_view getString (ErrorKeyMap::iterator it)
-    {
-        return std::string_view (std::any_cast<const std::string&> (it->second));
-    }
-
-    // Helper for adding name to image error output. If image is anonymous, it will not add anything
-    std::string getName()
-    {
-        std::string_view name = getString ("name");
-        if (!name.empty())
-        {
-            std::string result;
-            result.reserve (name.size() + 3);
-            result.append (" \"");
-            result.append (name);
-            result.push_back ('"');
-            return result;
-        }
-        return {};
-    }
-
-    template <typename T>
-    T getValue (std::string_view key)
-    {
-        auto it = keys.find (key);
-        assert (it != keys.end());
-        return std::any_cast<T> (it->second);
-    }
-
-    ErrorFrame* frame;
-    ErrorKeyMap keys;
 };
-
-using ImageResult = ResCustom<NoResult, ImageError>;
 
 #endif

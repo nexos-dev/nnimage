@@ -31,7 +31,7 @@ std::unique_ptr<BootLoadComp> BootLoadComp::Factory (std::string_view type, Imag
     return bootFactory[typeVal](owner);
 }
 
-ImageResult BootLoadComp::Validate()
+ResNone BootLoadComp::Validate()
 {
     return Success();
 }
