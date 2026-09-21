@@ -45,8 +45,6 @@ include(source/comps/Comps.cmake)
 
 option(NNIMAGE_ENABLE_TESTS "Enable tests" OFF)
 
-option(NNIMAGE_ENABLE_PROFILING "Enable gprof output" OFF)
-
 set(NNIMAGE_ENABLED_BACKENDS "krun;xorriso" CACHE STRING "Comma-separated list of enabled backends (krun, guestfs, xorriso, loopback)")
 
 set(NNIMAGE_DEFAULT_BACKEND "krun" CACHE STRING "Default backend to use when creating images (krun, guestfs, xorriso, loopback)")
@@ -250,11 +248,6 @@ endif()
 # Create the program
 add_executable(nnimage source/main.cxx)
 target_link_libraries(nnimage PRIVATE libnnimage libbackend)
-
-if(NNIMAGE_ENABLE_PROFILING)
-    target_compile_options(nnimage PRIVATE -pg)
-    target_link_options(nnimage PRIVATE -pg)
-endif()
 
 target_include_directories(libnnimage PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
 target_include_directories(libnnimage PUBLIC source)
