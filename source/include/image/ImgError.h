@@ -40,7 +40,7 @@ class ImageError
     {
         if (name.empty())
             return {};
-        return std::format (" \"{}\"", name);
+        return std::format (" {}", name);
     }
 
     static Error InvalidId (std::string_view prop, std::string_view name, std::string_view id)

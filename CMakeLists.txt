@@ -25,6 +25,8 @@ project(nnimage VERSION 0.1.0 LANGUAGES CXX)
 # Yes we enable the language in project but GNUInstallDirs complains without this
 enable_language(CXX)
 
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+
 # Default to debug build
 if(NOT DEFINED CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Debug)

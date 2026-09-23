@@ -6,7 +6,8 @@
     "C_Cpp.default.includePath": [
         "external/include",
         "build",
-        "source"
+        "source",
+        "/opt/homebrew/include"
     ],
     "C_Cpp.default.cppStandard": "c++23",
     "editor.formatOnSave": true,

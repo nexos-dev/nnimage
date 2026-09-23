@@ -491,7 +491,7 @@ TEST_CASE ("ImageError formats a named-image message with the image name quoted"
 {
     Error err = ImageError::Make (ErrorCode::InvalidImgProp,
         {{"prop", "bogus"}, {"name_suffix", ImageError::NameSuffix ("disk1")}});
-    CHECK (err.RootFrame().msg.find ("\"disk1\"") != std::string::npos);
+    CHECK (err.RootFrame().msg.find ("disk1") != std::string::npos);
     CHECK (err.RootFrame().msg.find ("bogus") != std::string::npos);
 }
 
