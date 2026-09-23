@@ -234,7 +234,8 @@ if(NNIMAGE_ENABLE_TESTS)
                                 tests/SimpleLexer.cxx
                                 tests/ConfParser.cxx
                                 tests/Options.cxx
-                                tests/ImageCmd.cxx)
+                                tests/ImageCmd.cxx
+                                tests/ImageConf.cxx)
     target_link_libraries(nnimage_test PRIVATE libnnimage libbackend)
 
     # Add doctests to CTest

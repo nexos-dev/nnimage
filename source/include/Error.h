@@ -463,6 +463,11 @@ class ResCustom
         assert (value.has_value());
         return *value;
     }
+    const T& Value() const
+    {
+        assert (value.has_value());
+        return *value;
+    }
     E& Error()
     {
         assert (error.has_value());

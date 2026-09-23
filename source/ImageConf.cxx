@@ -17,6 +17,226 @@
 
 #include "include/Frontend.h"
 #include "include/sys/TextReader.h"
+#include "include/ImageParser.h"
+
+// Image parser
+
+Error ImageParser::parseError (ImgParseError error, std::string_view extra, std::string_view extra2, int line)
+{
+    std::string msg;
+    switch (error)
+    {
+        case ImgParseError::UnexpectedToken:
+            msg = std::format ("Unexpected token \"{}\"", extra);
+            if (!extra2.empty())
+                msg += std::format (" (expected \"{}\")", extra2);
+            break;
+        case ImgParseError::InvalidList:
+            msg = std::format ("Invalid token type \"{}\" specified for list", extra);
+            break;
+        default:
+            assert (false);
+    }
+
+    return makeError (ErrorCode::ImgParseError, std::move (msg), line);
+}
+
+void ImageParser::parseWarning (ImgParseError error, std::string_view extra, std::string_view extra2, int line)
+{
+    std::string msg;
+    switch (error)
+    {
+        case ImgParseError::PropOverwrite:
+            msg = std::format ("Duplicate property \"{}\" on block \"{}\"", extra, extra2);
+            break;
+        default:
+            assert (false);
+    }
+
+    ErrorOutput::The()->Report (makeError (ErrorCode::ImgParseWarning, std::move (msg), line, ErrorSeverity::Warning));
+}
+
+Result<ImageList> ImageParser::processList (LexToken first)
+{
+    ImageList list;
+    LexToken cur = std::move (first);
+    while (true)
+    {
+        // Only identifier lists are supported. Give a more descriptive error instead of just "unexpected token"
+        // in that case
+        if (isValType (cur.type) && cur.type != TokenType::Identifier)
+            return parseError (ImgParseError::InvalidList, lexer.NameFromToken (cur), {}, cur.line);
+
+        else if (cur.type != TokenType::Identifier)
+            return parseError (ImgParseError::UnexpectedToken, lexer.NameFromToken (cur), {}, cur.line);
+
+        list.push_back (std::move (getTokValue<std::string> (cur)));
+
+        auto resTok = nextToken();
+        if (!resTok)
+            return resTok.Error();
+        cur = std::move (resTok.Value());
+
+        // This must be a seperator
+        if (cur.type == TokenType::Semicolon)
+            break;    // Break out if a semicolon
+        else if (cur.type != TokenType::Comma)
+            return parseError (ImgParseError::UnexpectedToken, lexer.NameFromToken (cur), {}, cur.line);
+
+        // Get the next list entry
+        resTok = nextToken();
+        if (!resTok)
+            return resTok.Error();
+        cur = std::move (resTok.Value());
+    }
+    return list;
+}
+
+Result<ImgParseProp> ImageParser::processProp (LexToken& startTok)
+{
+    ImgParseProp prop;
+    prop.propName = getTokValue<std::string> (startTok);
+    prop.line = startTok.line;
+
+    // Next we need a colon
+    auto resTok = expectToken (TokenType::Colon);
+    if (!resTok)
+        return resTok.Error();
+
+    ImageVal val{};
+
+    // Now process the value
+    resTok = nextToken();
+    if (!resTok)
+        return resTok.Error();
+    LexToken tok = std::move (resTok.Value());
+
+    // Now determine if this is a list or not
+    auto resPeek = peekToken();
+    if (!resPeek)
+        return resPeek.Error();
+
+    if (resPeek.Value() == TokenType::Comma)
+    {
+        auto resList = processList (std::move (tok));
+        if (!resList)
+            return resList.Error();
+        val = ImageVal (resList.Value());
+    }
+    else
+    {
+        // Determine what kind of value this is
+        switch (tok.type)
+        {
+            case TokenType::Identifier:
+                val = ImageVal (ImageId (getTokValue<std::string> (tok)), tok.line);
+                break;
+            case TokenType::String:
+                val = ImageVal (getTokValue<std::string> (tok), tok.line);
+                break;
+            case TokenType::Number:
+                val = ImageVal (getTokValue<uint64_t> (tok), tok.line);
+                break;
+            case TokenType::NumId: {
+                LexNumId id = getTokValue<LexNumId> (tok);
+                ImageNumId numId = ImageNumId (id.num, std::move (id.id));
+                auto resNumId = numId.Parse();
+                // TODO: hide this away
+                if (!resNumId)
+                {
+                    return resNumId.Error().AddContext (
+                        {{"file", std::string (lexer.GetFileName())}, {"line", std::to_string (tok.line)}});
+                }
+                val = ImageVal (numId);
+                break;
+            }
+            case TokenType::True:
+                val = ImageVal (true);
+                break;
+            case TokenType::False:
+                val = ImageVal (false);
+                break;
+            default:
+                return parseError (ImgParseError::UnexpectedToken, lexer.NameFromToken (tok), {}, tok.line);
+        }
+        // Require a semicolon now
+        resTok = expectToken (TokenType::Semicolon);
+        if (!resTok)
+            return resTok.Error();
+    }
+    prop.val = std::move (val);
+
+    return prop;
+}
+
+Result<ImgParseBlock> ImageParser::processBlock (LexToken& startTok)
+{
+    ImgParseBlock block;
+    block.line = startTok.line;
+    block.type = getTokValue<std::string> (startTok);
+
+    // Next we require a name
+    auto resTok = expectToken (TokenType::Identifier);
+    if (!resTok)
+        return resTok.Error();
+    LexToken tok = std::move (resTok.Value());
+    block.name = std::move (getTokValue<std::string> (tok));
+
+    // Now we need an obrace
+    resTok = expectToken (TokenType::Obrace);
+    if (!resTok)
+        return resTok.Error();
+
+    // Now begins the properties
+    while (true)
+    {
+        auto resTok = nextToken();
+        if (!resTok)
+            return resTok.Error();
+
+        LexToken tok = std::move (resTok.Value());
+        if (tok.type == TokenType::Ebrace)
+            break;
+        else if (tok.type != TokenType::Identifier)
+            return parseError (ImgParseError::UnexpectedToken, lexer.NameFromToken (tok), {}, tok.line);
+
+        auto resProp = processProp (tok);
+        if (!resProp)
+            return resProp.Error();
+
+        ImgParseProp prop = std::move (resProp.Value());
+        auto& props = block.props;
+
+        // Property overwrite is allowed, but it's worth flagging
+        auto it = props.find (prop.propName);
+        if (it != props.end())
+            parseWarning (ImgParseError::PropOverwrite, prop.propName, block.name, prop.line);
+
+        props.insert_or_assign (prop.propName, std::move (prop));
+    }
+
+    return block;
+}
+
+Result<std::optional<ImgParseBlock>> ImageParser::ParseBlock()
+{
+    auto resTok = nextToken();
+    if (!resTok)
+        return resTok.Error();
+    LexToken tok = std::move (resTok.Value());
+
+    if (tok.type == TokenType::Identifier)
+    {
+        auto resBlock = processBlock (tok);
+        if (!resBlock)
+            return resBlock.Error();
+        return std::optional<ImgParseBlock> (std::move (resBlock.Value()));
+    }
+    else if (tok.type == TokenType::Eof)
+        return std::optional<ImgParseBlock>{};
+    else
+        return parseError (ImgParseError::UnexpectedToken, lexer.NameFromToken (tok), {}, tok.line);
+}
 
 Result<std::string> ImageConf::readConfFile()
 {
@@ -45,6 +265,18 @@ ResNone ImageConf::Parse()
 {
     auto resRead = readConfFile();
     if (!resRead)
-        return parseFailed();
+        return parseFailed (resRead.Error());
+
+    parser = ImageParser (opts.confFile, std::move (resRead.Value()));
+
+    while (true)
+    {
+        auto resBlock = parser.ParseBlock();
+        if (!resBlock)
+            return resBlock.Error();
+        if (!resBlock.Value().has_value())
+            break;
+    }
+
     return Success();
 }

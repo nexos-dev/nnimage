@@ -18,6 +18,8 @@
 #ifndef IMAGEPARSER_H
 #define IMAGEPARSER_H
 
+#include <optional>
+
 #include "include/SimpleLexer.h"
 #include "include/StringHash.h"
 #include "include/image/ImgBase.h"
@@ -25,14 +27,24 @@
 struct ImgParseProp
 {
     std::string propName;
-    std::vector<std::vector<ImageVal>> vals;
+    ImageVal val;
+    int line;
 };
 
 struct ImgParseBlock
 {
     std::string type;
     std::string name;
+    int line;
     std::unordered_map<std::string, ImgParseProp, StringHash, std::equal_to<>> props;
+};
+
+enum class ImgParseError
+{
+    UnexpectedToken,
+    InvalidList,
+    PropOverwrite,
+    Max
 };
 
 class ImageParser
@@ -42,10 +54,85 @@ class ImageParser
     ImageParser (std::string fileName, std::string data) : lexer{std::move (fileName), std::move (data)}
     {}
 
-    Result<ImgParseBlock> ParseBlock();
+    Result<std::optional<ImgParseBlock>> ParseBlock();
 
   private:
+    Error parseError (ImgParseError error, std::string_view extra, std::string_view extra2, int line);
+    void parseWarning (ImgParseError error, std::string_view extra, std::string_view extra2, int line);
+    Result<ImgParseBlock> processBlock (LexToken& startTok);
+    Result<ImgParseProp> processProp (LexToken& startTok);
+    Result<ImageList> processList (LexToken first);
+
+    Result<TokenType> peekToken()
+    {
+        if (nextTok.has_value())
+            return (*nextTok).type;
+
+        auto resTok = lexer.NextToken();
+        if (!resTok)
+            return resTok.Error();
+
+        TokenType type = resTok.Value().type;
+        nextTok = std::move (resTok.Value());
+        return type;
+    }
+
+    Result<LexToken> nextToken()
+    {
+        if (nextTok.has_value())
+        {
+            LexToken tok = std::move (*nextTok);
+            nextTok.reset();
+            return tok;
+        }
+
+        return lexer.NextToken();
+    }
+
+    Result<LexToken> expectToken (TokenType type)
+    {
+        auto tokRes = nextToken();
+        if (!tokRes)
+            return tokRes.Error();
+
+        LexToken tok = std::move (tokRes.Value());
+        if (tok.type != type)
+        {
+            return parseError (ImgParseError::UnexpectedToken,
+                lexer.NameFromToken (tok),
+                lexer.NameFromToken (type),
+                tok.line);
+        }
+        return tok;
+    }
+
+    bool isValType (TokenType type)
+    {
+        return type == TokenType::Identifier || type == TokenType::String || type == TokenType::Number ||
+               type == TokenType::NumId || type == TokenType::False || type == TokenType::True;
+    }
+
+    template <typename T>
+    T&& getTokValue (LexToken& tok)
+    {
+        return std::move (std::get<T> (tok.val));
+    }
+
+    template <typename T>
+    T copyTokValue (LexToken& tok)
+    {
+        return std::get<T> (tok.val);
+    }
+
+    Error makeError (ErrorCode code, std::string msg, int line, ErrorSeverity severity = ErrorSeverity::Error)
+    {
+        return Error ({ErrorDomain::Image, code, ErrorLog::Normal, severity}, {{"message", std::move (msg)}})
+            .AddContext ({{"file", std::string (lexer.GetFileName())}, {"line", std::to_string (line)}});
+    }
+
     SimpleLexer lexer;
+
+    std::optional<LexToken> nextTok;    // buffered token set by peekToken()
 };
 
 #endif

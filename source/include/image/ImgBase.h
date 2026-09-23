@@ -159,7 +159,7 @@ struct ImageId
     std::string id{};
 };
 
-using ImageList = std::vector<std::string>;
+using ImageList = std::vector<ImageId>;
 
 // Variant of all valid image value types
 using ImageValType = std::variant<uint64_t, ImageId, std::string, ImageList, bool, ImageNumId, std::monostate>;

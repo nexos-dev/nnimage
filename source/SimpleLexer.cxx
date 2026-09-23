@@ -34,7 +34,7 @@ SimpleLexer::SimpleLexer (std::string file, std::string fileData)
     isError = false;
 }
 
-void SimpleLexer::lexError (Error& err, LexError errCode, std::string_view extra)
+Error SimpleLexer::lexError (LexError errCode, std::string_view extra)
 {
     std::string msg;
     switch (errCode)
@@ -52,18 +52,19 @@ void SimpleLexer::lexError (Error& err, LexError errCode, std::string_view extra
             msg = "Unexpected EOF";
             break;
     }
-    err.Add ({ErrorDomain::Conf, ErrorCode::LexError}, {{"message", std::move (msg)}});
+    Error err ({ErrorDomain::Conf, ErrorCode::LexError}, {{"message", std::move (msg)}});
     if (!file.empty())
         err.AddContext ({{"file", file}, {"line", std::to_string (curLine)}});
     // Unconditionally accept and also make sure any further lexer access gets caught
     isAccepted = true;
     isError = true;
+    return err;
 }
 
-void SimpleLexer::lexWarn (LexWarning err, std::string_view extra)
+void SimpleLexer::lexWarn (LexWarning errCode, std::string_view extra)
 {
     std::string msg;
-    switch (err)
+    switch (errCode)
     {
         case LexWarning::InvalidEsc:
             msg = std::format ("Invalid escape sequence \"{}\"", extra);
@@ -152,6 +153,11 @@ bool SimpleLexer::isCharSpace (char c)
     return std::isspace (static_cast<unsigned char> (c)) != 0;
 }
 
+const char* SimpleLexer::NameFromToken (const LexToken& tok)
+{
+    return NameFromToken (tok.type);
+}
+
 const char* SimpleLexer::NameFromToken (TokenType type)
 {
     switch (type)
@@ -197,13 +203,10 @@ void SimpleLexer::prepareEof (LexToken& tok)
     tok.type = TokenType::Eof;
 }
 
-using TokenResult = Result<LexToken>;
-
-TokenResult SimpleLexer::NextToken()
+Result<LexToken> SimpleLexer::NextToken()
 {
     // Make a new token
     LexToken tok;
-    Error err;
     int base = 0;
     tok.line = curLine;
     tok.type = TokenType::None;
@@ -212,7 +215,7 @@ TokenResult SimpleLexer::NextToken()
     if (isEof)
     {
         tok.type = TokenType::Eof;
-        return TokenResult (std::move (tok));
+        return tok;
     }
     assert (!isError);
 
@@ -423,8 +426,7 @@ TokenResult SimpleLexer::NextToken()
                 const auto parseRes = std::from_chars (begin, end, val, base);
                 if (parseRes.ec != std::errc{} || parseRes.ptr != end)
                 {
-                    lexError (err, LexError::InvalidNum, numStr);
-                    return TokenResult (err);
+                    return lexError (LexError::InvalidNum, numStr);
                 }
 
                 // Now handle a numid. A numid is a number with an ID attached to the end, e.g., "128MiB"
@@ -464,8 +466,7 @@ TokenResult SimpleLexer::NextToken()
                     if (c == '\0')
                     {
                         // That's an error
-                        lexError (err, LexError::UnexpectedEof, "");
-                        return TokenResult (err);
+                        return lexError (LexError::UnexpectedEof, "");
                     }
                     // Check for escape
                     else if (c == '\\')
@@ -511,8 +512,7 @@ TokenResult SimpleLexer::NextToken()
                         }
                         else if (next == '\0')
                         {
-                            lexError (err, LexError::UnexpectedEof, "");
-                            return TokenResult (err);
+                            return lexError (LexError::UnexpectedEof, "");
                         }
                         else
                         {
@@ -535,10 +535,9 @@ TokenResult SimpleLexer::NextToken()
                 // Unrecognized character
                 std::string cStr;
                 cStr += c;
-                lexError (err, LexError::InvalidChar, cStr);
-                return TokenResult (err);
+                return lexError (LexError::InvalidChar, cStr);
             }
         }
     }
-    return TokenResult (std::move (tok));
+    return tok;
 }

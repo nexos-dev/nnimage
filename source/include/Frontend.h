@@ -83,8 +83,10 @@ class Frontend
     ResNone addImage (std::unique_ptr<Image> image)
     {
         if (images.find (image->GetName()) != images.end())
+        {
             return ImageError::Make (ErrorCode::DuplicateImage,
                 {{"name_suffix", ImageError::NameSuffix (image->GetName())}});
+        }
 
         images.emplace (image->GetName(), std::move (image));
         return Success();
@@ -143,9 +145,9 @@ class ImageConf : public Frontend
   private:
     Result<std::string> readConfFile();
 
-    Error parseFailed (ErrorLog verbosity = ErrorLog::Normal)
+    Error parseFailed (Error& e, ErrorLog verbosity = ErrorLog::Normal)
     {
-        return ImageError::Make (ErrorCode::ImgParseFailed, {}, verbosity);
+        return e.Add (ImageError::Make (ErrorCode::ImgParseFailed, {}, verbosity));
     }
 
     ImageParser parser;

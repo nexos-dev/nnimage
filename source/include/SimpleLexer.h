@@ -77,6 +77,7 @@ class SimpleLexer
     SimpleLexer (std::string file, std::string data);
     Result<LexToken> NextToken();
     const char* NameFromToken (TokenType type);
+    const char* NameFromToken (const LexToken& tok);
 
     std::string_view GetFileName()
     {
@@ -92,8 +93,8 @@ class SimpleLexer
     bool isCharNum (char c, int base);
     bool isCharSpace (char c);
     void prepareEof (LexToken& tok);
-    void lexError (Error& err, LexError errCode, std::string_view extra);
-    void lexWarn (LexWarning err, std::string_view extra);
+    Error lexError (LexError errCode, std::string_view extra);
+    void lexWarn (LexWarning errCode, std::string_view extra);
     std::string file;
     std::string fileData;    // File data (in UTF-8)
     std::size_t idx;         // Index in file data

@@ -79,7 +79,9 @@
     X (InvalidArgumentFormat, "Specified in invalid format")                                                 \
     X (MalformedImageProperty, "Malformed image property")                                                   \
     X (MalformedPartitionSpec, "Malformed partition specification")                                          \
-    X (UnableToProcessOption, "Unable to process \"{}\"", "option")
+    X (UnableToProcessOption, "Unable to process \"{}\"", "option")                                          \
+    X (ImgParseError, "{}", "message")                                                                       \
+    X (ImgParseWarning, "{}", "message")
 
 struct ErrorEntry
 {
