@@ -211,11 +211,11 @@ class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
 
     ResNone SetDefaults() override;
 
-    void AddPartition (std::unique_ptr<Partition> part)
+    void AddPartition (std::shared_ptr<Partition> part)
     {
         parts.push_back (std::move (part));
     }
-    const std::vector<std::unique_ptr<Partition>>& GetPartitions() const
+    const std::vector<std::shared_ptr<Partition>>& GetPartitions() const
     {
         return parts;
     }
@@ -249,7 +249,7 @@ class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
 
   private:
     ImgSpec spec;
-    std::vector<std::unique_ptr<Partition>> parts;
+    std::vector<std::shared_ptr<Partition>> parts;
     BackendType backend;
     std::string backendTag{};
     std::string defaultExt = ".img";

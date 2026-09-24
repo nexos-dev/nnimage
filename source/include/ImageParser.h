@@ -56,6 +56,11 @@ class ImageParser
 
     Result<std::optional<ImgParseBlock>> ParseBlock();
 
+    std::string_view GetFileName()
+    {
+        return lexer.GetFileName();
+    }
+
   private:
     Error parseError (ImgParseError error, std::string_view extra, std::string_view extra2, int line);
     void parseWarning (ImgParseError error, std::string_view extra, std::string_view extra2, int line);
@@ -119,7 +124,7 @@ class ImageParser
     }
 
     template <typename T>
-    T copyTokValue (LexToken& tok)
+    T copyTokValue (const LexToken& tok)
     {
         return std::get<T> (tok.val);
     }

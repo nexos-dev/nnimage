@@ -42,7 +42,7 @@ class GenericRef
   public:
     GenericRef (std::string name, T& comp, int line = -1) : name{std::move (name)}, line{line}, comp{comp}
     {}
-    const std::string& GetName() const
+    std::string_view GetName() const
     {
         return name;
     }
@@ -50,7 +50,7 @@ class GenericRef
     {
         return line;
     }
-    T& GetImage()
+    T& GetComp()
     {
         return comp;
     }

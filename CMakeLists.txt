@@ -90,10 +90,10 @@ list(APPEND NNIMAGE_LIBRARIES Iconv::Iconv fmt::fmt)
 # Unfortunately, CMake doesn't support lists of lists, so we have to do this in a roundabout way
 # It does add an extra step if we need to add another backend, but it is the only way to do it in CMake (I think)
 
-set(BACKEND_KRUN_CONFIG "krun;libkrun;pkg_check_modules;source/backend/Krun.cxx")
-set(BACKEND_GUESTFS_CONFIG "guestfs;libguestfs;pkg_check_modules;source/backend/Guestfs.cxx")
-set(BACKEND_XORRISO_CONFIG "xorriso;xorriso;find_program;source/backend/Xorriso.cxx")
-set(BACKEND_LOOPBACK_CONFIG "loopback;Linux;system_check;source/backend/Loopback.cxx")
+set(BACKEND_KRUN_CONFIG "krun;libkrun;pkg_check_modules;backend/Krun.cxx")
+set(BACKEND_GUESTFS_CONFIG "guestfs;libguestfs;pkg_check_modules;backend/Guestfs.cxx")
+set(BACKEND_XORRISO_CONFIG "xorriso;xorriso;find_program;backend/Xorriso.cxx")
+set(BACKEND_LOOPBACK_CONFIG "loopback;Linux;system_check;backend/Loopback.cxx")
 
 # Master backend configuration list
 # NOTE: always keep synced with defined configurations
@@ -253,6 +253,7 @@ add_executable(nnimage source/main.cxx)
 target_link_libraries(nnimage PRIVATE libnnimage libbackend)
 
 target_include_directories(libnnimage PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
+target_include_directories(libnnimage PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_include_directories(libnnimage PUBLIC source)
 target_include_directories(libnnimage PUBLIC external/include)
 # Ugly hack because libchardet doesn't provide version.h which it depends on, so we have a fake one

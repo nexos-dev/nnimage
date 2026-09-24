@@ -203,8 +203,6 @@ class Error
     {
         for (const auto& [key, value] : props)
             context[key] = value;
-        if (cause)
-            cause->AddContext (props);
         return *this;
     }
 
@@ -246,7 +244,6 @@ class Error
     virtual Error Chain (const ErrorInfo& info, std::string_view msg, std::initializer_list<ErrorProp> props)
     {
         Error err = Error (info, msg, props);
-        err.context = context;
         err.cause = std::make_unique<Error> (std::move (*this));
         return err;
     }
@@ -265,7 +262,6 @@ class Error
     Error Chain (const ErrorInfo& info, std::initializer_list<ErrorProp> props)
     {
         Error err = Error (info, props);
-        err.context = context;
         err.cause = std::make_unique<Error> (std::move (*this));
         return err;
     }

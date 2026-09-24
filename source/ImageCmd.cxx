@@ -72,7 +72,7 @@ Result<T> ImageCmd::getTokenValue (std::string val, TokenType type)
 Result<ImageVal> ImageCmd::convertStr (std::string val)
 {
     assert (!val.empty());
-    // This function is a very small parser. Basically, we usually only accept one token of any time
+    // This function is a very small parser. Basically, we usually only accept one token of any type
     // and then convert it to an ImageVal. The exception is the '/' token, which when delimiting IDs
     // indicates a file path. That gets converted to a string
     // NOTE: we don't have a good way of differentiating between a string and an ID since the user probably doesn't

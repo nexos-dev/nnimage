@@ -59,6 +59,7 @@
     X (MissingPart, "Image{} requires at least one partition", "name_suffix")                                \
     X (UnusedArg, "Unused command-line option \"{}\"", "option")                                             \
     X (DuplicateImage, "Image{} already exists", "name_suffix")                                              \
+    X (DuplicatePartition, "Partition{} already exists", "name_suffix")                                      \
     X (CompNotLoaded, "Attempt to use unloaded component on image{}", "name_suffix")                         \
     X (ImgParseFailed, "Failed to parse image spec file")                                                    \
     X (InvalidMultiplier, "Invalid multiplier \"{}\" specified", "multiplier")                               \
@@ -81,7 +82,10 @@
     X (MalformedPartitionSpec, "Malformed partition specification")                                          \
     X (UnableToProcessOption, "Unable to process \"{}\"", "option")                                          \
     X (ImgParseError, "{}", "message")                                                                       \
-    X (ImgParseWarning, "{}", "message")
+    X (ImgParseWarning, "{}", "message")                                                                     \
+    X (ImgInvalidBlock, "Invalid block type \"{}\" specified", "block")                                      \
+    X (UnresolvedPartition, "Reference to undefined partition \"{}\"", "part_name")                          \
+    X (UnresolvedImage, "Reference to undefined image \"{}\"", "image_name")
 
 struct ErrorEntry
 {

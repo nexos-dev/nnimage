@@ -24,6 +24,7 @@
 #include "include/OptionParser.h"
 #include "include/SimpleLexer.h"
 #include "include/ImageParser.h"
+#include "include/StringHash.h"
 
 #include <memory>
 #include <string>
@@ -92,13 +93,24 @@ class Frontend
         return Success();
     }
 
+    ResNone addPartition (std::shared_ptr<Partition> part)
+    {
+        if (partitions.find (part->GetName()) != partitions.end())
+        {
+            return ImageError::Make (ErrorCode::DuplicatePartition,
+                {{"name_suffix", ImageError::NameSuffix (part->GetName())}});
+        }
+        partitions.emplace (part->GetName(), std::move (part));
+        return Success();
+    }
+
     FrontendOptions opts;
     // These contain all the images/partitions that have been parsed
-    std::unordered_map<std::string, std::unique_ptr<Image>> images{};
-    std::unordered_map<std::string, std::unique_ptr<Partition>> partitions{};
+    std::unordered_map<std::string, std::unique_ptr<Image>, StringHash, std::equal_to<>> images{};
+    std::unordered_map<std::string, std::shared_ptr<Partition>, StringHash, std::equal_to<>> partitions{};
     // These are any references between them. They get resolved at the end of parsing
-    std::vector<GenericRef<Image>> imageRefs{};
-    std::vector<GenericRef<Partition>> partRefs{};
+    std::vector<GenericRef<Partition>> imageRefs{};
+    std::vector<GenericRef<Image>> partRefs{};
 };
 
 class SimpleLexer;
@@ -144,6 +156,14 @@ class ImageConf : public Frontend
 
   private:
     Result<std::string> readConfFile();
+
+    Result<std::unique_ptr<Image>> createImage (ImgParseBlock block);
+    Result<std::shared_ptr<Partition>> createPartition (ImgParseBlock block);
+
+    ResNone addPartitionNames (Image& img, const ImageVal& val);
+
+    ResNone resolvePartRefs();
+    ResNone resolveImgRefs();
 
     Error parseFailed (Error& e, ErrorLog verbosity = ErrorLog::Normal)
     {

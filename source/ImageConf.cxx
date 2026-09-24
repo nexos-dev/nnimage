@@ -18,6 +18,7 @@
 #include "include/Frontend.h"
 #include "include/sys/TextReader.h"
 #include "include/ImageParser.h"
+#include "include/Image.h"
 
 // Image parser
 
@@ -81,7 +82,7 @@ Result<ImageList> ImageParser::processList (LexToken first)
         if (cur.type == TokenType::Semicolon)
             break;    // Break out if a semicolon
         else if (cur.type != TokenType::Comma)
-            return parseError (ImgParseError::UnexpectedToken, lexer.NameFromToken (cur), {}, cur.line);
+            return parseError (ImgParseError::UnexpectedToken, lexer.NameFromToken (cur), "\";\" or \",\"", cur.line);
 
         // Get the next list entry
         resTok = nextToken();
@@ -118,10 +119,11 @@ Result<ImgParseProp> ImageParser::processProp (LexToken& startTok)
 
     if (resPeek.Value() == TokenType::Comma)
     {
+        int listLine = tok.line;
         auto resList = processList (std::move (tok));
         if (!resList)
             return resList.Error();
-        val = ImageVal (resList.Value());
+        val = ImageVal (resList.Value(), listLine);
     }
     else
     {
@@ -261,6 +263,90 @@ Result<std::string> ImageConf::readConfFile()
     return data;
 }
 
+ResNone ImageConf::addPartitionNames (Image& img, const ImageVal& val)
+{
+    if (val.GetType() != ImageVal::GetTypeIndex<ImageList>())
+    {
+        return ImageError::MakeWithContext (ErrorCode::PropTypeMismatch,
+            {{"prop", "partitions"}},
+            parser.GetFileName(),
+            val.GetLine());
+    }
+
+    ImageList list = *val.Get<ImageList>();
+    for (auto& part : list)
+        partRefs.push_back (GenericRef<Image> (std::move (part.Str()), img, val.GetLine()));
+
+    return Success();
+}
+
+Result<std::unique_ptr<Image>> ImageConf::createImage (ImgParseBlock block)
+{
+    auto image = std::make_unique<Image> (std::move (block.name));
+
+    // Go through every property and apply it
+    for (const auto& [name, prop] : block.props)
+    {
+        // Special case: partition list
+        if (name == "partitions")
+        {
+            auto resAdd = addPartitionNames (*image, prop.val);
+            if (!resAdd)
+                return resAdd.Error();
+        }
+        else
+        {
+            auto resSet = image->Set (name, prop.val);
+            if (!resSet)
+            {
+                return resSet.Error().AddContext (
+                    {{"file", std::string (parser.GetFileName())}, {"line", std::to_string (prop.line)}});
+            }
+        }
+    }
+    return image;
+}
+
+Result<std::shared_ptr<Partition>> ImageConf::createPartition (ImgParseBlock block)
+{
+    auto part = std::make_shared<Partition> (std::move (block.name));
+
+    for (const auto& [name, prop] : block.props)
+    {
+        auto resSet = part->Set (name, prop.val);
+        if (!resSet)
+        {
+            return resSet.Error().AddContext (
+                {{"file", std::string (parser.GetFileName())}, {"line", std::to_string (prop.line)}});
+        }
+    }
+    return part;
+}
+
+ResNone ImageConf::resolveImgRefs()
+{
+    return Success();
+}
+
+ResNone ImageConf::resolvePartRefs()
+{
+    for (auto& ref : partRefs)
+    {
+        std::string_view partName = ref.GetName();
+
+        auto partIt = partitions.find (partName);
+        if (partIt == partitions.end())
+        {
+            return ImageError::MakeWithContext (ErrorCode::UnresolvedPartition,
+                {{"part_name", std::string (partName)}},
+                parser.GetFileName(),
+                ref.GetLine());
+        }
+        ref.GetComp().AddPartition (partIt->second);
+    }
+    return Success();
+}
+
 ResNone ImageConf::Parse()
 {
     auto resRead = readConfFile();
@@ -274,9 +360,48 @@ ResNone ImageConf::Parse()
         auto resBlock = parser.ParseBlock();
         if (!resBlock)
             return resBlock.Error();
-        if (!resBlock.Value().has_value())
+        if (!resBlock.Value().has_value())    // CHeck for EOF
             break;
+        auto block = std::move (*resBlock.Value());
+
+        // Determine if this is a image or a partition object
+        if (block.type == "image")
+        {
+            auto resImg = createImage (std::move (block));
+            if (!resImg)
+                return resImg.Error();
+
+            auto resAdd = addImage (std::move (resImg.Value()));
+            if (!resAdd)
+                return resAdd.Error();
+        }
+        else if (block.type == "partition")
+        {
+            auto resPart = createPartition (std::move (block));
+            if (!resPart)
+                return resPart.Error();
+
+            auto resAdd = addPartition (std::move (resPart.Value()));
+            if (!resAdd)
+                return resAdd.Error();
+        }
+        else
+        {
+            return ImageError::MakeWithContext (ErrorCode::ImgInvalidBlock,
+                {{"block", block.type}},
+                parser.GetFileName(),
+                block.line);
+        }
     }
+
+    // Now resolve all image and partition references
+    auto resPartRef = resolvePartRefs();
+    if (!resPartRef)
+        return resPartRef.Error();
+
+    auto resImgRef = resolveImgRefs();
+    if (!resPartRef)
+        return resPartRef.Error();
 
     return Success();
 }

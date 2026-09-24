@@ -345,6 +345,7 @@ const CompConfRegistry& Component::getRegistry()
 }
 
 // ImageVal stuff
+
 template <class... Ts>
 struct overloaded : Ts...
 {

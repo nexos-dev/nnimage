@@ -16,12 +16,32 @@
 */
 
 #include "doctest.h"
+#include "include/Frontend.h"
 #include "include/ImageParser.h"
+
+#include <filesystem>
+#include <fstream>
+#include <string>
 
 static bool ParseBlockFails (std::string data)
 {
     ImageParser parser ("test.conf", std::move (data));
     return !parser.ParseBlock();
+}
+
+static std::filesystem::path MakeConfigFile (std::string_view tag, std::string_view content)
+{
+    auto dir =
+        std::filesystem::temp_directory_path() / std::filesystem::path ("nnimage_imageconf_test_" + std::string (tag));
+    std::filesystem::remove_all (dir);
+    std::filesystem::create_directories (dir);
+
+    auto path = dir / "config.conf";
+    std::ofstream out (path);
+    REQUIRE (out.is_open());
+    out << content;
+    out.close();
+    return path;
 }
 
 TEST_CASE ("ImageParser parses identifier lists")
@@ -178,4 +198,132 @@ TEST_CASE ("ImageParser rejects a list made from non-identifiers")
 TEST_CASE ("ImageParser rejects a list with mixed value types")
 {
     CHECK (ParseBlockFails ("image test { values: first, 2; }"));
+}
+
+TEST_CASE ("ImageConf parses a valid image config and resolves partition references")
+{
+    const auto path = MakeConfigFile ("valid",
+        "image test {\n"
+        "    size: 128MiB;\n"
+        "    partitions: root, swap;\n"
+        "}\n"
+        "partition root {\n"
+        "    size: 32MiB;\n"
+        "    fs_type: ext4;\n"
+        "    is_boot: true;\n"
+        "}\n"
+        "partition swap {\n"
+        "    size: 16MiB;\n"
+        "    fs_type: swap;\n"
+        "}\n");
+
+    FrontendOptions opts;
+    opts.confFile = path.string();
+
+    ImageConf frontend (opts);
+    REQUIRE (frontend.Parse());
+
+    auto images = frontend.GetImages();
+    REQUIRE (images.size() == 1);
+    const Image& image = *images.front();
+    CHECK (image.GetName() == "test");
+    CHECK (image.GetSpec().size == 128ULL * 1024 * 1024);
+    REQUIRE (image.GetPartitions().size() == 2);
+
+    CHECK (image.GetPartitions()[0]->GetName() == "root");
+    CHECK (image.GetPartitions()[1]->GetName() == "swap");
+    CHECK (image.GetPartitions()[0]->GetSpec().format == "ext4");
+    CHECK (image.GetPartitions()[0]->GetSpec().size == 32ULL * 1024 * 1024);
+    REQUIRE (image.GetPartitions()[0]->GetSpec().isBoot.has_value());
+    CHECK (image.GetPartitions()[0]->GetSpec().isBoot.value());
+
+    std::filesystem::remove_all (path.parent_path());
+}
+
+TEST_CASE ("ImageConf rejects an image that references an undefined partition")
+{
+    const auto path = MakeConfigFile ("missing_partition",
+        "image test {\n"
+        "    size: 64MiB;\n"
+        "    partitions: missing;\n"
+        "}\n");
+
+    FrontendOptions opts;
+    opts.confFile = path.string();
+
+    ImageConf frontend (opts);
+    CHECK_FALSE (frontend.Parse());
+
+    std::filesystem::remove_all (path.parent_path());
+}
+
+TEST_CASE ("ImageConf rejects unsupported block types and duplicate image names")
+{
+    auto badType = MakeConfigFile ("bad_block_type",
+        "volume broken {\n"
+        "    size: 32MiB;\n"
+        "}\n");
+
+    FrontendOptions opts1;
+    opts1.confFile = badType.string();
+    ImageConf badTypeFrontend (opts1);
+    CHECK_FALSE (badTypeFrontend.Parse());
+
+    auto duplicateImage = MakeConfigFile ("duplicate_image",
+        "image dup {\n"
+        "    size: 16MiB;\n"
+        "}\n"
+        "image dup {\n"
+        "    size: 32MiB;\n"
+        "}\n");
+
+    FrontendOptions opts2;
+    opts2.confFile = duplicateImage.string();
+    ImageConf duplicateFrontend (opts2);
+    CHECK_FALSE (duplicateFrontend.Parse());
+
+    std::filesystem::remove_all (badType.parent_path());
+    std::filesystem::remove_all (duplicateImage.parent_path());
+}
+
+TEST_CASE ("ImageConf stress test with many partitions and repeated image parsing")
+{
+    constexpr size_t partitionCount = 128;
+
+    std::string config;
+    config += "image stress {\n";
+    config += "    size: 512MiB;\n";
+    config += "    partitions:";
+    for (size_t i = 0; i < partitionCount; ++i)
+    {
+        if (i != 0)
+            config += ",";
+        config += " p" + std::to_string (i);
+    }
+    config += ";\n";
+    config += "}\n";
+
+    for (size_t i = 0; i < partitionCount; ++i)
+    {
+        config += "partition p" + std::to_string (i) + " {\n";
+        config += "    size: 4MiB;\n";
+        config += "    fs_type: ext4;\n";
+        if (i % 4 == 0)
+            config += "    is_boot: true;\n";
+        config += "}\n";
+    }
+
+    const auto path = MakeConfigFile ("stress", config);
+
+    FrontendOptions opts;
+    opts.confFile = path.string();
+
+    ImageConf frontend (opts);
+    REQUIRE (frontend.Parse());
+
+    auto images = frontend.GetImages();
+    REQUIRE (images.size() == 1);
+    REQUIRE (images.front()->GetPartitions().size() == partitionCount);
+
+    std::filesystem::remove_all (path.parent_path());
 }
