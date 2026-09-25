@@ -153,12 +153,12 @@ bool SimpleLexer::isCharSpace (char c)
     return std::isspace (static_cast<unsigned char> (c)) != 0;
 }
 
-const char* SimpleLexer::NameFromToken (const LexToken& tok)
+const char* SimpleLexer::NameFromToken (const LexToken& tok) const
 {
     return NameFromToken (tok.type);
 }
 
-const char* SimpleLexer::NameFromToken (TokenType type)
+const char* SimpleLexer::NameFromToken (TokenType type) const
 {
     switch (type)
     {

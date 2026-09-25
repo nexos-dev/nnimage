@@ -24,6 +24,7 @@ project(nnimage VERSION 0.1.0 LANGUAGES CXX)
 
 # Yes we enable the language in project but GNUInstallDirs complains without this
 enable_language(CXX)
+set(CMAKE_CXX_STANDARD 23)
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 

@@ -22,19 +22,21 @@
 #include <optional>
 
 template <typename T>
-Result<std::optional<T>> Image::Get (std::string_view name)
+Result<std::optional<T>> Image::Get (std::string_view name) const
 {
     return dispatchByName (name, spec.name, [&] (ImgProp prop) { return Get<T> (prop); });
 }
 
 template <typename T>
-Result<std::optional<T>> Image::Get (ImgProp prop)
+Result<std::optional<T>> Image::Get (ImgProp prop) const
 {
     auto resGet = getInternal (prop);
     if (!resGet)
         return resGet.Error();
 
     auto val = resGet.Value();
+    if (!val.has_value())
+        return std::optional<T>{};
 
     if (T* ptr = std::any_cast<T> (&*val))
         return std::optional<T> (*ptr);
@@ -43,28 +45,43 @@ Result<std::optional<T>> Image::Get (ImgProp prop)
 }
 
 template <typename T>
-Result<T*> Image::GetComponent (CompType type)
+auto Image::GetComponent (this auto& self, CompType type) -> Result<ComponentPtr<T, decltype (self)>>
 {
-    if (!comps[type])
-        return ImageError::Make (ErrorCode::CompNotLoaded, {{"name_suffix", ImageError::NameSuffix (spec.name)}});
+    using CompPtr = ComponentPtr<T, decltype (self)>;
 
-    T* component = dynamic_cast<T*> (comps[type].get());
+    auto* component = self.getComponent (type);
     if (!component)
+        return ImageError::Make (ErrorCode::CompNotLoaded, {{"name_suffix", ImageError::NameSuffix (self.spec.name)}});
+
+    CompPtr typedComponent = dynamic_cast<CompPtr> (component);
+    if (!typedComponent)
     {
         throw ErrorException (Error ({ErrorDomain::Image, ErrorCode::UnexpectedComponentType}, {}));
     }
 
-    return component;
+    return typedComponent;
+}
+
+auto Image::resolveComponent (this auto& self, ImgProp prop)
+    -> std::optional<decltype (self.getComponent (CompType::Max))>
+{
+    auto it = self.keyMap.find (prop);
+    assert (it != self.keyMap.end());
+
+    CompType owner = it->second;
+    if (auto* comp = self.getComponent (owner))
+        return comp;
+    return std::nullopt;
 }
 
 template <typename T>
-Result<std::optional<T>> Partition::Get (std::string_view name)
+Result<std::optional<T>> Partition::Get (std::string_view name) const
 {
     return dispatchByName (name, spec.name, [&] (PartProp prop) { return Get<T> (prop); });
 }
 
 template <typename T>
-Result<std::optional<T>> Partition::Get (PartProp prop)
+Result<std::optional<T>> Partition::Get (PartProp prop) const
 {
     auto res = RegElement::Get (prop);
     if (!res)

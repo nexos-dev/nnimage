@@ -77,7 +77,6 @@ class IsoPartComp final : public PartTypeComp
   private:
     IsoBootEmu bootEmu = IsoBootEmu::Max;
     Image* bootImage = nullptr;
-    std::string bootImageName{};
 
     // Boot emulation registry
     static const NameRegistry<IsoBootEmu> bootEmus;

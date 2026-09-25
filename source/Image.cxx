@@ -48,7 +48,7 @@ ResNone RegElement<Element, Property, Registry>::Set (Property prop, const Image
 }
 
 template <typename Element, typename Property, typename Registry>
-Result<std::optional<std::any>> RegElement<Element, Property, Registry>::Get (Property prop)
+Result<std::optional<std::any>> RegElement<Element, Property, Registry>::Get (Property prop) const
 {
     const auto& registry = getRegistry();
     auto it = registry.find (prop);
@@ -59,7 +59,7 @@ Result<std::optional<std::any>> RegElement<Element, Property, Registry>::Get (Pr
 }
 
 template <typename Element, typename Property, typename Registry>
-Result<bool> RegElement<Element, Property, Registry>::IsSet (Property prop)
+Result<bool> RegElement<Element, Property, Registry>::IsSet (Property prop) const
 {
     auto value = Get (prop);
     if (!value)
@@ -109,7 +109,7 @@ ResNone Image::AddComponent (std::unique_ptr<Component> comp)
     return Success();
 }
 
-bool Image::CheckComponent (CompType type)
+bool Image::CheckComponent (CompType type) const
 {
     return type != CompType::Max && comps[type] != nullptr;
 }
@@ -136,12 +136,12 @@ ResNone Image::Set (ImgProp prop, const ImageVal& val)
     return Success();
 }
 
-Result<bool> Image::IsSet (std::string_view name)
+Result<bool> Image::IsSet (std::string_view name) const
 {
     return dispatchByName (name, spec.name, [&] (ImgProp prop) { return IsSet (prop); });
 }
 
-Result<bool> Image::IsSet (ImgProp prop)
+Result<bool> Image::IsSet (ImgProp prop) const
 {
     auto comp = resolveComponent (prop);
     if (comp.has_value())
@@ -180,9 +180,17 @@ ResNone Image::SetDefaults()
 ResNone Image::Finalize()
 {
     // Handle all deferred properties now
-    auto defRes = runDeferred();
+    auto defRes = ResolveDeferred();
     if (!defRes)
         return defRes;
+
+    // Any property that still couldn't be resolved (e.g. it references a component that never got
+    // created) is a hard error
+    if (!deferredProps.empty())
+    {
+        return ImageError::Make (ErrorCode::UnresolvedDeferredProp,
+            {{"prop", GetPropName (deferredProps.front().first)}, {"name_suffix", ImageError::NameSuffix (spec.name)}});
+    }
 
     // Finalize the image
     auto valRes = validate();
@@ -204,7 +212,12 @@ ResNone Image::Finalize()
     return Success();
 }
 
-Result<std::optional<std::any>> Image::getInternal (ImgProp prop)
+void Image::AddImageRef (std::string imageName, std::function<void (Image*)> setCb)
+{
+    imageRefs.push_back ({GenericRef<Image> (std::move (imageName), *this), std::move (setCb)});
+}
+
+Result<std::optional<std::any>> Image::getInternal (ImgProp prop) const
 {
     std::optional<std::any> val{};
     auto comp = resolveComponent (prop);
@@ -246,7 +259,7 @@ ResNone Image::setCompProp (ImgProp prop, const ImageVal& val)
 }
 
 template <typename CompT>
-CompT* Image::getCompProp (CompType type)
+const CompT* Image::getCompProp (CompType type) const
 {
     if (!CheckComponent (type))
         return nullptr;
@@ -258,32 +271,20 @@ CompT* Image::getCompProp (CompType type)
     return res.Value();
 }
 
-std::optional<Component*> Image::resolveComponent (ImgProp prop)
+ResNone Image::ResolveDeferred()
 {
-    auto it = keyMap.find (prop);
-    assert (it != keyMap.end());
+    std::vector<std::pair<ImgProp, ImageVal>> unresolved;
 
-    CompType owner = it->second;
-    if (owner == CompType::Max)
-        return std::nullopt;
-
-    Component* comp = comps[owner].get();
-    if (!comp)
-        return std::nullopt;
-
-    return comp;
-}
-
-ResNone Image::runDeferred()
-{
-    for (const auto& prop : deferredProps)
+    for (auto& prop : deferredProps)
     {
         auto comp = resolveComponent (prop.first);
-        if (comp.has_value())
-            return (*comp)->Set (prop.first, prop.second);
-
-        return RegElement::Set (prop.first, prop.second);
+        auto res =
+            comp.has_value() ? (*comp)->Set (prop.first, prop.second) : RegElement::Set (prop.first, prop.second);
+        if (!res)
+            unresolved.push_back (std::move (prop));
     }
+
+    deferredProps = std::move (unresolved);
     return Success();
 }
 
@@ -301,7 +302,7 @@ ResNone Partition::Set (std::string_view name, const ImageVal& val)
     return dispatchByName (name, spec.name, [&] (PartProp prop) { return Set (prop, val); });
 }
 
-Result<bool> Partition::IsSet (std::string_view name)
+Result<bool> Partition::IsSet (std::string_view name) const
 {
     return dispatchByName (name, spec.name, [&] (PartProp prop) { return IsSet (prop); });
 }
@@ -317,7 +318,7 @@ std::string_view Component::getPropName (ImgProp prop) const
     return Image::GetPropName (prop);
 }
 
-const CompConfRegistry& Component::getRegistry()
+const CompConfRegistry& Component::getRegistry() const
 {
     // Check if merging is need
     if (mergedRegistry.empty())
@@ -432,7 +433,7 @@ const ImgConfRegistry Image::baseRegistry = {
                 img.spec.size = (*val.Get<ImageNumId>()).Get();
                 return Success();
             },
-            [] (Image& img) -> std::optional<std::any> 
+            [] (const Image& img) -> std::optional<std::any>
             {
                 if (img.spec.size == ImgSpec::EmptySize)
                     return std::nullopt;
@@ -453,7 +454,7 @@ const ImgConfRegistry Image::baseRegistry = {
                 img.spec.bootMode = mode;
                 return Success();
             },
-            [] (Image& img) -> std::optional<std::any>
+            [] (const Image& img) -> std::optional<std::any>
             {
                 if(img.spec.bootMode == BootMode::Max)
                     return std::nullopt;
@@ -468,7 +469,7 @@ const ImgConfRegistry Image::baseRegistry = {
             {
                 return img.setCompProp<PartTypeComp> (ImgProp::PartType, val);
             },
-            [] (Image& img) -> std::optional<std::any>
+            [] (const Image& img) -> std::optional<std::any>
             {
                 auto comp = img.getCompProp<PartTypeComp> (CompType::PartType);
                 if (!comp)
@@ -485,7 +486,7 @@ const ImgConfRegistry Image::baseRegistry = {
             {
                 return img.setCompProp<BootLoadComp> (ImgProp::BootLoad, val);
             },
-            [] (Image& img) -> std::optional<std::any>
+            [] (const Image& img) -> std::optional<std::any>
             {
                 auto comp = img.getCompProp<BootLoadComp> (CompType::Boot);
                 if (!comp)
@@ -510,7 +511,7 @@ const PartConfRegistry Partition::registry = {
                 part.spec.start = (*val.Get<ImageNumId>()).Get();
                 return Success();
             },
-            [] (Partition& part) -> std::optional<std::any> 
+            [] (const Partition& part) -> std::optional<std::any>
             {
                 if (part.spec.start == PartSpec::Default)
                     return std::nullopt;
@@ -526,7 +527,7 @@ const PartConfRegistry Partition::registry = {
                 part.spec.size = (*val.Get<ImageNumId>()).Get();
                 return Success();
             },
-            [] (Partition& part) -> std::optional<std::any> 
+            [] (const Partition& part) -> std::optional<std::any>
             {
                 if (part.spec.size == PartSpec::Default)
                     return std::nullopt;
@@ -542,7 +543,7 @@ const PartConfRegistry Partition::registry = {
                 part.spec.format = std::move((*val.Get<ImageId>()).Str());
                 return Success();
             },
-            [] (Partition& part) -> std::optional<std::any> 
+            [] (const Partition& part) -> std::optional<std::any>
             {
                 if (part.spec.format.empty())
                     return std::nullopt;
@@ -558,7 +559,7 @@ const PartConfRegistry Partition::registry = {
                 part.spec.prefix = *val.Get<std::string>();
                 return Success();
             },
-            [] (Partition& part) -> std::optional<std::any> 
+            [] (const Partition& part) -> std::optional<std::any>
             {
                 if (part.spec.prefix.empty())
                     return std::nullopt;
@@ -574,7 +575,7 @@ const PartConfRegistry Partition::registry = {
                 part.spec.isBoot = *val.Get<bool>();
                 return Success();
             },
-            [] (Partition& part) -> std::optional<std::any> 
+            [] (const Partition& part) -> std::optional<std::any>
             {
                 if (!part.spec.isBoot.has_value())
                     return std::nullopt;

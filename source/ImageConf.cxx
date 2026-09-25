@@ -304,6 +304,11 @@ Result<std::unique_ptr<Image>> ImageConf::createImage (ImgParseBlock block)
             }
         }
     }
+
+    // Go ahead and resolve deferred properties as much as we can now. There may be some left that don't get filled out
+    // till later, but we need to resolve as much as we can now
+    image->ResolveDeferred();
+
     return image;
 }
 
@@ -325,6 +330,28 @@ Result<std::shared_ptr<Partition>> ImageConf::createPartition (ImgParseBlock blo
 
 ResNone ImageConf::resolveImgRefs()
 {
+    // Go through each image
+    for (const auto& image : images)
+    {
+        const auto& refs = image.second->GetRefs();
+
+        for (const auto& ref : refs)
+        {
+            std::string_view name = ref.ref.GetName();
+
+            // Find image with that name
+            auto imageIt = images.find (name);
+            if (imageIt == images.end())
+            {
+                return ImageError::MakeWithContext (ErrorCode::UnresolvedImage,
+                    {{"image_name", std::string (name)}},
+                    parser.GetFileName(),
+                    ref.ref.GetLine());
+            }
+
+            ref.setter (imageIt->second.get());
+        }
+    }
     return Success();
 }
 

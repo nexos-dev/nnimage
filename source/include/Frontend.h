@@ -108,8 +108,7 @@ class Frontend
     // These contain all the images/partitions that have been parsed
     std::unordered_map<std::string, std::unique_ptr<Image>, StringHash, std::equal_to<>> images{};
     std::unordered_map<std::string, std::shared_ptr<Partition>, StringHash, std::equal_to<>> partitions{};
-    // These are any references between them. They get resolved at the end of parsing
-    std::vector<GenericRef<Partition>> imageRefs{};
+    // References to partitions
     std::vector<GenericRef<Image>> partRefs{};
 };
 

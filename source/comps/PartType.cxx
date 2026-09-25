@@ -42,11 +42,8 @@ ResNone IsoPartComp::Validate()
     // If use boot emulation other than noemu, check that an image was provided and resolved
     if (bootEmu != IsoBootEmu::NoEmu)
     {
-        if (bootImageName.empty())
-        {
+        if (bootImage == nullptr)
             return ImageError::Invalid ("ISO9660 image missing boot image");
-        }
-        assert (bootImage);
 
         // Ensure boot image type is valid
         auto res = bootImage->GetComponent<PartTypeComp> (CompType::PartType);
@@ -67,17 +64,17 @@ ResNone IsoPartComp::Validate()
         if (it == validTypes.end())
         {
             // TODO better diagnostic here
-            return ImageError::Invalid ("Partition layout \"" + getTypeName (type) +
-                                        "\" is invalid for ISO9660 image given specified boot emulation");
+            return ImageError::Invalid (
+                std::format ("Partition layout \"{}\" is invalid for ISO9660 image given specified boot emulation",
+                    getTypeName (type)));
         }
     }
     else
     {
+
         // Noemu can't accept a boot image
-        if (!bootImageName.empty())
-        {
-            return ImageError::Invalid ("ISO9660 image can't take boot image given specified boot emulation");
-        }
+        if (bootImage != nullptr)
+            return ImageError::Invalid ("ISO9660 boot image not valid for emulation \"noemu\"");
     }
     return Success();
 }
@@ -116,9 +113,9 @@ const CompConfRegistry IsoPartComp::registry = {
                 isoComp.bootEmu = emu;
                 return Success();
             },
-            [] (Component& comp) -> std::optional<std::any>
+            [] (const Component& comp) -> std::optional<std::any>
             {
-                IsoPartComp& isoComp = derived<IsoPartComp&>(comp);
+                const IsoPartComp& isoComp = derived<IsoPartComp> (comp);
                 if(isoComp.bootEmu == IsoBootEmu::Max)
                     return std::nullopt;
                 return isoComp.bootEmu;
@@ -127,19 +124,20 @@ const CompConfRegistry IsoPartComp::registry = {
     },
     {ImgProp::BootImage,
         {ImageVal::GetTypeIndex<ImageId>(),
-            "",
+            ImageId(""),
             [] (Component& comp, const ImageVal& val) -> ResNone
             {
-                IsoPartComp& isoComp = derived<IsoPartComp&> (comp);
-                isoComp.bootImageName = *val.Get<std::string>();
+                IsoPartComp* isoComp = &derived<IsoPartComp&> (comp);
+                auto bootImageName = (*val.Get<ImageId>()).Str();
+                isoComp->owner.AddImageRef (bootImageName, [isoComp] (Image* image) { isoComp->bootImage = image; });
                 return Success();
             },
-            [] (Component& comp) -> std::optional<std::any>
+            [] (const Component& comp) -> std::optional<std::any>
             {
-                IsoPartComp& isoComp = derived<IsoPartComp&> (comp);
-                if(isoComp.bootImageName.empty())
+                const IsoPartComp& isoComp = derived<IsoPartComp> (comp);
+                if(isoComp.bootImage == nullptr)
                     return std::nullopt;
-                return isoComp.bootImageName;
+                return isoComp.bootImage;
             }
         }
     }

@@ -284,7 +284,11 @@ TEST_CASE ("SimpleLexer handles CRLF line endings as a single newline")
 
 TEST_CASE ("SimpleLexer::NameFromToken returns the expected display name for every token type")
 {
-    SimpleLexer lexer;
+    const SimpleLexer lexer ("test.conf", "");
+    CHECK (lexer.GetFileName() == "test.conf");
+
+    const LexToken token{TokenType::Identifier, 1, std::string{"name"}};
+    CHECK (std::string (lexer.NameFromToken (token)) == "identifier");
     CHECK (std::string (lexer.NameFromToken (TokenType::Colon)) == ":");
     CHECK (std::string (lexer.NameFromToken (TokenType::Ebrace)) == "}");
     CHECK (std::string (lexer.NameFromToken (TokenType::Obrace)) == "{");

@@ -236,7 +236,7 @@ template <typename T>
 using PropSetter = ResNone (*) (T&, const ImageVal&);
 
 template <typename T>
-using PropGetter = std::optional<std::any> (*) (T&);
+using PropGetter = std::optional<std::any> (*) (const T&);
 
 template <typename T>
 struct ConfItem
@@ -257,8 +257,8 @@ class RegElement
     virtual ~RegElement() = default;
 
     virtual ResNone Set (Property prop, const ImageVal& val);
-    virtual Result<std::optional<std::any>> Get (Property prop);
-    virtual Result<bool> IsSet (Property prop);
+    virtual Result<std::optional<std::any>> Get (Property prop) const;
+    virtual Result<bool> IsSet (Property prop) const;
     virtual ResNone SetDefaults();
 
   protected:
@@ -271,20 +271,25 @@ class RegElement
         return static_cast<Element&> (*this);
     }
 
+    const Element& element() const
+    {
+        return static_cast<const Element&> (*this);
+    }
+
     static Error makeRegElementError (ErrorCode code, std::string_view elementName, std::string_view propName)
     {
         return ImageError::Make (code,
             {{"prop", std::string (propName)}, {"name_suffix", ImageError::NameSuffix (elementName)}});
     }
 
-    bool hasProperty (Property prop)
+    bool hasProperty (Property prop) const
     {
         const auto& registry = getRegistry();
         return registry.find (prop) != registry.end();
     }
 
   private:
-    virtual const Registry& getRegistry() = 0;
+    virtual const Registry& getRegistry() const = 0;
     virtual std::string_view getRegElementName() const = 0;
     virtual std::string_view getPropName (Property prop) const = 0;
 

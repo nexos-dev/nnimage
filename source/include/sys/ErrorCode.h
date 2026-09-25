@@ -85,7 +85,8 @@
     X (ImgParseWarning, "{}", "message")                                                                     \
     X (ImgInvalidBlock, "Invalid block type \"{}\" specified", "block")                                      \
     X (UnresolvedPartition, "Reference to undefined partition \"{}\"", "part_name")                          \
-    X (UnresolvedImage, "Reference to undefined image \"{}\"", "image_name")
+    X (UnresolvedImage, "Reference to undefined image \"{}\"", "image_name")                                 \
+    X (UnresolvedDeferredProp, "Unable to resolve property \"{}\" on image{}", "prop", "name_suffix")
 
 struct ErrorEntry
 {

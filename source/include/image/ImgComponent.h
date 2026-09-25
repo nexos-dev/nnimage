@@ -44,12 +44,17 @@ class Component : public RegElement<Component, ImgProp, CompConfRegistry>
     using RegElement<Component, ImgProp, CompConfRegistry>::Set;
     using RegElement<Component, ImgProp, CompConfRegistry>::SetDefaults;
 
-    CompType GetType()
+    CompType GetType() const
     {
         return type;
     }
 
     Image& GetOwner()
+    {
+        return owner;
+    }
+
+    const Image& GetOwner() const
     {
         return owner;
     }
@@ -61,7 +66,7 @@ class Component : public RegElement<Component, ImgProp, CompConfRegistry>
         : RegElement{ErrorCode::InvalidImgProp, ErrorCode::ImgMissingProp}, owner{img}, type{type}
     {}
 
-    const CompConfRegistry& getRegistry() override;
+    const CompConfRegistry& getRegistry() const override;
     virtual const CompConfRegistry& getMainRegistry() const = 0;
     virtual const CompConfRegistry& getSubRegistry() const = 0;
 
@@ -73,6 +78,13 @@ class Component : public RegElement<Component, ImgProp, CompConfRegistry>
         return static_cast<Derived&> (comp);
     }
 
+    template <typename Derived>
+    static const Derived& derived (const Component& comp)
+    {
+        assert (typeid (comp) == typeid (Derived));
+        return static_cast<const Derived&> (comp);
+    }
+
     Image& owner;
 
   private:
@@ -80,7 +92,7 @@ class Component : public RegElement<Component, ImgProp, CompConfRegistry>
     std::string_view getPropName (ImgProp prop) const override;
 
     // The union of the main and sub registries
-    CompConfRegistry mergedRegistry;
+    mutable CompConfRegistry mergedRegistry;
 
     CompType type;
 };

@@ -339,6 +339,45 @@ TEST_CASE ("Image::SetDefaults does not overwrite an explicitly-set boot_mode")
 
 /********************
  *
+ * Image::AddImageRef / Image::GetRefs test cases
+ *
+ *********************/
+
+TEST_CASE ("Image::AddImageRef records a name-based reference visible through GetRefs")
+{
+    Image img ("disk1");
+    REQUIRE (img.Set (ImgProp::PartType, ImageId ("iso9660")));
+    REQUIRE (img.Set (ImgProp::BootImage, ImageId ("bootdisk")));
+
+    const auto& refs = img.GetRefs();
+    REQUIRE (refs.size() == 1);
+    CHECK (refs[0].ref.GetName() == "bootdisk");
+}
+
+TEST_CASE ("Image::GetRefs setter callback assigns the referenced image")
+{
+    Image img ("disk1");
+    REQUIRE (img.Set (ImgProp::PartType, ImageId ("iso9660")));
+    REQUIRE (img.Set (ImgProp::BootImage, ImageId ("bootdisk")));
+
+    // Not yet resolved, so boot_image has no value
+    auto before = img.Get<Image*> (ImgProp::BootImage);
+    REQUIRE (before);
+    CHECK_FALSE (before.Value().has_value());
+
+    Image bootImg ("bootdisk");
+    const auto& refs = img.GetRefs();
+    REQUIRE (refs.size() == 1);
+    refs[0].setter (&bootImg);
+
+    auto after = img.Get<Image*> (ImgProp::BootImage);
+    REQUIRE (after);
+    REQUIRE (after.Value().has_value());
+    CHECK (*after.Value() == &bootImg);
+}
+
+/********************
+ *
  * Partition test cases
  *
  *********************/
@@ -437,6 +476,18 @@ TEST_CASE ("Image::AddComponent/CheckComponent/GetComponent manage component own
     auto getRes = img.GetComponent<TestComponent> (CompType::Format);
     REQUIRE (getRes);
     CHECK (getRes.Value() == rawPtr);
+}
+
+TEST_CASE ("Image::GetComponent preserves constness for const images")
+{
+    Image img ("disk1");
+    REQUIRE (img.AddComponent (std::make_unique<TestComponent> (img)));
+
+    const Image& constImg = img;
+    auto getRes = constImg.GetComponent<TestComponent> (CompType::Format);
+    REQUIRE (getRes);
+    static_assert (std::is_same_v<std::remove_reference_t<decltype (getRes.Value())>, const TestComponent*>);
+    CHECK (getRes.Value() != nullptr);
 }
 
 TEST_CASE ("Image::AddComponent refuses to overwrite an already-populated slot")

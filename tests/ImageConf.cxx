@@ -240,6 +240,53 @@ TEST_CASE ("ImageConf parses a valid image config and resolves partition referen
     std::filesystem::remove_all (path.parent_path());
 }
 
+TEST_CASE ("ImageConf resolves a boot_image reference between images")
+{
+    const auto path = MakeConfigFile ("boot_image",
+        "image boot {\n"
+        "    size: 16MiB;\n"
+        "}\n"
+        "image test {\n"
+        "    size: 128MiB;\n"
+        "    type: iso9660;\n"
+        "    boot_image: boot;\n"
+        "}\n");
+
+    FrontendOptions opts;
+    opts.confFile = path.string();
+
+    ImageConf frontend (opts);
+    REQUIRE (frontend.Parse());
+
+    auto images = frontend.GetImages();
+    REQUIRE (images.size() == 2);
+
+    Image* bootImage = nullptr;
+    Image* testImage = nullptr;
+    for (auto& image : images)
+    {
+        if (image->GetName() == "boot")
+            bootImage = image.get();
+        else if (image->GetName() == "test")
+            testImage = image.get();
+    }
+    REQUIRE (bootImage != nullptr);
+    REQUIRE (testImage != nullptr);
+
+    auto partType = testImage->Get<PartType> (ImgProp::PartType);
+    REQUIRE (partType);
+    REQUIRE (partType.Value().has_value());
+    CHECK (*partType.Value() == PartType::Iso9660);
+
+    // Parse() must resolve boot_image references without any extra manual step
+    auto resolvedBootImage = testImage->Get<Image*> (ImgProp::BootImage);
+    REQUIRE (resolvedBootImage);
+    REQUIRE (resolvedBootImage.Value().has_value());
+    CHECK (*resolvedBootImage.Value() == bootImage);
+
+    std::filesystem::remove_all (path.parent_path());
+}
+
 TEST_CASE ("ImageConf rejects an image that references an undefined partition")
 {
     const auto path = MakeConfigFile ("missing_partition",

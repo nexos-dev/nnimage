@@ -30,6 +30,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 class Image;
@@ -69,7 +70,7 @@ class Partition : public RegElement<Partition, PartProp, PartConfRegistry>
     Partition (const Partition&) = delete;
     Partition& operator= (const Partition&) = delete;
 
-    const std::string& GetName()
+    const std::string& GetName() const
     {
         return spec.name;
     }
@@ -77,12 +78,12 @@ class Partition : public RegElement<Partition, PartProp, PartConfRegistry>
     ResNone Set (std::string_view name, const ImageVal& val);
 
     template <typename T>
-    Result<std::optional<T>> Get (std::string_view name);
+    Result<std::optional<T>> Get (std::string_view name) const;
 
     template <typename T>
-    Result<std::optional<T>> Get (PartProp prop);
+    Result<std::optional<T>> Get (PartProp prop) const;
 
-    Result<bool> IsSet (std::string_view name);
+    Result<bool> IsSet (std::string_view name) const;
 
     using RegElement<Partition, PartProp, PartConfRegistry>::IsSet;
     using RegElement<Partition, PartProp, PartConfRegistry>::Set;
@@ -105,7 +106,7 @@ class Partition : public RegElement<Partition, PartProp, PartConfRegistry>
   private:
     // Resolves name to a PartProp and dispatches func(prop)
     template <typename Func>
-    auto dispatchByName (std::string_view name, std::string_view partName, Func&& func)
+    auto dispatchByName (std::string_view name, std::string_view partName, Func&& func) const
         -> decltype (func (PartProp::Max))
     {
         PartProp prop = ResolveName (name);
@@ -115,7 +116,7 @@ class Partition : public RegElement<Partition, PartProp, PartConfRegistry>
         return func (prop);
     }
 
-    const PartConfRegistry& getRegistry() override
+    const PartConfRegistry& getRegistry() const override
     {
         return registry;
     }
@@ -161,6 +162,15 @@ struct ImgSpec
     ~ImgSpec() = default;
 };
 
+struct ImageRef
+{
+    GenericRef<Image> ref;
+    std::function<void (Image*)> setter;
+};
+
+template <typename T, typename Self>
+using ComponentPtr = std::conditional_t<std::is_const_v<std::remove_reference_t<Self>>, const T*, T*>;
+
 class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
 {
   public:
@@ -193,21 +203,29 @@ class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
     BackendType GetBackendType (BackendType suggestion) const;
 
     ResNone AddComponent (std::unique_ptr<Component> comp);
-    template <class T>
-    Result<T*> GetComponent (CompType type);
-    bool CheckComponent (CompType type);
+    template <typename T>
+    auto GetComponent (this auto& self, CompType type) -> Result<ComponentPtr<T, decltype (self)>>;
+    bool CheckComponent (CompType type) const;
 
     // Set accepts parser-shaped values, Get returns the property's translated value.
     ResNone Set (std::string_view name, const ImageVal& val);
     ResNone Set (ImgProp prop, const ImageVal& val) override;
 
     template <typename T>
-    Result<std::optional<T>> Get (std::string_view name);
+    Result<std::optional<T>> Get (std::string_view name) const;
     template <typename T>
-    Result<std::optional<T>> Get (ImgProp prop);
+    Result<std::optional<T>> Get (ImgProp prop) const;
 
-    Result<bool> IsSet (std::string_view name);
-    Result<bool> IsSet (ImgProp prop) override;
+    Result<bool> IsSet (std::string_view name) const;
+    Result<bool> IsSet (ImgProp prop) const override;
+
+    // Adds a name-based reference to an image that will be resolved later
+    void AddImageRef (std::string imageName, std::function<void (Image*)> setCb);
+    // Gets all references
+    const std::vector<ImageRef>& GetRefs() const
+    {
+        return imageRefs;
+    }
 
     ResNone SetDefaults() override;
 
@@ -224,6 +242,9 @@ class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
     {
         return spec;
     }
+
+    // Replays any properties that were deferred because their owning component didn't exist yet
+    ResNone ResolveDeferred();
 
     ResNone Finalize();
 
@@ -248,17 +269,20 @@ class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
     }
 
   private:
+    // Basic image data
     ImgSpec spec;
     std::vector<std::shared_ptr<Partition>> parts;
     BackendType backend;
     std::string backendTag{};
-    std::string defaultExt = ".img";
 
     // Component containers
     EnumArray<CompType, std::unique_ptr<Component>, CompType::Max> comps;
 
     // Deferred properties
     std::vector<std::pair<ImgProp, ImageVal>> deferredProps;
+
+    // References to other images
+    std::vector<ImageRef> imageRefs;
 
     // Resolves name to an ImgProp and dispatches func(prop)
     template <typename Func>
@@ -273,22 +297,29 @@ class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
     }
 
     // Resolves prop to its owning component, or nullopt if it's owned by the base image itself.
-    std::optional<Component*> resolveComponent (ImgProp prop);
+    auto resolveComponent (this auto& self, ImgProp prop)
+        -> std::optional<decltype (self.getComponent (CompType::Max))>;
 
-    // Replays deferred properties
-    ResNone runDeferred();
+    auto getComponent (this auto&& self, CompType type)
+    {
+        using ComponentPtr = decltype (std::forward<decltype (self)> (self).comps[type].get());
+        if (type == CompType::Max)
+            return ComponentPtr{nullptr};
+        return std::forward<decltype (self)> (self).comps[type].get();
+    }
+
     ResNone validate();
 
-    Result<std::optional<std::any>> getInternal (ImgProp prop);
+    Result<std::optional<std::any>> getInternal (ImgProp prop) const;
 
     // Getter/setter for setting a property that adds a component
     template <typename CompT>
     ResNone setCompProp (ImgProp prop, const ImageVal& val);
 
     template <typename CompT>
-    CompT* getCompProp (CompType type);
+    const CompT* getCompProp (CompType type) const;
 
-    const ImgConfRegistry& getRegistry() override
+    const ImgConfRegistry& getRegistry() const override
     {
         return baseRegistry;
     }
