@@ -225,10 +225,9 @@ class ImageVal
     static Result<ImageVal> FromToken (LexToken tok);
 
   private:
+    static constexpr std::monostate Invalid = std::monostate{};
     ImageValType val = std::monostate{};
     int line = -1;
-
-    static constexpr std::monostate Invalid = std::monostate{};
 };
 
 // Generic property setters/getters

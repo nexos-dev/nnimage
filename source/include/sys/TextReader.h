@@ -82,8 +82,8 @@ class TextReader
         Iconv conv (fileEnc, "UTF-8");
         if (!conv.Convert (data, buf))
         {
-            return Error ({ErrorDomain::None, ErrorCode::FileConvFailure}, {{"file", getFileName()}})
-                .Add ({ErrorDomain::None, ErrorCode::SysFailure}, {{"error", std::strerror (errno)}});
+            return Error ({ErrorDomain::None, ErrorCode::SysFailure}, {{"error", std::strerror (errno)}})
+                .Add ({ErrorDomain::None, ErrorCode::FileConvFailure}, {{"file", getFileName()}});
         }
         // We are done as iconv put it in the output buffer for us
         return buf;

@@ -265,15 +265,22 @@ Result<std::string> ImageConf::readConfFile()
 
 ResNone ImageConf::addPartitionNames (Image& img, const ImageVal& val)
 {
+    ImageList list;
     if (val.GetType() != ImageVal::GetTypeIndex<ImageList>())
     {
-        return ImageError::MakeWithContext (ErrorCode::PropTypeMismatch,
-            {{"prop", "partitions"}},
-            parser.GetFileName(),
-            val.GetLine());
+        // Try to cast it
+        ImageVal newVal = val.Cast (ImageVal::GetTypeIndex<ImageList>());
+        if (newVal.IsInvalid())
+        {
+            return ImageError::MakeWithContext (ErrorCode::PropTypeMismatch,
+                {{"prop", "partitions"}},
+                parser.GetFileName(),
+                val.GetLine());
+        }
+        list = *newVal.Get<ImageList>();
     }
-
-    ImageList list = *val.Get<ImageList>();
+    else
+        list = *val.Get<ImageList>();
     for (auto& part : list)
         partRefs.push_back (GenericRef<Image> (std::move (part.Str()), img, val.GetLine()));
 

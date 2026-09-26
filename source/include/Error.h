@@ -307,7 +307,7 @@ class Error
             if (line != context.end())
                 result += ":" + line->second;
         }
-        else if (line != context.end())
+        else if (line != context.end() && line->second != "-1")
         {
             result = line->second;
         }
