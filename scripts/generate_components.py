@@ -75,6 +75,24 @@ def outputTypes(slots: list[Slot]) -> str:
     return "\n".join(lines)
 
 
+def outputCompType(slots: list[Slot]) -> str:
+    lines = [
+        COMMENTHEADER,
+        "#ifndef COMPTYPE_H",
+        "#define COMPTYPE_H",
+        "",
+        "enum class CompType",
+        "{",
+    ]
+
+    for slot in slots:
+        lines.append(f"    {slot.vals['COMPTYPE']},")
+    lines.append("    Max")
+
+    lines.extend(["};", "", "#endif", ""])
+    return "\n".join(lines)
+
+
 def outputTable(slots: list[Slot]) -> str:
     lines = [
         COMMENTHEADER,
@@ -115,6 +133,22 @@ def outputTable(slots: list[Slot]) -> str:
             )
         lines.extend(["};", ""])
 
+        lines.extend([
+            f"std::unique_ptr<{baseclass}> {baseclass}::Factory ({enumname} type, Image& owner)",
+            "{",
+            f"    return {slot.vals['FACTORYREGISTRY']}[type](owner);",
+            "}",
+            "",
+            f"std::unique_ptr<{baseclass}> {baseclass}::Factory (std::string_view type, Image& owner)",
+            "{",
+            f"    {enumname} typeVal = {slot.vals['NAMEREGISTRY']}.Resolve (type);",
+            f"    if (typeVal == {enumname}::Max)",
+            "        return nullptr;",
+            f"    return {slot.vals['FACTORYREGISTRY']}[typeVal](owner);",
+            "}",
+            "",
+        ])
+
     lines.extend(["#endif", ""])
     return "\n".join(lines)
 
@@ -132,7 +166,7 @@ def outputInclude(slots: list[Slot]) -> str:
     lines.append("")
     return "\n".join(lines)
 
-SLOTPROPS = ["ENUMNAME", "BASECLASS", "NAMEREGISTRY", "FACTORYREGISTRY"]
+SLOTPROPS = ["ENUMNAME", "BASECLASS", "NAMEREGISTRY", "FACTORYREGISTRY", "COMPTYPE"]
 COMPPROPS = ["NAME", "SLOT", "CLASS", "HEADER"]
 
 def readSlots(compsDir: Path) -> list[Slot]:
@@ -177,3 +211,6 @@ except ValueError as error:
 (args.buildDir / "CompTypes.h").write_text(outputTypes(slots), encoding="utf-8")
 (args.buildDir / "CompTable.h").write_text(outputTable(slots), encoding="utf-8")
 (args.buildDir / "Components.h").write_text(outputInclude(slots), encoding="utf-8")
+
+(args.buildDir / "include").mkdir(parents=True, exist_ok=True)
+(args.buildDir / "include" / "CompType.h").write_text(outputCompType(slots), encoding="utf-8")

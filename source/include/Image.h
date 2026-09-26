@@ -308,8 +308,6 @@ class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
         return std::forward<decltype (self)> (self).comps[type].get();
     }
 
-    ResNone validate();
-
     Result<std::optional<std::any>> getInternal (ImgProp prop) const;
 
     // Getter/setter for setting a property that adds a component

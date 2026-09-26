@@ -134,6 +134,14 @@ TEST_CASE ("Error::Chain wraps the current error as a cause of a new error")
     CHECK (wrapped.Cause().RootFrame().msg == "lex failed");
 }
 
+TEST_CASE ("Error cause chain can be inspected through a const error")
+{
+    Error root ({ErrorDomain::Conf, ErrorCode::LexError}, "lex failed");
+    const Error wrapped = root.Chain ({ErrorDomain::Conf, ErrorCode::ParseError}, "parse failed");
+
+    CHECK (wrapped.Cause().RootFrame().msg == "lex failed");
+}
+
 TEST_CASE ("Error::Chain variadic overload formats the new frame")
 {
     Error root ({ErrorDomain::Conf, ErrorCode::LexError}, "lex failed");

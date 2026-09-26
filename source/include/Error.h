@@ -324,8 +324,9 @@ class Error
             result += ": ";
         return result;
     }
-    const Error& Cause()
+    const Error& Cause() const
     {
+        assert (cause != nullptr);
         return *cause;
     }
 
@@ -334,7 +335,7 @@ class Error
     {
         std::deque<Error> chain;
         chain.push_front (err);
-        Error* cur = err.cause.get();
+        const Error* cur = err.cause.get();
         while (cur)
         {
             chain.push_front (*cur);
@@ -383,7 +384,7 @@ class Error
         }
     }
 
-    std::string makeMessage (ErrorCode code, const ErrorKeyMap& map)
+    std::string makeMessage (ErrorCode code, const ErrorKeyMap& map) const
     {
         const ErrorEntry& entry = _errorCodeStrings[code];
         fmt::dynamic_format_arg_store<fmt::format_context> store;

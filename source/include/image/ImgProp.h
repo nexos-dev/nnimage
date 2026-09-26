@@ -32,6 +32,7 @@
     X (Size, "size", Max)             \
     X (BootMode, "boot_mode", Max)    \
     X (PartType, "type", Max)         \
+    X (Format, "format", Max)         \
     X (BootLoad, "bootloader", Max)   \
     X (BootEmu, "boot_emu", PartType) \
     X (BootImage, "boot_image", PartType)

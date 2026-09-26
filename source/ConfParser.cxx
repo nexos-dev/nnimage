@@ -204,7 +204,7 @@ ResNone ConfParser<Derived, ConfKey>::setLocked (ConfKey key, const ConfValue& v
 }
 
 template <typename Derived, typename ConfKey>
-Result<bool> ConfParser<Derived, ConfKey>::Get (ConfKey key, ConfValue& val)
+Result<bool> ConfParser<Derived, ConfKey>::Get (ConfKey key, ConfValue& val) const
 {
     std::shared_lock<std::shared_mutex> lock (parseLock);    // Grab the lock for reading
     val = getKeyRegistry()[key].getter (derived());
@@ -214,7 +214,7 @@ Result<bool> ConfParser<Derived, ConfKey>::Get (ConfKey key, ConfValue& val)
 }
 
 template <typename Derived, typename ConfKey>
-ResNone ConfParser<Derived, ConfKey>::Serialize (std::string& out)
+ResNone ConfParser<Derived, ConfKey>::Serialize (std::string& out) const
 {
     std::stringstream data;
     // Go through every key

@@ -192,11 +192,6 @@ ResNone Image::Finalize()
             {{"prop", GetPropName (deferredProps.front().first)}, {"name_suffix", ImageError::NameSuffix (spec.name)}});
     }
 
-    // Finalize the image
-    auto valRes = validate();
-    if (!valRes)
-        return valRes;
-
     // Now validate each component
     for (auto it = comps.begin(); it != comps.end(); it++)
     {
@@ -285,14 +280,6 @@ ResNone Image::ResolveDeferred()
     }
 
     deferredProps = std::move (unresolved);
-    return Success();
-}
-
-ResNone Image::validate()
-{
-    // Ensure a partition exists
-    if (parts.size() < 1)
-        return ImageError::Make (ErrorCode::MissingPart, {{"name_suffix", ImageError::NameSuffix (spec.name)}});
     return Success();
 }
 
@@ -476,6 +463,23 @@ const ImgConfRegistry Image::baseRegistry = {
                     return std::nullopt;
 
                 return comp->GetPartType();
+            }
+        }
+    },
+    {ImgProp::Format,
+        {ImageVal::GetTypeIndex<ImageId>(),
+            ImageId ("raw"),
+            [] (Image& img, const ImageVal& val) -> ResNone
+            {
+                return img.setCompProp<FormatComp> (ImgProp::Format, val);
+            },
+            [] (const Image& img) -> std::optional<std::any>
+            {
+                auto comp = img.getCompProp<FormatComp> (CompType::Format);
+                if (!comp)
+                    return std::nullopt;
+
+                return comp->GetFormatType();
             }
         }
     },

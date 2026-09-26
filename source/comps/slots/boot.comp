@@ -3,3 +3,4 @@ ENUMNAME=BootLoadType
 BASECLASS=BootLoadComp
 NAMEREGISTRY=nameRegistry
 FACTORYREGISTRY=bootFactory
+COMPTYPE=Boot

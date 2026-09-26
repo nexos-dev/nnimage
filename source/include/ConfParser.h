@@ -54,7 +54,7 @@ class ConfParser;
 template <typename Derived, typename ConfKey>
 using ConfSetter = std::function<void (Derived&, const ConfValue&)>;
 template <typename Derived, typename ConfKey>
-using ConfGetter = std::function<ConfValue (Derived&)>;
+using ConfGetter = std::function<ConfValue (const Derived&)>;
 
 template <typename Derived, typename ConfKey>
 struct ConfInstance
@@ -79,11 +79,11 @@ class ConfParser
     {}
     virtual ~ConfParser() = default;
 
-    Result<bool> Get (ConfKey key, ConfValue& val);
+    Result<bool> Get (ConfKey key, ConfValue& val) const;
     ResNone Set (ConfKey key, const ConfValue& val, bool overwrite = true);
 
     ResNone Parse();
-    ResNone Serialize (std::string& out);
+    ResNone Serialize (std::string& out) const;
 
   protected:
     // CRTP function
@@ -92,8 +92,13 @@ class ConfParser
         return *static_cast<Derived*> (this);
     }
 
-    virtual const EnumArray<ConfKey, ConfInstance<Derived, ConfKey>, ConfKey::Max>& getKeyRegistry() = 0;
-    virtual const std::unordered_map<std::string, ConfKey, StringHash, std::equal_to<>>& getNameToKey() = 0;
+    const Derived& derived() const
+    {
+        return *static_cast<const Derived*> (this);
+    }
+
+    virtual const EnumArray<ConfKey, ConfInstance<Derived, ConfKey>, ConfKey::Max>& getKeyRegistry() const = 0;
+    virtual const std::unordered_map<std::string, ConfKey, StringHash, std::equal_to<>>& getNameToKey() const = 0;
 
   private:
     ResNone readFile();
@@ -124,12 +129,12 @@ class ConfParser
         return lexer.NextToken();
     }
 
-    Error unexpectedToken (TokenType type)
+    Error unexpectedToken (TokenType type) const
     {
         return Error ({ErrorDomain::Conf, ErrorCode::UnexpectedToken}, {{"token", lexer.NameFromToken (type)}});
     }
 
-    ConfKey getPropKey (std::string_view name)
+    ConfKey getPropKey (std::string_view name) const
     {
         auto& nameToKey = getNameToKey();
         auto it = nameToKey.find (name);
@@ -138,7 +143,7 @@ class ConfParser
         return it->second;
     }
 
-    const std::string& nameFromKey (ConfKey key)
+    const std::string& nameFromKey (ConfKey key) const
     {
         auto& nameToKey = getNameToKey();
         auto it =

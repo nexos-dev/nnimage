@@ -51,7 +51,7 @@ class TestComponent : public Component
 class OtherTestComponent : public Component
 {
   public:
-    OtherTestComponent (Image& img) : Component (CompType::Encryption, img)
+    OtherTestComponent (Image& img) : Component (CompType::PartType, img)
     {}
 
     ResNone Validate() override

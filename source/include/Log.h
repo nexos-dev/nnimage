@@ -238,12 +238,12 @@ class ManagedLogCtrl : public ConfParser<ManagedLogCtrl, LogCtrlKey>
     void Log (std::string_view message, LogLevel level, LogTime time);
 
   protected:
-    const EnumArray<LogCtrlKey, ConfInstance<ManagedLogCtrl, LogCtrlKey>, LogCtrlKey::Max>& getKeyRegistry()
+    const EnumArray<LogCtrlKey, ConfInstance<ManagedLogCtrl, LogCtrlKey>, LogCtrlKey::Max>& getKeyRegistry() const
     {
         return keys;
     }
 
-    const std::unordered_map<std::string, LogCtrlKey, StringHash, std::equal_to<>>& getNameToKey()
+    const std::unordered_map<std::string, LogCtrlKey, StringHash, std::equal_to<>>& getNameToKey() const
     {
         return nameToKey;
     }

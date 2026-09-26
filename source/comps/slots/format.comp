@@ -1,0 +1,7 @@
+# format.comp - contains image format component
+
+ENUMNAME=FormatType
+BASECLASS=FormatComp
+NAMEREGISTRY=nameRegistry
+FACTORYREGISTRY=factory
+COMPTYPE=Format

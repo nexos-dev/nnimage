@@ -126,7 +126,7 @@ class PartTypeComp : public Component
     }
     virtual const CompConfRegistry& getSubRegistry() const override = 0;
 
-    std::string getTypeName (PartType type)
+    std::string getTypeName (PartType type) const
     {
         return nameRegistry.GetName (type);
     }
@@ -166,7 +166,7 @@ class BootLoadComp : public Component
     }
     virtual const CompConfRegistry& getSubRegistry() const override = 0;
 
-    std::string getTypeName (BootLoadType type)
+    std::string getTypeName (BootLoadType type) const
     {
         return nameRegistry.GetName (type);
     }
@@ -178,6 +178,44 @@ class BootLoadComp : public Component
 
     static const NameRegistry<BootLoadType> nameRegistry;
     static const CompFactoryTable<BootLoadType, BootLoadComp> bootFactory;
+};
+
+class FormatComp : public Component
+{
+  public:
+    virtual ~FormatComp() = default;
+
+    FormatType GetFormatType() const
+    {
+        return type;
+    }
+
+    static std::unique_ptr<FormatComp> Factory (FormatType type, Image& owner);
+    static std::unique_ptr<FormatComp> Factory (std::string_view type, Image& owner);
+    virtual ResNone Validate() override;
+
+  protected:
+    FormatComp (FormatType type, Image& img) : type{type}, Component{CompType::Format, img}
+    {}
+
+    const CompConfRegistry& getMainRegistry() const override
+    {
+        return registry;
+    }
+    virtual const CompConfRegistry& getSubRegistry() const override = 0;
+
+    std::string getTypeName (FormatType type) const
+    {
+        return nameRegistry.GetName (type);
+    }
+
+    FormatType type;
+
+  private:
+    static const CompConfRegistry registry;
+
+    static const NameRegistry<FormatType> nameRegistry;
+    static const CompFactoryTable<FormatType, FormatComp> factory;
 };
 
 #include "Components.h"

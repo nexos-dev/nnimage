@@ -10,6 +10,7 @@
         "/opt/homebrew/include"
     ],
     "C_Cpp.default.cppStandard": "c++23",
+    "clang-tidy.lintOnSave": true,
     "editor.formatOnSave": true,
     "editor.inlineSuggest.enabled": false,
     "VSCodeCounter.exclude": [

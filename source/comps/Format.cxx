@@ -1,5 +1,5 @@
 /*
-    CompType.h - contains all valid component types
+    Format.cxx - contains format components implementations
     Copyright 2026 Jedidiah Thompson
 
     Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,16 +15,28 @@
     limitations under the License.
 */
 
-#ifndef COMPTYPE_H
-#define COMPTYPE_H
+#include "include/Image.h"
+#include "include/comp/Format.h"
 
-enum class CompType
+ResNone FormatComp::Validate()
 {
-    PartType,
-    Format,
-    Encryption,
-    Boot,
-    Max
+    return Success();
+}
+
+// clang-format off
+
+const CompConfRegistry FormatComp::registry = {
+
 };
 
-#endif
+const CompConfRegistry RawFormatComp::registry = {
+
+};
+
+const CompConfRegistry IsoFormatComp::registry = {
+
+};
+
+const CompConfRegistry Qcow2FormatComp::registry = {
+
+};

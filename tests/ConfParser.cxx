@@ -126,6 +126,23 @@ TEST_CASE ("ConfParser Serialize omits keys that were never set")
     CHECK (out.find ("max_age") == std::string::npos);
 }
 
+TEST_CASE ("ConfParser read operations support const objects")
+{
+    ManagedLogCtrl mutableCtrl ("const.conf", "max_file = 10;\n");
+    REQUIRE (mutableCtrl.Parse());
+    const ManagedLogCtrl& ctrl = mutableCtrl;
+
+    ConfValue val;
+    auto res = ctrl.Get (LogCtrlKey::MaxFiles, val);
+    REQUIRE (res);
+    CHECK (res.Value());
+    CHECK (std::get<int> (val) == 10);
+
+    std::string out;
+    REQUIRE (ctrl.Serialize (out));
+    CHECK (out == "max_file = 10;\n");
+}
+
 TEST_CASE ("ConfParser::Parse fails on syntactically invalid input and surfaces the lexer error")
 {
     ManagedLogCtrl ctrl ("bad.conf", "max_file = ;\n");

@@ -1,0 +1,6 @@
+# qcow2.comp - contains component for qcow2 disk images
+
+NAME=qcow2
+SLOT=format
+CLASS=Qcow2FormatComp
+HEADER=include/comp/Format.h

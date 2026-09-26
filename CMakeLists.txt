@@ -177,13 +177,16 @@ add_custom_target(GenerateBackendHeader DEPENDS "${BACKEND_TABLE_FILE}"
 set(COMP_TABLE_FILE "${CMAKE_CURRENT_BINARY_DIR}/CompTable.h")
 set(COMP_TYPES_FILE "${CMAKE_CURRENT_BINARY_DIR}/CompTypes.h")
 set(COMPS_FILE "${CMAKE_CURRENT_BINARY_DIR}/Components.h")
+set(COMP_TYPE_FILE "${CMAKE_CURRENT_BINARY_DIR}/include/CompType.h")
 
-file(GLOB COMP_FILES "${CMAKE_CURRENT_SOURCE_DIR}/source/comps/slots/*.comp"
+# CONFIGURE_DEPENDS makes CMake re-glob (and reconfigure if the file set changed) on every build,
+# so adding/removing a .comp file automatically re-invokes generate_components.py
+file(GLOB COMP_FILES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/source/comps/slots/*.comp"
                     "${CMAKE_CURRENT_SOURCE_DIR}/source/comps/slots/*/*.comp")
-file(GLOB SLOT_FILES "${CMAKE_CURRENT_SOURCE_DIR}/source/comps/slots/*.comp")
+file(GLOB SLOT_FILES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/source/comps/slots/*.comp")
 
 add_custom_command(
-    OUTPUT "${COMP_TABLE_FILE}" "${COMP_TYPES_FILE}" "${COMPS_FILE}"
+    OUTPUT "${COMP_TABLE_FILE}" "${COMP_TYPES_FILE}" "${COMPS_FILE}" "${COMP_TYPE_FILE}"
     COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/scripts/generate_components.py
             "${CMAKE_CURRENT_SOURCE_DIR}/source/comps" "${CMAKE_CURRENT_BINARY_DIR}"
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/scripts/generate_components.py ${COMP_FILES}
@@ -191,7 +194,7 @@ add_custom_command(
 )
 
 add_custom_target(GenerateComponentHeader DEPENDS "${COMP_TABLE_FILE}" "${COMP_TYPES_FILE}" 
-                    "${COMPS_FILE}" "${COMP_FILES}" "${SLOT_FILES}")
+                    "${COMPS_FILE}" "${COMP_TYPE_FILE}" "${COMP_FILES}" "${SLOT_FILES}")
 
 # Configure config.h
 configure_file(source/config.h.in config.h)

@@ -388,7 +388,7 @@ const EnumArray<LogCtrlKey, ConfInstance<ManagedLogCtrl, LogCtrlKey>, LogCtrlKey
                 assert (std::holds_alternative<int> (val));
                 ctrl.maxLogs = std::get<int> (val);
             },
-            [] (ManagedLogCtrl& ctrl) -> ConfValue {
+            [] (const ManagedLogCtrl& ctrl) -> ConfValue {
                 int count = ctrl.maxLogs;
                 if (count == -1)
                     return std::monostate{};
@@ -400,7 +400,7 @@ const EnumArray<LogCtrlKey, ConfInstance<ManagedLogCtrl, LogCtrlKey>, LogCtrlKey
                 assert (std::holds_alternative<int> (val));
                 ctrl.maxAge = std::get<int> (val);
             },
-            [] (ManagedLogCtrl& ctrl) -> ConfValue {
+            [] (const ManagedLogCtrl& ctrl) -> ConfValue {
                 int count = ctrl.maxAge;
                 if (count == -1)
                     return std::monostate{};

@@ -18,19 +18,6 @@
 #include "include/Image.h"
 #include "include/comp/PartComp.h"
 
-std::unique_ptr<PartTypeComp> PartTypeComp::Factory (PartType type, Image& owner)
-{
-    return factory[type](owner);
-}
-
-std::unique_ptr<PartTypeComp> PartTypeComp::Factory (std::string_view type, Image& owner)
-{
-    PartType typeVal = nameRegistry.Resolve (type);
-    if (typeVal == PartType::Max)
-        return nullptr;
-    return factory[typeVal](owner);
-}
-
 ResNone PartTypeComp::Validate()
 {
     return Success();

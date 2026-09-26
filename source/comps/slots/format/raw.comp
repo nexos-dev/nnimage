@@ -1,0 +1,6 @@
+# raw.comp - contains component for raw disk images
+
+NAME=raw
+SLOT=format
+CLASS=RawFormatComp
+HEADER=include/comp/Format.h

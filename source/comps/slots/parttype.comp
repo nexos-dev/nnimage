@@ -3,3 +3,4 @@ ENUMNAME=PartType
 BASECLASS=PartTypeComp
 NAMEREGISTRY=nameRegistry
 FACTORYREGISTRY=factory
+COMPTYPE=PartType

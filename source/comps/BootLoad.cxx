@@ -18,19 +18,6 @@
 #include "include/Image.h"
 #include "include/comp/PartComp.h"
 
-std::unique_ptr<BootLoadComp> BootLoadComp::Factory (BootLoadType type, Image& owner)
-{
-    return bootFactory[type](owner);
-}
-
-std::unique_ptr<BootLoadComp> BootLoadComp::Factory (std::string_view type, Image& owner)
-{
-    BootLoadType typeVal = nameRegistry.Resolve (type);
-    if (typeVal == BootLoadType::Max)
-        return nullptr;
-    return bootFactory[typeVal](owner);
-}
-
 ResNone BootLoadComp::Validate()
 {
     return Success();
