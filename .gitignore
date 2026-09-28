@@ -4,3 +4,5 @@ test.log
 .VSCodeCounter
 .DS_Store
 .vscode
+cmake-build-debug
+.idea

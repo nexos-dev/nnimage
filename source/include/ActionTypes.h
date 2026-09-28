@@ -22,46 +22,22 @@
 
 #include <memory>
 
-class CreateAction : public Action
-{
-  public:
-    CreateAction() : Action (ActionType::Create)
-    {}
-
-  private:
-};
-
-class CreateActOptions : public ActionOptions
-{
-  public:
-    void CollectOptions (OptionsParser& opts) override;
-    ResNone ValidateOptions() override;
-
-    std::unique_ptr<Action> MakeAction() override
-    {
-        return std::make_unique<CreateAction>();
-    }
-};
-
 class InitAction : public Action
 {
   public:
     InitAction() : Action (ActionType::Init)
     {}
 
+    ResNone FillTarget (Target& target, const Image& image) override;
+
   private:
 };
 
-class InitActOptions : public ActionOptions
+class InitActOptions : public ActionOptionsFactory<InitAction>
 {
   public:
     void CollectOptions (OptionsParser& opts) override;
     ResNone ValidateOptions() override;
-
-    std::unique_ptr<Action> MakeAction() override
-    {
-        return std::make_unique<InitAction>();
-    }
 };
 
 class PartitionAction : public Action
@@ -69,18 +45,15 @@ class PartitionAction : public Action
   public:
     PartitionAction() : Action (ActionType::Partition)
     {}
+
+    ResNone FillTarget (Target& target, const Image& image) override;
 };
 
-class PartitionActOptions : public ActionOptions
+class PartitionActOptions : public ActionOptionsFactory<PartitionAction>
 {
   public:
     void CollectOptions (OptionsParser& opts) override;
     ResNone ValidateOptions() override;
-
-    std::unique_ptr<Action> MakeAction() override
-    {
-        return std::make_unique<PartitionAction>();
-    }
 };
 
 class FormatAction : public Action
@@ -88,18 +61,15 @@ class FormatAction : public Action
   public:
     FormatAction() : Action (ActionType::Format)
     {}
+
+    ResNone FillTarget (Target& target, const Image& image) override;
 };
 
-class FormatActOptions : public ActionOptions
+class FormatActOptions : public ActionOptionsFactory<FormatAction>
 {
   public:
     void CollectOptions (OptionsParser& opts) override;
     ResNone ValidateOptions() override;
-
-    std::unique_ptr<Action> MakeAction() override
-    {
-        return std::make_unique<FormatAction>();
-    }
 };
 
 class UpdateAction : public Action
@@ -108,19 +78,16 @@ class UpdateAction : public Action
     UpdateAction() : Action (ActionType::Update)
     {}
 
+    ResNone FillTarget (Target& target, const Image& image) override;
+
   private:
 };
 
-class UpdateActOptions : public ActionOptions
+class UpdateActOptions : public ActionOptionsFactory<UpdateAction>
 {
   public:
     void CollectOptions (OptionsParser& opts) override;
     ResNone ValidateOptions() override;
-
-    std::unique_ptr<Action> MakeAction() override
-    {
-        return std::make_unique<UpdateAction>();
-    }
 };
 
 #endif

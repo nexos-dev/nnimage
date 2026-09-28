@@ -64,3 +64,73 @@ std::unique_ptr<Frontend> FrontendOptions::CreateFrontend (OptionsParser& parser
     parser.UseSet ("frontend_cmd");
     return std::make_unique<ImageCmd> (*this);
 }
+
+std::vector<std::reference_wrapper<Image>> ImageSet::GetImages()
+{
+    std::vector<std::reference_wrapper<Image>> vec;
+    vec.reserve (images.size());
+    for (auto& [key, ptr] : images)
+        vec.push_back (*ptr);
+    return vec;
+}
+
+std::optional<std::reference_wrapper<Image>> ImageSet::FindImage (std::string_view name)
+{
+    auto it = images.find (name);
+    if (it == images.end())
+        return std::nullopt;
+    return *it->second;
+}
+
+std::optional<std::reference_wrapper<Partition>> ImageSet::FindPartition (std::string_view name)
+{
+    auto it = partitions.find (name);
+    if (it == partitions.end())
+        return std::nullopt;
+    return *it->second;
+}
+
+std::shared_ptr<Partition> ImageSet::FindPartitionShared (std::string_view name)
+{
+    auto it = partitions.find (name);
+    if (it == partitions.end())
+        return {};
+    return it->second;
+}
+
+ResNone ImageSet::AddImage (std::unique_ptr<Image> image)
+{
+    if (images.find (image->GetName()) != images.end())
+    {
+        return ImageError::Make (ErrorCode::DuplicateImage,
+            {{"name_suffix", ImageError::NameSuffix (image->GetName())}});
+    }
+
+    images.emplace (image->GetName(), std::move (image));
+    return Success();
+}
+
+ResNone ImageSet::AddPartition (std::shared_ptr<Partition> part)
+{
+    if (partitions.find (part->GetName()) != partitions.end())
+    {
+        return ImageError::Make (ErrorCode::DuplicatePartition,
+            {{"name_suffix", ImageError::NameSuffix (part->GetName())}});
+    }
+    partitions.emplace (part->GetName(), std::move (part));
+    return Success();
+}
+
+ResNone ImageSet::Filter (const std::vector<std::string>& keys)
+{
+    std::unordered_map<std::string, std::unique_ptr<Image>, StringHash, std::equal_to<>> result;
+    for (const auto& key : keys)
+    {
+        auto it = images.find (key);
+        if (it == images.end())
+            return ImageError::Make (ErrorCode::ImgFilterFailed, {{"name", key}});
+        result.insert (images.extract (it));
+    }
+    images = std::move (result);
+    return Success();
+}

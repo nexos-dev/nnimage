@@ -22,18 +22,13 @@
 #include "include/Error.h"
 #include "include/EnumArray.h"
 #include "include/Frontend.h"
+#include "include/Operation.h"
 
 #include <cstdlib>
 #include <filesystem>
 #include <string>
 #include <string_view>
 #include <vector>
-
-struct ActionReg
-{
-    std::unique_ptr<Action> action;
-    std::unique_ptr<ActionOptions> options;
-};
 
 // The raw options
 struct DispatchOptions
@@ -42,15 +37,19 @@ struct DispatchOptions
     bool quiet = false;
     bool verbose = false;
     bool traceErrors = false;
+
     std::string defaultBackend = "";
     std::string operation = "";
+
+    std::vector<std::string> selectedImages;
+
     std::vector<std::string> logFiles{};
 };
 
 class Dispatch
 {
   public:
-    Dispatch();
+    Dispatch() = default;
     void CollectOptions (OptionsParser& opts);
     ResNone ValidateOptions();
     ResNone SetupConf();
@@ -60,6 +59,8 @@ class Dispatch
     ResNone setupLogs();
     ResNone setupError();
     Result<std::filesystem::path> getLogDir();
+
+    ResNone selectImages (ImageSet& images);
 
     std::filesystem::path getConfigDir()
     {
@@ -84,9 +85,8 @@ class Dispatch
     std::filesystem::path logDir;
     std::filesystem::path confFile;
 
-    EnumArray<ActionType, ActionReg, ActionType::Max> actionTable;
     DispatchOptions options;
-
+    OperationOptions opOptions;
     FrontendOptions frontOpts;
 };
 

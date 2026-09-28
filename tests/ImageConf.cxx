@@ -223,9 +223,9 @@ TEST_CASE ("ImageConf parses a valid image config and resolves partition referen
     ImageConf frontend (opts);
     REQUIRE (frontend.Parse());
 
-    auto images = frontend.GetImages();
+    auto images = frontend.GetSet().GetImages();
     REQUIRE (images.size() == 1);
-    const Image& image = *images.front();
+    const Image& image = images.front().get();
     CHECK (image.GetName() == "test");
     CHECK (image.GetSpec().size == 128ULL * 1024 * 1024);
     REQUIRE (image.GetPartitions().size() == 2);
@@ -258,17 +258,17 @@ TEST_CASE ("ImageConf resolves a boot_image reference between images")
     ImageConf frontend (opts);
     REQUIRE (frontend.Parse());
 
-    auto images = frontend.GetImages();
+    auto images = frontend.GetSet().GetImages();
     REQUIRE (images.size() == 2);
 
     Image* bootImage = nullptr;
     Image* testImage = nullptr;
     for (auto& image : images)
     {
-        if (image->GetName() == "boot")
-            bootImage = image.get();
-        else if (image->GetName() == "test")
-            testImage = image.get();
+        if (image.get().GetName() == "boot")
+            bootImage = &image.get();
+        else if (image.get().GetName() == "test")
+            testImage = &image.get();
     }
     REQUIRE (bootImage != nullptr);
     REQUIRE (testImage != nullptr);
@@ -368,9 +368,9 @@ TEST_CASE ("ImageConf stress test with many partitions and repeated image parsin
     ImageConf frontend (opts);
     REQUIRE (frontend.Parse());
 
-    auto images = frontend.GetImages();
+    auto images = frontend.GetSet().GetImages();
     REQUIRE (images.size() == 1);
-    REQUIRE (images.front()->GetPartitions().size() == partitionCount);
+    REQUIRE (images.front().get().GetPartitions().size() == partitionCount);
 
     std::filesystem::remove_all (path.parent_path());
 }

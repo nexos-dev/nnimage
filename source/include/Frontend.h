@@ -60,6 +60,23 @@ class FrontendOptions : public Options
     }
 };
 
+class ImageSet
+{
+  public:
+    std::vector<std::reference_wrapper<Image>> GetImages();
+    std::optional<std::reference_wrapper<Image>> FindImage (std::string_view name);
+    std::optional<std::reference_wrapper<Partition>> FindPartition (std::string_view name);
+    std::shared_ptr<Partition> FindPartitionShared (std::string_view name);
+    ResNone AddImage (std::unique_ptr<Image> image);
+    ResNone AddPartition (std::shared_ptr<Partition> part);
+    ResNone Filter (const std::vector<std::string>& keys);
+
+  private:
+    // These contain all the images/partitions that have been parsed
+    std::unordered_map<std::string, std::unique_ptr<Image>, StringHash, std::equal_to<>> images{};
+    std::unordered_map<std::string, std::shared_ptr<Partition>, StringHash, std::equal_to<>> partitions{};
+};
+
 class Frontend
 {
   public:
@@ -68,46 +85,15 @@ class Frontend
     {}
     virtual ~Frontend() = default;
     virtual ResNone Parse() = 0;
-    std::vector<std::unique_ptr<Image>> GetImages()
+
+    ImageSet& GetSet()
     {
-        std::vector<std::unique_ptr<Image>> vec;
-        vec.reserve (images.size());
-        for (auto& [key, ptr] : images)
-            vec.push_back (std::move (ptr));
-        // Clear the maps as we are done with them now
-        images.clear();
-        partitions.clear();
-        return vec;
+        return images;
     }
 
   protected:
-    ResNone addImage (std::unique_ptr<Image> image)
-    {
-        if (images.find (image->GetName()) != images.end())
-        {
-            return ImageError::Make (ErrorCode::DuplicateImage,
-                {{"name_suffix", ImageError::NameSuffix (image->GetName())}});
-        }
-
-        images.emplace (image->GetName(), std::move (image));
-        return Success();
-    }
-
-    ResNone addPartition (std::shared_ptr<Partition> part)
-    {
-        if (partitions.find (part->GetName()) != partitions.end())
-        {
-            return ImageError::Make (ErrorCode::DuplicatePartition,
-                {{"name_suffix", ImageError::NameSuffix (part->GetName())}});
-        }
-        partitions.emplace (part->GetName(), std::move (part));
-        return Success();
-    }
-
     FrontendOptions opts;
-    // These contain all the images/partitions that have been parsed
-    std::unordered_map<std::string, std::unique_ptr<Image>, StringHash, std::equal_to<>> images{};
-    std::unordered_map<std::string, std::shared_ptr<Partition>, StringHash, std::equal_to<>> partitions{};
+    ImageSet images;
     // References to partitions
     std::vector<GenericRef<Image>> partRefs{};
 };

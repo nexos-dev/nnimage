@@ -16,19 +16,12 @@
 */
 
 #include "include/Dispatch.h"
+#include "include/Operation.h"
 #include "include/Error.h"
 #include "include/Log.h"
-#include <memory>
+#include "include/OpTable.h"
 
-Dispatch::Dispatch()
-{
-    // Initialize every action
-    for (auto it = actionTable.begin(); it != actionTable.end(); it++)
-    {
-        ActionReg& action = *it;
-        action.options = ActionOptions::MakeActOptions (actionTable.index (it));
-    }
-}
+#include <memory>
 
 Result<std::filesystem::path> Dispatch::getLogDir()
 {
@@ -82,6 +75,15 @@ ResNone Dispatch::setupError()
     return Success();
 }
 
+ResNone Dispatch::selectImages (ImageSet& images)
+{
+    // If no selection was made on command line, return the whole set
+    if (options.selectedImages.empty())
+        return Success();
+
+    return images.Filter (options.selectedImages);
+}
+
 // TODO for when we add in a configuration file for options
 ResNone Dispatch::SetupConf()
 {
@@ -115,6 +117,31 @@ bool Dispatch::Execute (OptionsParser& parser)
         dispatchFail (resFront.Error());
         return false;
     }
+    auto& imageSet = frontend->GetSet();
+
+    // Now we need to perform image selection
+    auto resImage = selectImages (imageSet);
+    if (!resImage)
+    {
+        dispatchFail (resImage.Error());
+        return false;
+    }
+
+    // We now have the image set to operate on, now prepare the operation
+    auto resOp = Operation::MakeOperation (options.operation, opOptions);
+    if (!resOp)
+    {
+        dispatchFail (resOp.Error());
+        return false;
+    }
+
+    auto resTargets = resOp.Value()->PrepareTargets (imageSet.GetImages());
+    if (!resTargets)
+    {
+        dispatchFail (resTargets.Error());
+        return false;
+    }
+    // TODO: hand targets off to a TaskGraph runner once that wiring exists
 
     // Now verify that there are no unused options
     auto resOpts = parser.CheckUnusedOpts();
@@ -143,7 +170,8 @@ void Dispatch::CollectOptions (OptionsParser& opts)
             "Specifies file to use for logging purposes\n"
             "Can be specified multiple times\n"
             "or as a comma-seperated list",
-            options.logFiles);
+            options.logFiles)
+        ("i,images", "Specifies images to operate on", options.selectedImages);
     // clang-format on
 
     // Add operation argument
@@ -156,16 +184,11 @@ void Dispatch::CollectOptions (OptionsParser& opts)
     frontOpts.CollectOptions (opts);
 
     // Now add every action's options
-    for (auto it = actionTable.begin(); it != actionTable.end(); it++)
-    {
-        ActionReg& action = *it;
-        action.options->CollectOptions (opts);
-    }
+    opOptions.CollectOptions (opts);
 }
 
 ResNone Dispatch::ValidateOptions()
 {
-    std::string errMsg = "";
     // Ensure an operation was passed
     if (options.operation.empty())
         return makeOptionError ("No operation specified");
@@ -175,14 +198,10 @@ ResNone Dispatch::ValidateOptions()
     if (!res)
         return res;
 
-    // Check every action
-    for (auto it = actionTable.begin(); it != actionTable.end(); it++)
-    {
-        ActionReg& action = *it;
-        auto res = action.options->ValidateOptions();
-        if (!res)
-            return res;
-    }
+    // Check operations
+    res = opOptions.ValidateOptions();
+    if (!res)
+        return res;
 
     return Success();
 }

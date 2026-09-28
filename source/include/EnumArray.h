@@ -25,24 +25,24 @@
 #include <type_traits>
 #include <utility>
 
-template <typename EnumType, typename ValueType, EnumType Size>
+template <typename T>
+concept EnumType = std::is_enum_v<T>;
+
+template <EnumType Enum, typename ValueType, Enum Size>
 class EnumArray
 {
   public:
     EnumArray()
     {
-        static_assert (std::is_enum<EnumType>::value, "EnumType must be an enum type");
         static_assert (static_cast<size_t> (Size) > 0, "Size must be greater than 0");
     }
     constexpr EnumArray (std::initializer_list<ValueType> vals)
     {
-        static_assert (std::is_enum<EnumType>::value, "EnumType must be an enum type");
         static_assert (static_cast<size_t> (Size) > 0, "Size must be greater than 0");
         std::copy (vals.begin(), vals.end(), data.begin());
     }
-    constexpr EnumArray (std::initializer_list<std::pair<EnumType, ValueType>> vals)
+    constexpr EnumArray (std::initializer_list<std::pair<Enum, ValueType>> vals)
     {
-        static_assert (std::is_enum<EnumType>::value, "EnumType must be an enum type");
         static_assert (static_cast<size_t> (Size) > 0, "Size must be greater than 0");
         for (const auto& val : vals)
         {
@@ -50,12 +50,12 @@ class EnumArray
         }
     }
 
-    constexpr ValueType& operator[] (EnumType index)
+    constexpr ValueType& operator[] (Enum index)
     {
         return data[static_cast<size_t> (index)];
     }
 
-    constexpr const ValueType& operator[] (EnumType index) const
+    constexpr const ValueType& operator[] (Enum index) const
     {
         return data[static_cast<size_t> (index)];
     }
@@ -73,9 +73,9 @@ class EnumArray
     }
 
     using EnumArrayIter = std::array<ValueType, static_cast<size_t> (Size)>::iterator;
-    constexpr EnumType index (EnumArrayIter it) noexcept
+    constexpr Enum index (EnumArrayIter it) noexcept
     {
-        return static_cast<EnumType> (it - data.begin());
+        return static_cast<Enum> (it - data.begin());
     }
 
   private:

@@ -19,6 +19,7 @@
 #define IMGBASE_H
 
 #include "include/StringHash.h"
+#include "include/NameRegistry.h"
 #include "include/image/ImgError.h"
 #include "include/image/ImgProp.h"
 
@@ -59,41 +60,6 @@ class GenericRef
     T& comp;
     std::string name;
     int line;
-};
-
-// Generic name-to-enum registry
-template <typename Value>
-class NameRegistry
-{
-  public:
-    NameRegistry (std::initializer_list<std::pair<const std::string, Value>> values) : values{values}
-    {}
-
-    template <size_t N>
-    NameRegistry (const std::array<std::pair<std::string_view, Value>, N>& entries)
-    {
-        for (const auto& [name, value] : entries)
-            values.emplace (name, value);
-    }
-
-    Value Resolve (std::string_view name) const
-    {
-        auto it = values.find (name);
-        if (it == values.end())
-            return Value::Max;
-        return it->second;
-    }
-
-    const std::string& GetName (Value value) const
-    {
-        auto it =
-            std::find_if (values.begin(), values.end(), [value] (const auto& pair) { return pair.second == value; });
-        assert (it != values.end());
-        return it->first;
-    }
-
-  private:
-    std::unordered_map<std::string, Value, StringHash, std::equal_to<>> values;
 };
 
 // Type wrapper for, e.g., "128MiB" -> (128*1024*1024)

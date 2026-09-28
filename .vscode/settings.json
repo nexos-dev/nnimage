@@ -13,6 +13,7 @@
     "clang-tidy.lintOnSave": true,
     "editor.formatOnSave": true,
     "editor.inlineSuggest.enabled": false,
+    "debug.internalConsoleOptions": "neverOpen",
     "VSCodeCounter.exclude": [
         "**/.gitignore",
         "**/.vscode/**",

@@ -298,7 +298,7 @@ ResNone ImageCmd::Parse()
         return badArgument (res.Error(), "--partition");
 
     // Add the image
-    auto resAdd = addImage (std::move (imagePtr));
+    auto resAdd = images.AddImage (std::move (imagePtr));
     if (!resAdd)
         return resAdd;
 

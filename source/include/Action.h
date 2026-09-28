@@ -30,13 +30,15 @@
 
 enum class ActionType
 {
-    Create,
     Init,
     Partition,
     Format,
     Update,
     Max
 };
+
+class Image;
+class Target;
 
 class Action
 {
@@ -46,27 +48,21 @@ class Action
     Action (ActionType action) : type{action}
     {}
 
-    static Result<ActionType> ResolveName (std::string_view name)
-    {
-        auto it = actionNameTable.find (name);
-        if (it == actionNameTable.end())
-            return Error ({ErrorDomain::Action, ErrorCode::BadAction}, {});
-        return it->second;
-    }
-
     Action (const Action&) = delete;
     Action& operator= (const Action&) = delete;
+
+    ActionType GetType() const
+    {
+        return type;
+    }
+
+    // Creates target list for action
+    virtual ResNone FillTarget (Target& target, const Image& image) = 0;
 
   protected:
     ActionType type;
 
   private:
-    inline static const std::unordered_map<std::string_view, ActionType> actionNameTable = {
-        {"create", ActionType::Create},
-        {"init", ActionType::Init},
-        {"partition", ActionType::Partition},
-        {"format", ActionType::Format},
-        {"update", ActionType::Update}};
 };
 
 class ActionOptions;
@@ -82,6 +78,17 @@ class ActionOptions : public Options
 
   private:
     const static EnumArray<ActionType, ActOptSetter, ActionType::Max> actionTable;
+};
+
+// CRTP base that implements MakeAction() for a concrete Action subclass
+template <typename ActionT>
+class ActionOptionsFactory : public ActionOptions
+{
+  public:
+    std::unique_ptr<Action> MakeAction() override
+    {
+        return std::make_unique<ActionT>();
+    }
 };
 
 #endif

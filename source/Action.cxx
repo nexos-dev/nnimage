@@ -25,16 +25,6 @@ std::unique_ptr<ActionOptions> ActionOptions::MakeActOptions (ActionType type)
 void ActionOptions::CollectOptions (OptionsParser& opts)
 {}
 
-void CreateActOptions::CollectOptions (OptionsParser& opts)
-{
-    ActionOptions::CollectOptions (opts);
-}
-
-ResNone CreateActOptions::ValidateOptions()
-{
-    return Success();
-}
-
 void InitActOptions::CollectOptions (OptionsParser& opts)
 {
     ActionOptions::CollectOptions (opts);
@@ -73,8 +63,27 @@ ResNone UpdateActOptions::ValidateOptions()
     return Success();
 }
 
+ResNone InitAction::FillTarget (Target& target, const Image& image)
+{
+    return Success();
+}
+
+ResNone PartitionAction::FillTarget (Target& target, const Image& image)
+{
+    return Success();
+}
+
+ResNone FormatAction::FillTarget (Target& target, const Image& image)
+{
+    return Success();
+}
+
+ResNone UpdateAction::FillTarget (Target& target, const Image& image)
+{
+    return Success();
+}
+
 const EnumArray<ActionType, ActOptSetter, ActionType::Max> ActionOptions::actionTable = {
-    {ActionType::Create, []() { return std::make_unique<CreateActOptions>(); }},
     {ActionType::Init, []() { return std::make_unique<InitActOptions>(); }},
     {ActionType::Partition, []() { return std::make_unique<PartitionActOptions>(); }},
     {ActionType::Format, []() { return std::make_unique<FormatActOptions>(); }},

@@ -15,8 +15,8 @@
     limitations under the License.
 */
 
-#ifndef NNIMAGE_TASK_H
-#define NNIMAGE_TASK_H
+#ifndef TASK_H
+#define TASK_H
 
 #include "include/Log.h"
 
@@ -31,7 +31,7 @@
 #include <vector>
 
 using TaskFunc = std::function<bool()>;
-typedef int TaskId;
+using TaskId = size_t;
 
 enum class TaskState
 {
@@ -39,8 +39,6 @@ enum class TaskState
     Running,
     Finished,
     Skipped,
-    Rollback,
-    RolledBack,
     Failed
 };
 
@@ -50,6 +48,13 @@ class Task
     Task (TaskFunc func, std::string name, std::string msg = "")
         : task{func}, name{std::move (name)}, msg{std::move (msg)}
     {}
+    Task (Task&& other) noexcept
+        : id{other.id}, task{std::move (other.task)}, state{other.state.load()}, name{std::move (other.name)},
+          msg{std::move (other.msg)}
+    {}
+    Task (const Task&) = delete;
+    Task& operator= (const Task&) = delete;
+    Task& operator= (Task&&) = delete;
     void SetId (TaskId id)
     {
         this->id = id;
@@ -105,11 +110,28 @@ class Task
     }
 
   private:
-    TaskId id;
+    TaskId id = -1;
     TaskFunc task;
     std::atomic<TaskState> state{TaskState::Pending};
     const std::string name;
     const std::string msg = "";
+};
+
+class Target
+{
+  public:
+    Target() = default;
+    Target (std::string name) : name{std::move (name)}
+    {}
+
+    void AddTask (Task task)
+    {
+        pendingTasks.push_back (std::move (task));
+    }
+
+  private:
+    std::string name;
+    std::vector<Task> pendingTasks;    // Tasks in target that have not been added to graph yet
 };
 
 class TaskGraph
@@ -117,7 +139,11 @@ class TaskGraph
   public:
     TaskGraph()
     {}
-    TaskId AddTask (std::unique_ptr<Task> task);
+    TaskId AddTask (Task task);
+    TaskState GetTaskState (TaskId task) const
+    {
+        return tasks.at (task).GetState();
+    }
     bool AddDependency (TaskId src, TaskId dest);
     bool RunTasks();
 
@@ -129,7 +155,7 @@ class TaskGraph
     void getDescendants (TaskId task, std::vector<TaskId>& descendants);
     void addReadyTask (TaskId task);
 
-    std::vector<std::unique_ptr<Task>> tasks;
+    std::vector<Task> tasks;
     std::queue<TaskId> completedQueue;
     std::mutex completedMtx;
     std::vector<std::vector<TaskId>> adjList;

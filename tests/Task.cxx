@@ -55,13 +55,13 @@ struct EventTrace
 };
 
 // A simple task that records an event and optionally sleeps for a specified duration
-std::unique_ptr<Task> MakeTask (const std::string& name,
+Task MakeTask (const std::string& name,
     EventTrace* trace,
     bool result = true,
     std::atomic<int>* counter = nullptr,
     std::chrono::milliseconds delay = std::chrono::milliseconds{0})
 {
-    return std::make_unique<Task> (
+    return Task (
         [trace, name, result, counter, delay]() {
             if (delay.count() > 0)
                 std::this_thread::sleep_for (delay);
@@ -183,12 +183,10 @@ TEST_CASE ("TaskGraph runs a valid DAG in dependency order")
 TEST_CASE ("TaskGraph reports a single failure")
 {
     TaskGraph graph;
-    auto failTask = std::make_unique<Task> ([]() { return false; }, "fail");
-    Task* failPtr = failTask.get();
-    graph.AddTask (std::move (failTask));
+    auto fail = graph.AddTask (Task ([]() { return false; }, "fail"));
 
     CHECK_FALSE (graph.RunTasks());
-    CHECK (failPtr->GetState() == TaskState::Failed);
+    CHECK (graph.GetTaskState (fail) == TaskState::Failed);
 }
 
 // FIXME: currently will ocasionally fail. Must be race condition
@@ -201,35 +199,29 @@ TEST_CASE ("TaskGraph skips dependents after failure")
     EventTrace trace;
     TaskGraph graph;
 
-    auto rootTask = std::make_unique<Task> (
+    auto root = graph.AddTask (Task (
         [&]() {
             trace.Record ("root");
             rootRuns.fetch_add (1);
             return false;
         },
-        "root");
-    Task* rootPtr = rootTask.get();
-    auto root = graph.AddTask (std::move (rootTask));
+        "root"));
 
-    auto dependentTask = std::make_unique<Task> (
+    auto dependent = graph.AddTask (Task (
         [&]() {
             trace.Record ("dependent");
             dependentRuns.fetch_add (1);
             return true;
         },
-        "dependent");
-    Task* dependentPtr = dependentTask.get();
-    auto dependent = graph.AddTask (std::move (dependentTask));
+        "dependent"));
 
-    auto leafTask = std::make_unique<Task> (
+    auto leaf = graph.AddTask (Task (
         [&]() {
             trace.Record ("leaf");
             leafRuns.fetch_add (1);
             return true;
         },
-        "leaf");
-    Task* leafPtr = leafTask.get();
-    auto leaf = graph.AddTask (std::move (leafTask));
+        "leaf"));
 
     CHECK (graph.AddDependency (dependent, root));
     CHECK (graph.AddDependency (leaf, dependent));
@@ -243,14 +235,9 @@ TEST_CASE ("TaskGraph skips dependents after failure")
     CHECK (trace.Count ("root") == 1);
     CHECK (trace.Count ("dependent") == 0);
     CHECK (trace.Count ("leaf") == 0);
-
-    CHECK (rootPtr->GetState() == TaskState::Failed);
-    CHECK (dependentPtr->GetState() == TaskState::Skipped);
-    CHECK (leafPtr->GetState() == TaskState::Skipped);
-
-    (void) root;
-    (void) dependent;
-    (void) leaf;
+    CHECK (graph.GetTaskState (root) == TaskState::Failed);
+    CHECK (graph.GetTaskState (dependent) == TaskState::Skipped);
+    CHECK (graph.GetTaskState (leaf) == TaskState::Skipped);
 }
 
 TEST_CASE ("TaskGraph reports an empty graph as success")
@@ -265,7 +252,6 @@ TEST_CASE ("TaskGraph handles a larger independent workload")
     std::atomic<int> runCount{0};
     EventTrace trace;
     TaskGraph graph;
-    std::vector<Task*> tasks;
     std::random_device rd;
     std::mt19937 gen (rd());
 
@@ -273,7 +259,8 @@ TEST_CASE ("TaskGraph handles a larger independent workload")
     ChronoMs minDelay{1};
     ChronoMs maxDelay{100};
     std::uniform_int_distribution<ChronoMs::rep> timeDistrib (minDelay.count(), maxDelay.count());
-    tasks.reserve (taskCount);
+    std::vector<TaskId> taskIds;
+    taskIds.reserve (taskCount);
 
     for (int i = 0; i < taskCount; ++i)
     {
@@ -282,14 +269,12 @@ TEST_CASE ("TaskGraph handles a larger independent workload")
             true,
             &runCount,
             std::chrono::milliseconds{timeDistrib (gen)});
-        tasks.push_back (task.get());
-        graph.AddTask (std::move (task));
+        taskIds.push_back (graph.AddTask (std::move (task)));
     }
 
     CHECK (graph.RunTasks());
     CHECK (runCount.load() == taskCount);
     CHECK (trace.Snapshot().size() == taskCount);
-
-    for (Task* task : tasks)
-        CHECK (task->GetState() == TaskState::Finished);
+    for (TaskId id : taskIds)
+        CHECK (graph.GetTaskState (id) == TaskState::Finished);
 }

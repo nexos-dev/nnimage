@@ -17,7 +17,6 @@
 
 #include "include/Task.h"
 
-#include <iostream>
 #include <algorithm>
 #include <thread>
 
@@ -56,15 +55,13 @@ bool TaskGraph::taskExists (TaskId task)
         return false;
     if (task >= tasks.size())
         return false;
-    if (!tasks[task])
-        return false;
     return true;
 }
 
-TaskId TaskGraph::AddTask (std::unique_ptr<Task> task)
+TaskId TaskGraph::AddTask (Task task)
 {
     TaskId id = curId;
-    task->SetId (id);
+    task.SetId (id);
     tasks.push_back (std::move (task));
     adjList.emplace_back();
     inDegree.emplace_back (0);
@@ -123,7 +120,7 @@ void TaskGraph::skipDescendants (TaskId failedTask)
     for (TaskId id : descendants)
     {
         // This will mark the task as skipped if it is still pending
-        TaskState cur = tasks[id]->Skip();
+        TaskState cur = tasks[id].Skip();
         if (cur == TaskState::Skipped)
             skippedCount++;
         // NOTE: how to handle else condition?
@@ -199,7 +196,7 @@ bool TaskGraph::RunTasks()
     }
 
     // Initialize ready queue with all source tasks
-    for (TaskId i = 0; static_cast<size_t> (i) < tasks.size(); i++)
+    for (TaskId i = 0; i < tasks.size(); i++)
     {
         if (inDegree[i].load() == 0 && taskExists (i))
             ready.push (i);
@@ -229,11 +226,7 @@ bool TaskGraph::RunTasks()
             }
             // Run it outside the lock
             auto& task = tasks[nextTask];
-            assert (task != nullptr);    // THis shouldn't ever happen as we check for task
-                                         // existence before adding to ready queue, But it's better
-                                         // to be safe
-
-            bool ok = task->Run();
+            bool ok = task.Run();
             completed.fetch_add (1);
 
             // Re-compute the in-degrees of dependent tasks

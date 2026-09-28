@@ -30,9 +30,9 @@ TEST_CASE ("ImageCmd creates an image from command-line properties")
     ImageCmd frontend (opts);
     REQUIRE (frontend.Parse());
 
-    auto images = frontend.GetImages();
+    auto images = frontend.GetSet().GetImages();
     REQUIRE (images.size() == 1);
-    const Image& image = *images.front();
+    const Image& image = images.front().get();
     CHECK (image.GetName().empty());
     CHECK (image.GetSpec().size == 64ULL * 1024 * 1024);
     CHECK (image.GetSpec().bootMode == BootMode::Efi);

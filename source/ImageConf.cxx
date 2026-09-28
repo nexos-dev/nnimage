@@ -338,17 +338,18 @@ Result<std::shared_ptr<Partition>> ImageConf::createPartition (ImgParseBlock blo
 ResNone ImageConf::resolveImgRefs()
 {
     // Go through each image
-    for (const auto& image : images)
+    for (auto imageRef : images.GetImages())
     {
-        const auto& refs = image.second->GetRefs();
+        Image& image = imageRef.get();
+        const auto& refs = image.GetRefs();
 
         for (const auto& ref : refs)
         {
             std::string_view name = ref.ref.GetName();
 
             // Find image with that name
-            auto imageIt = images.find (name);
-            if (imageIt == images.end())
+            auto imageIt = images.FindImage (name);
+            if (!imageIt)
             {
                 return ImageError::MakeWithContext (ErrorCode::UnresolvedImage,
                     {{"image_name", std::string (name)}},
@@ -356,7 +357,7 @@ ResNone ImageConf::resolveImgRefs()
                     ref.ref.GetLine());
             }
 
-            ref.setter (imageIt->second.get());
+            ref.setter (&imageIt->get());
         }
     }
     return Success();
@@ -368,15 +369,15 @@ ResNone ImageConf::resolvePartRefs()
     {
         std::string_view partName = ref.GetName();
 
-        auto partIt = partitions.find (partName);
-        if (partIt == partitions.end())
+        auto part = images.FindPartitionShared (partName);
+        if (!part)
         {
             return ImageError::MakeWithContext (ErrorCode::UnresolvedPartition,
                 {{"part_name", std::string (partName)}},
                 parser.GetFileName(),
                 ref.GetLine());
         }
-        ref.GetComp().AddPartition (partIt->second);
+        ref.GetComp().AddPartition (std::move (part));
     }
     return Success();
 }
@@ -405,7 +406,7 @@ ResNone ImageConf::Parse()
             if (!resImg)
                 return resImg.Error();
 
-            auto resAdd = addImage (std::move (resImg.Value()));
+            auto resAdd = images.AddImage (std::move (resImg.Value()));
             if (!resAdd)
                 return resAdd.Error();
         }
@@ -415,7 +416,7 @@ ResNone ImageConf::Parse()
             if (!resPart)
                 return resPart.Error();
 
-            auto resAdd = addPartition (std::move (resPart.Value()));
+            auto resAdd = images.AddPartition (std::move (resPart.Value()));
             if (!resAdd)
                 return resAdd.Error();
         }
