@@ -219,9 +219,9 @@ TEST_CASE ("Image component setter/getter works")
     REQUIRE (optRes.has_value());
     CHECK (*optRes == BootLoadType::Grub);
 
-    auto componentResult = img.GetComponent<BootLoadComp> (CompType::Boot);
-    auto& component = componentResult.get();
-    REQUIRE (component.GetBootType() == BootLoadType::Grub);
+    auto* component = img.GetComponent<BootLoadComp> (CompType::Boot);
+    REQUIRE (component != nullptr);
+    REQUIRE (component->GetBootType() == BootLoadType::Grub);
 }
 
 TEST_CASE ("Image setter casts an ImageId to a string")
@@ -455,15 +455,15 @@ TEST_CASE ("Image::AddComponent/CheckComponent/GetComponent manage component own
 {
     Image img ("disk1");
     CHECK_FALSE (img.CheckComponent (CompType::Format));
-    CHECK_THROWS_AS (img.GetComponent<TestComponent> (CompType::Format), ErrorException);
+    CHECK (img.GetComponent<TestComponent> (CompType::Format) == nullptr);
 
     auto comp = std::make_unique<TestComponent> (img);
     TestComponent* rawPtr = comp.get();
     REQUIRE (img.AddComponent (std::move (comp)));
     CHECK (img.CheckComponent (CompType::Format));
 
-    auto& component = img.GetComponent<TestComponent> (CompType::Format).get();
-    CHECK (&component == rawPtr);
+    auto* component = img.GetComponent<TestComponent> (CompType::Format);
+    CHECK (component == rawPtr);
     CHECK_THROWS_AS (img.GetComponent<BootLoadComp> (CompType::Format), ErrorException);
 }
 
@@ -475,9 +475,9 @@ TEST_CASE ("Image::GetComponent preserves constness for const images")
     REQUIRE (img.AddComponent (std::move (component)));
 
     const Image& constImg = img;
-    auto& retrieved = constImg.GetComponent<TestComponent> (CompType::Format).get();
-    static_assert (std::is_same_v<decltype (retrieved), const TestComponent&>);
-    CHECK (&retrieved == rawPtr);
+    auto* retrieved = constImg.GetComponent<TestComponent> (CompType::Format);
+    static_assert (std::is_same_v<decltype (retrieved), const TestComponent*>);
+    CHECK (retrieved == rawPtr);
 }
 
 TEST_CASE ("Image::AddComponent refuses to overwrite an already-populated slot")
@@ -529,8 +529,11 @@ TEST_CASE ("Image partitions can be added and enumerated")
 
 TEST_CASE ("ImageError formats a named-image message with the image name quoted")
 {
+    Image image ("disk1");
+    Partition partition ("part1");
     Error err = ImageError::Make (ErrorCode::InvalidImgProp,
-        {{"prop", "bogus"}, {"name_suffix", ImageError::NameSuffix ("disk1")}});
+        {{"prop", "bogus"}, {"name_suffix", ImageError::NameSuffix (image)}});
+    CHECK (ImageError::NameSuffix (partition) == " \"part1\"");
     CHECK (err.RootFrame().msg.find ("disk1") != std::string::npos);
     CHECK (err.RootFrame().msg.find ("bogus") != std::string::npos);
 }

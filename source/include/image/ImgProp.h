@@ -22,6 +22,7 @@
 
 #include <array>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 
 // X-Macro tables for image/partition property enums
@@ -49,11 +50,13 @@
 
 enum class ImgProp
 {
+    None,
     IMG_PROP_TABLE (IMG_ENUM_ENTRY) Max
 };
 
 enum class PartProp
 {
+    None,
     PART_PROP_TABLE (PART_ENUM_ENTRY) Max
 };
 
@@ -82,9 +85,25 @@ consteval auto MakePartPropRegistry()
 
 consteval auto MakeImgPropOwnerTable()
 {
-    return std::to_array<std::pair<ImgProp, CompType>> ({IMG_PROP_TABLE (IMG_COMP_ENTRY)});
+    return std::to_array<std::pair<ImgProp, CompType>> (
+        {{ImgProp::None, CompType::Max}, IMG_PROP_TABLE (IMG_COMP_ENTRY)});
 }
 
 #undef IMG_COMP_ENTRY
+
+// Declared as templates (defined + explicitly instantiated in Image.cxx) so the mangled
+// symbols match the explicit instantiations rather than looking like plain overloads.
+template <typename Prop>
+requires (std::is_enum_v<Prop>)
+Prop& operator++ (Prop& cur);
+
+template <typename Prop>
+requires (std::is_enum_v<Prop>)
+Prop operator++ (Prop& cur, int);
+
+extern template ImgProp& operator++ <ImgProp> (ImgProp&);
+extern template ImgProp operator++ <ImgProp> (ImgProp&, int);
+extern template PartProp& operator++ <PartProp> (PartProp&);
+extern template PartProp operator++ <PartProp> (PartProp&, int);
 
 #endif

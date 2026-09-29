@@ -76,8 +76,8 @@ class SimpleLexer
     SimpleLexer() = default;
     SimpleLexer (std::string file, std::string data);
     Result<LexToken> NextToken();
-    const char* NameFromToken (TokenType type) const;
-    const char* NameFromToken (const LexToken& tok) const;
+    static const char* NameFromToken (TokenType type);
+    static const char* NameFromToken (const LexToken& tok);
 
     std::string_view GetFileName() const
     {

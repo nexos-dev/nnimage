@@ -25,6 +25,9 @@
 #include <string>
 #include <string_view>
 
+class Image;
+class Partition;
+
 class ImageError
 {
   public:
@@ -51,8 +54,10 @@ class ImageError
     {
         if (name.empty())
             return {};
-        return std::format (" {}", name);
+        return std::format (" \"{}\"", name);
     }
+    static std::string NameSuffix (const Image& image);
+    static std::string NameSuffix (const Partition& partition);
 
     static Error InvalidId (std::string_view prop, std::string_view name, std::string_view id)
     {

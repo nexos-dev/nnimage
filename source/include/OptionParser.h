@@ -43,8 +43,7 @@ class OptionTracker
   public:
     void MapOption (std::string opt, std::string set)
     {
-        if (map.find (opt) != map.end())
-            throw std::runtime_error ("Option not valid");
+        assert (map.find (opt) == map.end());
         map[std::move (opt)] = std::move (set);
     }
     void UseSet (std::string set)
@@ -54,8 +53,7 @@ class OptionTracker
     bool IsOptionUsed (std::string_view option)
     {
         auto it = map.find (option);
-        if (it == map.end())
-            throw std::runtime_error ("Option not valid");
+        assert (it != map.end());
 
         const std::string& set = it->second;
         return usedSets.contains (set);

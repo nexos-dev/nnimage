@@ -65,7 +65,7 @@ struct PartSpec
 class Partition : public RegElement<Partition, PartProp, PartConfRegistry>
 {
   public:
-    Partition (std::string name) : RegElement{ErrorCode::PartMissingProp}
+    explicit Partition (std::string name) : RegElement{ErrorCode::PartMissingProp}
     {
         spec.name = std::move (name);
     }
@@ -109,7 +109,7 @@ class Partition : public RegElement<Partition, PartProp, PartConfRegistry>
     Error invalidPartProp (std::string_view propName) const
     {
         return ImageError::Make (ErrorCode::InvalidPartProp,
-            {{"prop", std::string (propName)}, {"name_suffix", ImageError::NameSuffix (GetName())}});
+            {{"prop", std::string (propName)}, {"name_suffix", ImageError::NameSuffix (*this)}});
     }
 
     const PartConfRegistry& getRegistry() const override
@@ -165,15 +165,12 @@ struct ImageRef
 };
 
 template <typename T, typename Self>
-using ComponentRef = std::conditional_t<std::is_const_v<std::remove_reference_t<Self>>, const T&, T&>;
-
-template <typename T, typename Self>
-using ComponentRefWrapper = std::reference_wrapper<std::remove_reference_t<ComponentRef<T, Self>>>;
+using ComponentPtr = std::conditional_t<std::is_const_v<std::remove_reference_t<Self>>, const T*, T*>;
 
 class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
 {
   public:
-    Image (std::string name) : RegElement{ErrorCode::ImgMissingProp}
+    explicit Image (std::string name) : RegElement{ErrorCode::ImgMissingProp}
     {
         spec.name = std::move (name);
     }
@@ -203,11 +200,14 @@ class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
     {
         backendTag = std::move (tag);
     }
-    BackendType GetBackendType (BackendType suggestion) const;
+    BackendType GetBackendType()
+    {
+        return backend;
+    }
 
     ResNone AddComponent (std::unique_ptr<Component> comp);
     template <typename T>
-    auto GetComponent (this auto& self, CompType type) -> ComponentRefWrapper<T, decltype (self)>;
+    auto GetComponent (this auto& self, CompType type) -> ComponentPtr<T, decltype (self)>;
     bool CheckComponent (CompType type) const;
 
     // Set accepts parser-shaped values, Get returns the property's translated value.
@@ -287,20 +287,14 @@ class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
     // References to other images
     std::vector<ImageRef> imageRefs;
 
-    // Resolves prop to its owning component, or nullopt if it's owned by the base image itself.
-    auto resolveComponent (this auto& self, ImgProp prop)
-        -> std::optional<ComponentRefWrapper<Component, decltype (self)>>;
+    // Resolves prop to its loaded owning component, or nullptr when none is loaded.
+    auto resolveComponent (this auto& self, ImgProp prop) -> ComponentPtr<Component, decltype (self)>;
 
-    auto getComponent (this auto& self, CompType type) -> ComponentRefWrapper<Component, decltype (self)>
+    auto getComponent (this auto& self, CompType type) -> ComponentPtr<Component, decltype (self)>
     {
         if (type == CompType::Max)
             throw ErrorException (ImageError::Make (ErrorCode::UnexpectedComponentType, {}));
-        if (!self.comps[type])
-        {
-            throw ErrorException (ImageError::Make (ErrorCode::CompNotLoaded,
-                {{"name_suffix", ImageError::NameSuffix (self.spec.name)}}));
-        }
-        return ComponentRefWrapper<Component, decltype (self)> (*self.comps[type]);
+        return self.comps[type].get();
     }
 
     std::optional<std::any> getInternal (ImgProp prop) const;
@@ -310,12 +304,12 @@ class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
     ResNone setCompProp (ImgProp prop, const ImageVal& val);
 
     template <typename CompT>
-    std::optional<std::reference_wrapper<const CompT>> getCompProp (CompType type) const;
+    const CompT* getCompProp (CompType type) const;
 
     Error invalidImgProp (std::string_view propName) const
     {
         return ImageError::Make (ErrorCode::InvalidImgProp,
-            {{"prop", std::string (propName)}, {{"name_suffix"}, ImageError::NameSuffix (GetName())}});
+            {{"prop", std::string (propName)}, {{"name_suffix"}, ImageError::NameSuffix (*this)}});
     }
 
     const ImgConfRegistry& getRegistry() const override

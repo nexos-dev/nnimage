@@ -40,6 +40,7 @@ struct DispatchOptions
 
     std::string defaultBackend = "";
     std::string operation = "";
+    std::string outPrefix = "";
 
     std::unordered_set<std::string> selectedImages;
     std::vector<std::string> fileNames{};
@@ -63,7 +64,8 @@ class Dispatch
 
     ResNone selectImages (ImageSet& images);
     ResNone createFileNames (ImageSet& images);
-    ResNone setDefaultFile (Image& image);
+    void setDefaultFile (Image& image);
+    ResNone validateImages (ImageSet& images);
 
     std::filesystem::path getConfigDir()
     {
@@ -74,10 +76,11 @@ class Dispatch
         return dir;
     }
     // This function is the end of the line for most errors that occur in this program
-    void dispatchFail (Error& err)
+    bool dispatchFail (Error& err)
     {
         err = err.Chain ({ErrorDomain::Operation, ErrorCode::OpFailed, ErrorLog::Normal, ErrorSeverity::Fatal}, {});
         ErrorOutput::The()->Report (err);
+        return false;
     }
     // Helper for reporting option validation errors
     Error makeOptionError (std::string_view msg)

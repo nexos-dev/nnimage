@@ -16,7 +16,10 @@
 */
 
 #include "include/Frontend.h"
+#include "include/Backend.h"
+
 #include <string>
+#include <iostream>
 
 void FrontendOptions::CollectOptions (OptionsParser& opts)
 {
@@ -27,6 +30,7 @@ void FrontendOptions::CollectOptions (OptionsParser& opts)
         ("bootmode", "Specifies boot mode of image (bios, efi, none)", bootMode)
         ("imgprop", "Specifies an additional property of image.\n"
             "Any property valid in configuration file is valid here", props)
+        ("format", "Specifies format of image", format)
         ("p,partition", "Specifies a partition to add", partSpecs);
     opts.AddOptions ("Frontend", "frontend_conf")
         ("f,file", "Configuration to get desired image configurations from", confFile)
@@ -105,8 +109,7 @@ ResNone ImageSet::AddImage (std::unique_ptr<Image> image)
 
     if (images.find (image->GetName()) != images.end())
     {
-        return ImageError::Make (ErrorCode::DuplicateImage,
-            {{"name_suffix", ImageError::NameSuffix (image->GetName())}});
+        return ImageError::Make (ErrorCode::DuplicateImage, {{"name_suffix", ImageError::NameSuffix (*image)}});
     }
 
     images.emplace (image->GetName(), std::move (image));
@@ -120,9 +123,34 @@ ResNone ImageSet::AddPartition (std::shared_ptr<Partition> part)
 
     if (partitions.find (part->GetName()) != partitions.end())
     {
-        return ImageError::Make (ErrorCode::DuplicatePartition,
-            {{"name_suffix", ImageError::NameSuffix (part->GetName())}});
+        return ImageError::Make (ErrorCode::DuplicatePartition, {{"name_suffix", ImageError::NameSuffix (*part)}});
     }
     partitions.emplace (part->GetName(), std::move (part));
     return Success();
+}
+
+void ImageSet::Dump()
+{
+    std::print ("Defined images:\n");
+    for (const auto& [name, image] : *this)
+    {
+        std::print ("Name : {}\n", image->GetName());
+        std::print ("Attached file: {}\n", image->GetFilePath().c_str());
+        std::print ("Selected backend: {}\n", Backend::GetBackendName (image->GetBackendType()));
+        for (ImgProp cur = ImgProp::None; cur != ImgProp::Max; cur++)
+        {
+            if (image->IsSet (cur))
+                std::print ("Property set: {}\n", Image::GetPropName (cur));
+        }
+        std::print ("\n");
+        for (const auto& part : image->GetPartitions())
+        {
+            std::print ("Partition name: {}\n", part->GetName());
+            for (PartProp cur = PartProp::None; cur != PartProp::Max; cur++)
+            {
+                if (part->IsSet (cur))
+                    std::print ("Property set {}\n", Partition::GetPropName (cur));
+            }
+        }
+    }
 }

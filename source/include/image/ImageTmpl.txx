@@ -44,30 +44,28 @@ std::optional<T> Image::Get (ImgProp prop) const
 }
 
 template <typename T>
-auto Image::GetComponent (this auto& self, CompType type) -> ComponentRefWrapper<T, decltype (self)>
+auto Image::GetComponent (this auto& self, CompType type) -> ComponentPtr<T, decltype (self)>
 {
-    auto& base = self.getComponent (type).get();
+    auto* base = self.getComponent (type);
+    if (!base)
+        return nullptr;
 
-    using Requested = std::remove_reference_t<ComponentRef<T, decltype (self)>>;
-    auto* component = dynamic_cast<Requested*> (&base);
+    auto* component = dynamic_cast<ComponentPtr<T, decltype (self)>> (base);
     if (!component)
         throw ErrorException (ImageError::Make (ErrorCode::UnexpectedComponentType, {}));
-    return std::ref (*component);
+    return component;
 }
 
-auto Image::resolveComponent (this auto& self, ImgProp prop)
-    -> std::optional<ComponentRefWrapper<Component, decltype (self)>>
+auto Image::resolveComponent (this auto& self, ImgProp prop) -> ComponentPtr<Component, decltype (self)>
 {
     auto it = self.keyMap.find (prop);
     if (it == self.keyMap.end())
-        throw std::out_of_range ("Image property enum is not registered");
+        throw std::out_of_range ("Image property enum value is not registered");
 
     CompType owner = it->second;
-    if (owner != CompType::Max && self.CheckComponent (owner))
-    {
-        return self.getComponent (owner);
-    }
-    return std::nullopt;
+    if (owner == CompType::Max)
+        return nullptr;
+    return self.getComponent (owner);
 }
 
 template <typename T>

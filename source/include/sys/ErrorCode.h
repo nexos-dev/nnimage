@@ -24,75 +24,78 @@
 #include <vector>
 #include <string_view>
 
-#define ERROR_CODE_LIST(X)                                                                                   \
-    X (None, "No error")                                                                                     \
-    X (FileError, "File failure")                                                                            \
-    X (PathError, "Path failure")                                                                            \
-    X (ParseError, "{}", "message")                                                                          \
-    X (LexError, "{}", "message")                                                                            \
-    X (LogCtrlLocked, "Log control file is locked")                                                          \
-    X (FileConvFailure, "Text encoding conversion failed for file \"{}\"", "file")                           \
-    X (EncMismatch, "Unable to retrieve character encoding")                                                 \
-    X (SysFailure, "{}", "error")                                                                            \
-    X (LockFileOpen, "Failed to open lock file: {}", "path")                                                 \
-    X (LockFileAcquire, "Failed to acquire lock on file \"{}\"", "path")                                     \
-    X (TextFileOpen, "{}: {}", "file", "error")                                                              \
-    X (EncodingUndetected, "unable to detect character set for file {}, assuming ASCII", "file")             \
-    X (Internal, "{}", "message")                                                                            \
-    X (BadAction, "invalid action name specfied")                                                            \
-    X (InvalidOption, "{}", "message")                                                                       \
-    X (OpFailed, "Operation aborted")                                                                        \
-    X (NameMissing, "Name required for block type \"{}\"", "block_type")                                     \
-    X (InvalidImgType, "Invalid image type \"{}\" specified on image{}", "type", "name_suffix")              \
-    X (MissingRequiredProp, "Missing required property")                                                     \
-    X (InvalidImgProp, "Unrecognized property \"{}\" specified on image{}", "prop", "name_suffix")           \
-    X (BadFloppySize, "Floppy disc{} must have size 720K, 1.44M, or 2.88M", "name_suffix")                   \
-    X (PropTypeMismatch, "Invalid type specified on property \"{}\"", "prop")                                \
-    X (ImgInvalid, "{}", "message")                                                                          \
-    X (InvalidPartProp, "Unrecognized property \"{}\" specified on partition{}", "prop", "name_suffix")      \
-    X (InvalidId, "Invalid ID \"{}\" specified for property \"{}\" on image{}", "id", "prop", "name_suffix") \
-    X (BadArgument, "{}", "message")                                                                         \
-    X (ImgMissingProp, "Missing required property \"{}\" on image{}", "prop", "name_suffix")                 \
-    X (PartMissingProp, "Missing required property \"{}\" on partition{}", "prop", "name_suffix")            \
-    X (ComponentOverwrite, "Attempt to overwrite existing component")                                        \
-    X (PropConflict, "Conflicting properties found in registry")                                             \
-    X (MissingPart, "Image{} requires at least one partition", "name_suffix")                                \
-    X (UnusedArg, "Unused command-line option \"{}\"", "option")                                             \
-    X (DuplicateImage, "Image{} already exists", "name_suffix")                                              \
-    X (DuplicatePartition, "Partition{} already exists", "name_suffix")                                      \
-    X (CompNotLoaded, "Attempt to use unloaded component on image{}", "name_suffix")                         \
-    X (ImgParseFailed, "Failed to parse image spec file")                                                    \
-    X (InvalidMultiplier, "Invalid multiplier \"{}\" specified", "multiplier")                               \
-    X (SizeOverflow, "Size overflow")                                                                        \
-    X (UnexpectedComponentType, "Requested image component has an unexpected type")                          \
-    X (DirectoryCreate, "Unable to create log directory")                                                    \
-    X (UnexpectedToken, "Unexpected token \"{}\"", "token")                                                  \
-    X (IntegerOutOfRange, "Integer out of range")                                                            \
-    X (InternalMissingKey, "Access to non-existant log control key")                                         \
-    X (ErrorReportMissing, "No such file or directory")                                                      \
-    X (ErrorReportOpen, "Unable to open error reporting file \"{}\"", "file")                                \
-    X (LogFileOpen, "Failed to open log file: {}", "file")                                                   \
-    X (LogPathCreate, "Unable to create log directory")                                                      \
-    X (LogPathNotDirectory, "Log path is not a directory")                                                   \
-    X (ManagedLogOpen, "Failed to open log")                                                                 \
-    X (ManagedLogControlOpen, "unable to open log control file")                                             \
-    X (ExtraneousToken, "Extraneous token")                                                                  \
-    X (InvalidArgumentFormat, "Specified in invalid format")                                                 \
-    X (MalformedImageProperty, "Malformed image property")                                                   \
-    X (MalformedPartitionSpec, "Malformed partition specification")                                          \
-    X (UnableToProcessOption, "Unable to process \"{}\"", "option")                                          \
-    X (ImgParseError, "{}", "message")                                                                       \
-    X (ImgParseWarning, "{}", "message")                                                                     \
-    X (ImgInvalidBlock, "Invalid block type \"{}\" specified", "block")                                      \
-    X (UnresolvedPartition, "Reference to undefined partition \"{}\"", "part_name")                          \
-    X (UnresolvedImage, "Reference to undefined image \"{}\"", "image_name")                                 \
-    X (UnresolvedDeferredProp, "Unable to resolve property \"{}\" on image{}", "prop", "name_suffix")        \
-    X (ImgFilterFailed, "Selected image \"{}\" does not exist", "name")                                      \
-    X (UnknownOperation, "Unknown operation \"{}\" specified", "name")                                       \
-    X (NoActionsSelected, "Operation{} produced no actions to run", "name_suffix")                           \
-    X (ImgFileAmbiguous, "Image output file \"{}\" must have a valid image name attached to it", "text")     \
-    X (ImgNonExistant, "Image \"{}\" does not exist")                                                        \
-    X (LogInitFailed, "Failed to initialize log")                                                            \
+#define ERROR_CODE_LIST(X)                                                                                           \
+    X (None, "No error")                                                                                             \
+    X (FileError, "File failure")                                                                                    \
+    X (PathError, "Path failure")                                                                                    \
+    X (ParseError, "{}", "message")                                                                                  \
+    X (LexError, "{}", "message")                                                                                    \
+    X (LogCtrlLocked, "Log control file is locked")                                                                  \
+    X (FileConvFailure, "Text encoding conversion failed for file \"{}\"", "file")                                   \
+    X (EncMismatch, "Unable to retrieve character encoding")                                                         \
+    X (SysFailure, "{}", "error")                                                                                    \
+    X (LockFileOpen, "Failed to open lock file: {}", "path")                                                         \
+    X (LockFileAcquire, "Failed to acquire lock on file \"{}\"", "path")                                             \
+    X (TextFileOpen, "{}: {}", "file", "error")                                                                      \
+    X (EncodingUndetected, "unable to detect character set for file {}, assuming ASCII", "file")                     \
+    X (Internal, "{}", "message")                                                                                    \
+    X (BadAction, "invalid action name specfied")                                                                    \
+    X (InvalidOption, "{}", "message")                                                                               \
+    X (OpFailed, "Operation aborted")                                                                                \
+    X (NameMissing, "Name required for block type \"{}\"", "block_type")                                             \
+    X (InvalidImgType, "Invalid image type \"{}\" specified on image{}", "type", "name_suffix")                      \
+    X (InvalidImgProp, "Unrecognized property \"{}\" specified on image{}", "prop", "name_suffix")                   \
+    X (BadFloppySize, "Floppy disc{} must have size 720K, 1.44M, or 2.88M", "name_suffix")                           \
+    X (PropTypeMismatch, "Invalid type specified on property \"{}\"", "prop")                                        \
+    X (ImgInvalid, "{}", "message")                                                                                  \
+    X (InvalidPartProp, "Unrecognized property \"{}\" specified on partition{}", "prop", "name_suffix")              \
+    X (InvalidId, "Invalid ID \"{}\" specified for property \"{}\" on image{}", "id", "prop", "name_suffix")         \
+    X (BadArgument, "{}", "message")                                                                                 \
+    X (ImgMissingProp, "Missing required property \"{}\" on image{}", "prop", "name_suffix")                         \
+    X (PartMissingProp, "Missing required property \"{}\" on partition{}", "prop", "name_suffix")                    \
+    X (ComponentOverwrite, "Attempt to overwrite existing component")                                                \
+    X (PropConflict, "Conflicting properties found in registry")                                                     \
+    X (MissingPart, "Image{} requires at least one partition", "name_suffix")                                        \
+    X (UnusedArg, "Unused command-line option \"{}\"", "option")                                                     \
+    X (DuplicateImage, "Image{} already exists", "name_suffix")                                                      \
+    X (DuplicatePartition, "Partition{} already exists", "name_suffix")                                              \
+    X (CompNotLoaded, "Attempt to use unloaded component on image{}", "name_suffix")                                 \
+    X (ImgParseFailed, "Failed to parse image spec file")                                                            \
+    X (InvalidMultiplier, "Invalid multiplier \"{}\" specified", "multiplier")                                       \
+    X (SizeOverflow, "Size overflow")                                                                                \
+    X (UnexpectedComponentType, "Requested image component has an unexpected type")                                  \
+    X (DirectoryCreate, "Unable to create log directory")                                                            \
+    X (UnexpectedToken, "Unexpected token \"{}\"", "token")                                                          \
+    X (IntegerOutOfRange, "Integer out of range")                                                                    \
+    X (InternalMissingKey, "Access to non-existant log control key")                                                 \
+    X (ErrorReportMissing, "No such file or directory")                                                              \
+    X (ErrorReportOpen, "Unable to open error reporting file \"{}\"", "file")                                        \
+    X (LogFileOpen, "Failed to open log file: {}", "file")                                                           \
+    X (LogPathCreate, "Unable to create log directory")                                                              \
+    X (LogPathNotDirectory, "Log path is not a directory")                                                           \
+    X (ManagedLogOpen, "Failed to open log")                                                                         \
+    X (ManagedLogControlOpen, "unable to open log control file")                                                     \
+    X (ExtraneousToken, "Extraneous token, \"{}\"", "token")                                                         \
+    X (InvalidArgumentFormat, "Specified in invalid format")                                                         \
+    X (MalformedImageProperty, "Malformed image property \"{}\"", "text")                                            \
+    X (MalformedPartitionSpec, "Malformed partition specification \"{}\"", "text")                                   \
+    X (UnableToProcessOption, "Unable to process \"{}\"", "option")                                                  \
+    X (ImgParseError, "{}", "message")                                                                               \
+    X (ImgParseWarning, "{}", "message")                                                                             \
+    X (ImgInvalidBlock, "Invalid block type \"{}\" specified", "block")                                              \
+    X (UnresolvedPartition, "Reference to undefined partition \"{}\"", "part_name")                                  \
+    X (UnresolvedImage, "Reference to undefined image \"{}\"", "image_name")                                         \
+    X (UnresolvedDeferredProp, "Unable to resolve property \"{}\" on image{}", "prop", "name_suffix")                \
+    X (ImgFilterFailed, "Selected image \"{}\" does not exist", "name")                                              \
+    X (UnknownOperation, "Unknown operation \"{}\" specified", "name")                                               \
+    X (NoActionsSelected, "Operation{} produced no actions to run", "name_suffix")                                   \
+    X (ImgFileAmbiguous,                                                                                             \
+        "Unable to determine image to attach file name \"{}\" to. Please specify an image name",                     \
+        "text")                                                                                                      \
+    X (ImgNonExistant, "Image \"{}\" does not exist", "name")                                                        \
+    X (ImgFormatRequired, "Format not specified on image{}", "name_suffix")                                          \
+    X (ImgFileNotSpecified, "Unable to determine output file of image{}. Did you forget the format?", "name_suffix") \
+    X (LogInitFailed, "Failed to initialize log")                                                                    \
     X (LogFileFailed, "Failed to add log file \"{}\"", "file")
 
 struct ErrorEntry

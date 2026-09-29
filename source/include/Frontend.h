@@ -50,6 +50,7 @@ class FrontendOptions : public Options
     std::string imgSize{};
     std::string bootMode{};
     std::string imgType{};
+    std::string format{};
     std::vector<std::string> props{};
     PartitionStrings partSpecs{};
 
@@ -69,6 +70,7 @@ class ImageSet
     std::shared_ptr<Partition> FindPartitionShared (std::string_view name) const;
     ResNone AddImage (std::unique_ptr<Image> image);
     ResNone AddPartition (std::shared_ptr<Partition> part);
+    void Dump();
 
     template <typename Func>
     void Filter (Func&& filter)

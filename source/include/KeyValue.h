@@ -30,7 +30,7 @@ class KeyVal
 {
   public:
     static std::optional<std::vector<std::pair<std::string_view, std::string_view>>> Parse (
-        std::vector<std::string> text)
+        const std::vector<std::string>& text)
     {
         std::vector<std::pair<std::string_view, std::string_view>> result;
         // Loop through and parse each member individually

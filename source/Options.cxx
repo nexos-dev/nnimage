@@ -134,11 +134,11 @@ OptionsResult OptionsParser::Parse()
     {
         impl->result = opts.parse (argc, argv);
         // Check for extra positional arguments
-        auto& unmatched = impl->result.unmatched();
+        const auto& unmatched = impl->result.unmatched();
         if (!unmatched.empty())
         {
             // Only print the first one out to avoid being too verbose
-            OptError ("Unexpected extra argument \"" + unmatched.front());
+            OptError (std::format ("Unexpected extra argument \"{}\"", unmatched.front()));
             return OptionsResult::Error;
         }
     }

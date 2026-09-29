@@ -40,7 +40,7 @@ Result<LexToken> ImageCmd::getOneToken (std::string val)
 ResNone ImageCmd::assertIsEnd (LexToken& tok)
 {
     if (tok.type != TokenType::Eof)
-        return Error ({ErrorDomain::Option, ErrorCode::ExtraneousToken}, {});
+        return Error ({ErrorDomain::Option, ErrorCode::ExtraneousToken}, {"token", SimpleLexer::NameFromToken (tok)});
     return Success();
 }
 
@@ -207,7 +207,7 @@ ResNone ImageCmd::processProps (Image& image)
     {
         auto valRes = KeyVal::Parse (prop);
         if (!valRes.has_value())
-            return Error ({ErrorDomain::Option, ErrorCode::MalformedImageProperty}, {});
+            return Error ({ErrorDomain::Option, ErrorCode::MalformedImageProperty}, {{"text", prop}});
 
         const auto& vals = *valRes;
         // We can only have only value because cxxopts comma splits, ensure that
@@ -238,12 +238,12 @@ ResNone ImageCmd::processPartitions (Image& image)
         // Parse it
         auto resParse = KeyVal::Parse (partSpec);
         if (!resParse.has_value())
-            return Error ({ErrorDomain::Option, ErrorCode::MalformedPartitionSpec}, {});
+            return Error ({ErrorDomain::Option, ErrorCode::MalformedPartitionSpec}, {{"text", partSpec}});
 
         const auto& vals = *resParse;
 
         if (vals.empty())
-            return Error ({ErrorDomain::Option, ErrorCode::MalformedPartitionSpec}, {});
+            return Error ({ErrorDomain::Option, ErrorCode::MalformedPartitionSpec}, {{"text", partSpec}});
 
         for (const auto& partProp : vals)
         {
@@ -276,6 +276,11 @@ ResNone ImageCmd::Parse()
     auto res = processNumId (image, ImgProp::Size, opts.imgSize);
     if (!res)
         return badArgument (res.Error(), "--size");
+
+    // Now format
+    res = processId (image, ImgProp::Format, opts.format);
+    if (!res)
+        return badArgument (res.Error(), "--format");
 
     // Now parse boot mode
     res = processId (image, ImgProp::BootMode, opts.bootMode);

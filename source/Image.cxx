@@ -53,7 +53,7 @@ std::optional<std::any> RegElement<Element, Property, Registry>::Get (Property p
     const auto& registry = getRegistry();
     auto it = registry.find (prop);
     if (it == registry.end())
-        throw std::out_of_range ("Property enum is not registered for this element");
+        return std::nullopt;
 
     return it->second.getter (element());
 }
@@ -85,11 +85,6 @@ ResNone RegElement<Element, Property, Registry>::SetDefaults()
 }
 
 // Begin Image class
-
-BackendType Image::GetBackendType (BackendType suggestion) const
-{
-    return BackendType::None;
-}
 
 ResNone Image::AddComponent (std::unique_ptr<Component> comp)
 {
@@ -123,9 +118,9 @@ ResNone Image::Set (std::string_view name, const ImageVal& val)
 ResNone Image::Set (ImgProp prop, const ImageVal& val)
 {
     // First try component
-    auto comp = resolveComponent (prop);
-    if (comp.has_value())
-        return comp->get().Set (prop, val);
+    auto* comp = resolveComponent (prop);
+    if (comp)
+        return comp->Set (prop, val);
 
     // CHeck if it's on the base
     if (hasProperty (prop))
@@ -148,9 +143,9 @@ Result<bool> Image::IsSet (std::string_view name) const
 
 bool Image::IsSet (ImgProp prop) const
 {
-    auto comp = resolveComponent (prop);
-    if (comp.has_value())
-        return comp->get().Get (prop).has_value();
+    auto* comp = resolveComponent (prop);
+    if (comp)
+        return comp->Get (prop).has_value();
 
     return RegElement::IsSet (prop);
 }
@@ -188,7 +183,7 @@ ResNone Image::Finalize()
     if (!deferredProps.empty())
     {
         return ImageError::Make (ErrorCode::UnresolvedDeferredProp,
-            {{"prop", GetPropName (deferredProps.front().first)}, {"name_suffix", ImageError::NameSuffix (spec.name)}});
+            {{"prop", GetPropName (deferredProps.front().first)}, {"name_suffix", ImageError::NameSuffix (*this)}});
     }
 
     // Now validate each component
@@ -212,9 +207,9 @@ void Image::AddImageRef (std::string imageName, std::function<void (Image*)> set
 
 std::optional<std::any> Image::getInternal (ImgProp prop) const
 {
-    auto comp = resolveComponent (prop);
-    if (comp.has_value())
-        return comp->get().Get (prop);
+    auto* comp = resolveComponent (prop);
+    if (comp)
+        return comp->Get (prop);
 
     return RegElement::Get (prop);
 }
@@ -231,13 +226,12 @@ ResNone Image::setCompProp (ImgProp prop, const ImageVal& val)
 }
 
 template <typename CompT>
-std::optional<std::reference_wrapper<const CompT>> Image::getCompProp (CompType type) const
+const CompT* Image::getCompProp (CompType type) const
 {
     if (!CheckComponent (type))
-        return std::nullopt;
+        return nullptr;
 
-    auto component = GetComponent<CompT> (type);
-    return std::cref (component.get());
+    return GetComponent<CompT> (type);
 }
 
 ResNone Image::ResolveDeferred()
@@ -246,9 +240,8 @@ ResNone Image::ResolveDeferred()
 
     for (auto& prop : deferredProps)
     {
-        auto comp = resolveComponent (prop.first);
-        auto res =
-            comp.has_value() ? comp->get().Set (prop.first, prop.second) : RegElement::Set (prop.first, prop.second);
+        auto* comp = resolveComponent (prop.first);
+        auto res = comp ? comp->Set (prop.first, prop.second) : RegElement::Set (prop.first, prop.second);
         if (!res)
             unresolved.push_back (std::move (prop));
     }
@@ -301,8 +294,6 @@ const CompConfRegistry& Component::getRegistry() const
         for (const auto& conf : subReg)
         {
             // Check if it was already added
-            // We throw here as this is a programming error, but I don't really want to assert it
-            // in case it did seep through
             if (mergedRegistry.find (conf.first) != mergedRegistry.end())
                 throw ErrorException (ImageError::Make (ErrorCode::PropConflict, {}));
 
@@ -353,6 +344,47 @@ ImageVal ImageVal::Cast (ImageValIdx wantedType) const
                            [&] (auto&&) -> ImageVal { return ImageVal::Invalid; }},
         val);
 }
+
+std::string ImageError::NameSuffix (const Image& image)
+{
+    return NameSuffix (image.GetName());
+}
+
+std::string ImageError::NameSuffix (const Partition& partition)
+{
+    return NameSuffix (partition.GetName());
+}
+
+// ImgProp incrementer for property enumeration
+template <typename Prop>
+requires (std::is_enum_v<Prop>)
+Prop& operator++ (Prop& cur)
+{
+    if (cur == Prop::Max)
+    {
+        cur = Prop::Max;
+        return cur;
+    }
+    cur = static_cast<Prop> (static_cast<int> (cur) + 1);
+    return cur;
+}
+
+template <typename Prop>
+requires (std::is_enum_v<Prop>)
+Prop operator++ (Prop& cur, int)
+{
+    Prop old = cur;
+    if (cur == Prop::Max)
+        return old;
+
+    cur = static_cast<Prop> (static_cast<int> (cur) + 1);
+    return old;
+}
+
+template ImgProp& operator++ <ImgProp> (ImgProp&);
+template ImgProp operator++ <ImgProp> (ImgProp&, int);
+template PartProp& operator++ <PartProp> (PartProp&);
+template PartProp operator++ <PartProp> (PartProp&, int);
 
 // Now begins the all-important registries
 // clang-format off
@@ -442,7 +474,7 @@ const ImgConfRegistry Image::baseRegistry = {
                 if (!comp)
                     return std::nullopt;
 
-                return comp->get().GetPartType();
+                return comp->GetPartType();
             }
         }
     },
@@ -459,7 +491,7 @@ const ImgConfRegistry Image::baseRegistry = {
                 if (!comp)
                     return std::nullopt;
 
-                return comp->get().GetFormatType();
+                return comp->GetFormatType();
             }
         }
     },
@@ -476,7 +508,7 @@ const ImgConfRegistry Image::baseRegistry = {
                 if (!comp)
                     return std::nullopt;
 
-                return comp->get().GetBootType();
+                return comp->GetBootType();
             }
         }
     }

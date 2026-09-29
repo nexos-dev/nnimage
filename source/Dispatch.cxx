@@ -117,35 +117,60 @@ ResNone Dispatch::createFileNames (ImageSet& images)
         {
             // Else go through each one and set it
             const auto& keyVals = *parsedSpec;
-            for (const auto& curVal : keyVals)
+            for (const auto& [name, val] : keyVals)
             {
-                auto name = curVal.first;
                 auto image = images.FindImage (name);
                 if (!image)
                     return Error ({ErrorDomain::Operation, ErrorCode::ImgNonExistant}, {{"name", std::string (name)}});
-                image->get().SetFilePath (curVal.second);
+                image->get().SetFilePath (val);
             }
         }
     }
 
     // Now set default file names for all images that didn't have a specification
-    for (auto& img : images)
+    for (auto& [name, image] : images)
     {
-        if (img.second->GetFilePath().empty())
-        {
-            auto resDef = setDefaultFile (*img.second);
-            if (!resDef)
-                return resDef.Error();
-        }
+        if (image->GetFilePath().empty())
+            setDefaultFile (*image);
     }
     return Success();
 }
 
-ResNone Dispatch::setDefaultFile (Image& image)
+void Dispatch::setDefaultFile (Image& image)
 {
-    // Get the file extension
-    if (!image.CheckComponent (CompType::Format))
-        return ImageError::Make (ErrorCode::CompNotLoaded, {{"name_suffix", ImageError::NameSuffix (image.GetName())}});
+    FormatComp* comp = image.GetComponent<FormatComp> (CompType::Format);
+    if (!comp)
+        return;    // validateImages will catch this
+
+    std::string baseName = image.GetName() + comp->GetFileExt();
+    image.SetFilePath (options.outPrefix + baseName);
+}
+
+ResNone Dispatch::validateImages (ImageSet& images)
+{
+    for (auto& [name, image] : images)
+    {
+        // Ensure we could get a file name
+        if (image->GetFilePath().empty())
+        {
+            return ImageError::Make (ErrorCode::ImgFileNotSpecified,
+                {{"name_suffix", ImageError::NameSuffix (*image)}});
+        }
+
+        // Ensure that there is a format specified on each image
+        // TODO: we eventually are going to probe for format
+        // however it is TBD wheter that is going to be merely for validation
+        // or actually be able to set the format
+        // One unknown is that we only can probe the format for images in which the file is explicity
+        // specified, as default logic relies on knowing the format to determine the extension
+        if (!image->CheckComponent (CompType::Format))
+            return ImageError::Make (ErrorCode::ImgFormatRequired, {{"name_suffix", ImageError::NameSuffix (*image)}});
+
+        // Now finalize the image
+        auto resFinal = image->Finalize();
+        if (!resFinal)
+            return resFinal;
+    }
     return Success();
 }
 
@@ -164,51 +189,43 @@ bool Dispatch::Execute (OptionsParser& parser)
     auto frontend = frontOpts.CreateFrontend (parser);
     auto resFront = frontend->Parse();
     if (!resFront)
-    {
-        dispatchFail (resFront.Error());
-        return false;
-    }
+        return dispatchFail (resFront.Error());
     auto& imageSet = frontend->GetSet();
 
     // Now we need to perform image selection
     auto resImage = selectImages (imageSet);
     if (!resImage)
-    {
-        dispatchFail (resImage.Error());
-        return false;
-    }
-
-    // We now have the image set to operate on, now prepare the operation
-    auto resOp = Operation::MakeOperation (options.operation, opOptions);
-    if (!resOp)
-    {
-        dispatchFail (resOp.Error());
-        return false;
-    }
+        return dispatchFail (resImage.Error());
 
     // Now get the file names for each image
     auto resFile = createFileNames (imageSet);
     if (!resFile)
-    {
-        dispatchFail (resFile.Error());
-        return false;
-    }
+        return dispatchFail (resFile.Error());
 
-    auto resTargets = resOp.Value()->PrepareTargets (imageSet);
+    // We now have the image set to operate on, now prepare the operation
+    auto resOp = Operation::MakeOperation (options.operation, opOptions);
+    if (!resOp)
+        return dispatchFail (resOp.Error());
+    Operation& op = *resOp.Value();
+
+    // Validate all the images
+    auto resValidate = validateImages (imageSet);
+    if (!resValidate)
+        return dispatchFail (resValidate.Error());
+
+    auto resTargets = op.PrepareTargets (imageSet);
     if (!resTargets)
-    {
-        dispatchFail (resTargets.Error());
-        return false;
-    }
-    // TODO: hand targets off to a TaskGraph runner once that wiring exists
+        return dispatchFail (resTargets.Error());
 
-    // Now verify that there are no unused options
+    // Now verify that there are no unused options.
+    // Action instantiation occurs in PrepareTargets, so we can't do that until now
     auto resOpts = parser.CheckUnusedOpts();
     if (!resOpts)
-    {
-        dispatchFail (resOpts.Error());
-        return false;
-    }
+        return dispatchFail (resOpts.Error());
+
+    imageSet.Dump();
+
+    // TODO: hand targets off to a TaskGraph runner once that wiring exists
 
     return true;
 }
@@ -231,7 +248,10 @@ void Dispatch::CollectOptions (OptionsParser& opts)
             "or as a comma-seperated list",
             options.logFiles)
         ("i,images", "Specifies images to operate on", options.selectedImages)
-        ("o,out-image", "Specifies output image files", options.fileNames);
+        ("o,out-image", "Specifies output image files", options.fileNames)
+        ("out-prefix", "Output directory for image files\n"
+                        "Ignored for images with an explicitly specified output file name",
+                        options.outPrefix);
     // clang-format on
 
     // Add operation argument

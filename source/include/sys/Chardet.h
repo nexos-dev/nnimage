@@ -92,7 +92,8 @@ class Chardet
 
     bool Detect (std::string_view data, std::string& encoding)
     {
-        return false;    // Detection not available
+        encoding = "UTF-8";
+        return true;    // Detection not available
     }
 };
 

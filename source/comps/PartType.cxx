@@ -35,8 +35,8 @@ ResNone IsoPartComp::Validate()
         // Ensure boot image type is valid
         if (!bootImage->CheckComponent (CompType::PartType))
         {
-            auto error = ImageError::Make (ErrorCode::CompNotLoaded,
-                {{"name_suffix", ImageError::NameSuffix (bootImage->GetName())}});
+            auto error =
+                ImageError::Make (ErrorCode::CompNotLoaded, {{"name_suffix", ImageError::NameSuffix (*bootImage)}});
             if (!owner.GetName().empty())
             {
                 error.Add (
@@ -44,8 +44,12 @@ ResNone IsoPartComp::Validate()
             }
             return error;
         }
-        auto component = bootImage->GetComponent<PartTypeComp> (CompType::PartType);
-        PartType type = component.get().GetPartType();
+        auto* component = bootImage->GetComponent<PartTypeComp> (CompType::PartType);
+        if (!component)
+        {
+            return ImageError::Make (ErrorCode::CompNotLoaded, {{"name_suffix", ImageError::NameSuffix (*bootImage)}});
+        }
+        PartType type = component->GetPartType();
 
         auto& validTypes = validBootImage[bootEmu];
         auto it = std::find (validTypes.begin(), validTypes.end(), type);
