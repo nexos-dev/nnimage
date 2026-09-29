@@ -62,8 +62,7 @@ class Component : public RegElement<Component, ImgProp, CompConfRegistry>
     virtual ResNone Validate() = 0;
 
   protected:
-    Component (CompType type, Image& img)
-        : RegElement{ErrorCode::InvalidImgProp, ErrorCode::ImgMissingProp}, owner{img}, type{type}
+    Component (CompType type, Image& img) : RegElement{ErrorCode::ImgMissingProp}, owner{img}, type{type}
     {}
 
     const CompConfRegistry& getRegistry() const override;
@@ -189,6 +188,8 @@ class FormatComp : public Component
     {
         return type;
     }
+
+    virtual std::string GetFileExt() = 0;
 
     static std::unique_ptr<FormatComp> Factory (FormatType type, Image& owner);
     static std::unique_ptr<FormatComp> Factory (std::string_view type, Image& owner);

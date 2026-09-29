@@ -29,6 +29,21 @@
 class KeyVal
 {
   public:
+    static std::optional<std::vector<std::pair<std::string_view, std::string_view>>> Parse (
+        std::vector<std::string> text)
+    {
+        std::vector<std::pair<std::string_view, std::string_view>> result;
+        // Loop through and parse each member individually
+        for (const auto& cur : text)
+        {
+            auto res = Parse (cur);
+            if (!res)
+                return std::nullopt;
+            result.insert (result.end(), res->begin(), res->end());
+        }
+        return result;
+    }
+
     // Array of key=value pairs if they follow said format
     static std::optional<std::vector<std::pair<std::string_view, std::string_view>>> Parse (std::string_view text)
     {

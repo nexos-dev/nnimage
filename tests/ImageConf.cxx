@@ -275,14 +275,14 @@ TEST_CASE ("ImageConf resolves a boot_image reference between images")
 
     auto partType = testImage->Get<PartType> (ImgProp::PartType);
     REQUIRE (partType);
-    REQUIRE (partType.Value().has_value());
-    CHECK (*partType.Value() == PartType::Iso9660);
+    REQUIRE (partType.has_value());
+    CHECK (*partType == PartType::Iso9660);
 
     // Parse() must resolve boot_image references without any extra manual step
     auto resolvedBootImage = testImage->Get<Image*> (ImgProp::BootImage);
     REQUIRE (resolvedBootImage);
-    REQUIRE (resolvedBootImage.Value().has_value());
-    CHECK (*resolvedBootImage.Value() == bootImage);
+    REQUIRE (resolvedBootImage.has_value());
+    CHECK (*resolvedBootImage == bootImage);
 
     std::filesystem::remove_all (path.parent_path());
 }

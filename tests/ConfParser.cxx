@@ -42,12 +42,12 @@ TEST_CASE ("ConfParser parses valid integer properties and Get reflects them")
     ConfValue val;
     auto res = ctrl.Get (LogCtrlKey::MaxFiles, val);
     REQUIRE (res);
-    CHECK (res.Value());
+    CHECK (res);
     CHECK (std::get<int> (val) == 10);
 
     res = ctrl.Get (LogCtrlKey::MaxAge, val);
     REQUIRE (res);
-    CHECK (res.Value());
+    CHECK (res);
     CHECK (std::get<int> (val) == 5);
 }
 
@@ -58,8 +58,7 @@ TEST_CASE ("ConfParser Get on a never-set key reports no value without failing")
 
     ConfValue val;
     auto res = ctrl.Get (LogCtrlKey::MaxAge, val);
-    REQUIRE (res);
-    CHECK_FALSE (res.Value());
+    CHECK_FALSE (res);
 }
 
 TEST_CASE ("ConfParser Set rejects a value whose type does not match the key's registered type")
@@ -110,7 +109,7 @@ TEST_CASE ("ConfParser Serialize writes back every previously-set key in \"name 
     REQUIRE (ctrl.Parse());
 
     std::string out;
-    REQUIRE (ctrl.Serialize (out));
+    ctrl.Serialize (out);
     CHECK (out.find ("max_file = 10;\n") != std::string::npos);
     CHECK (out.find ("max_age = 5;\n") != std::string::npos);
 }
@@ -121,7 +120,7 @@ TEST_CASE ("ConfParser Serialize omits keys that were never set")
     REQUIRE (ctrl.Parse());
 
     std::string out;
-    REQUIRE (ctrl.Serialize (out));
+    ctrl.Serialize (out);
     CHECK (out.find ("max_file") != std::string::npos);
     CHECK (out.find ("max_age") == std::string::npos);
 }
@@ -134,12 +133,11 @@ TEST_CASE ("ConfParser read operations support const objects")
 
     ConfValue val;
     auto res = ctrl.Get (LogCtrlKey::MaxFiles, val);
-    REQUIRE (res);
-    CHECK (res.Value());
+    CHECK (res);
     CHECK (std::get<int> (val) == 10);
 
     std::string out;
-    REQUIRE (ctrl.Serialize (out));
+    ctrl.Serialize (out);
     CHECK (out == "max_file = 10;\n");
 }
 
@@ -162,7 +160,7 @@ TEST_CASE ("ConfParser handles an empty configuration body gracefully")
     ManagedLogCtrl ctrl ("empty.conf", "");
     REQUIRE (ctrl.Parse());
     std::string out;
-    REQUIRE (ctrl.Serialize (out));
+    ctrl.Serialize (out);
     CHECK (out.empty());
 }
 

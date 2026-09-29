@@ -37,10 +37,9 @@ class LockFile
         fd = open (this->path.c_str(), O_CREAT | O_RDWR, 0666);
         if (fd == -1)
         {
-            throw ErrorException (
-                Error ({ErrorDomain::None, ErrorCode::LockFileOpen}, { {"path", this->path} })
+            throw ErrorException (Error ({ErrorDomain::None, ErrorCode::LockFileOpen}, {{"path", this->path}})
                     .Add ({ErrorDomain::None, ErrorCode::SysFailure, ErrorLog::Debug},
-                        { {"error", std::strerror (errno)} }));
+                        {{"error", std::strerror (errno)}}));
         }
     }
     LockFile (const std::filesystem::path& path) : LockFile (path.string())
@@ -115,10 +114,9 @@ class LockFile
         {
             if (errno == EACCES || errno == EAGAIN)
                 return false;
-            throw ErrorException (
-                Error ({ErrorDomain::None, ErrorCode::LockFileAcquire}, { {"path", path} })
+            throw ErrorException (Error ({ErrorDomain::None, ErrorCode::LockFileAcquire}, {{"path", path}})
                     .Add ({ErrorDomain::None, ErrorCode::SysFailure, ErrorLog::Debug},
-                        { {"error", std::strerror (errno)} }));
+                        {{"error", std::strerror (errno)}}));
         }
         return true;
     }
@@ -127,82 +125,55 @@ class LockFile
     int fd = -1;
 };
 
-class LockFileShared
+template <int LockType>
+class LockFileGuard
 {
   public:
-    LockFileShared() = default;
-    LockFileShared (LockFile&& lock) : lock (std::move (lock))
+    LockFileGuard() = default;
+    LockFileGuard (LockFile&& lock) : lock (std::move (lock))
     {
-        lock.ReadLock (true);
+        AcquireLock (lock, true);
     }
-    LockFileShared (LockFileShared&& other) noexcept : lock (std::move (other.lock))
+    LockFileGuard (LockFileGuard&& other) noexcept : lock (std::move (other.lock))
     {}
-    LockFileShared& operator= (LockFileShared&& other) noexcept
+    LockFileGuard& operator= (LockFileGuard&& other) noexcept
     {
         if (this == &other)
             return *this;
         lock = std::move (other.lock);
         return *this;
     }
-    ~LockFileShared()
+    ~LockFileGuard()
     {
         lock.Unlock();
     }
-    static std::optional<LockFileShared> TryAcquire (std::string path)
+    static std::optional<LockFileGuard> TryAcquire (std::string path)
     {
-        LockFileShared lock;
+        LockFileGuard lock;
         lock.lock = LockFile (std::move (path));
-        bool res = lock.lock.ReadLock();
+        bool res = AcquireLock (lock.lock, false);
         if (!res)
             return {};
         return std::move (lock);
     }
-    static std::optional<LockFileShared> TryAcquire (const std::filesystem::path& path)
+    static std::optional<LockFileGuard> TryAcquire (const std::filesystem::path& path)
     {
         return TryAcquire (path.string());
     }
 
   private:
+    static bool AcquireLock (LockFile& lock, bool block)
+    {
+        if constexpr (LockType == F_RDLCK)
+            return lock.ReadLock (block);
+        else
+            return lock.WriteLock (block);
+    }
+
     LockFile lock;
 };
 
-class LockFileUnique
-{
-  public:
-    LockFileUnique() = default;
-    LockFileUnique (LockFile&& lock) : lock (std::move (lock))
-    {
-        lock.WriteLock (true);
-    }
-    LockFileUnique (LockFileUnique&& other) noexcept : lock (std::move (other.lock))
-    {}
-    LockFileUnique& operator= (LockFileUnique&& other) noexcept
-    {
-        if (this == &other)
-            return *this;
-        lock = std::move (other.lock);
-        return *this;
-    }
-    ~LockFileUnique()
-    {
-        lock.Unlock();
-    }
-    static std::optional<LockFileUnique> TryAcquire (std::string path)
-    {
-        LockFileUnique lock;
-        lock.lock = LockFile (std::move (path));
-        bool res = lock.lock.WriteLock();
-        if (!res)
-            return {};
-        return std::move (lock);
-    }
-    static std::optional<LockFileUnique> TryAcquire (const std::filesystem::path& path)
-    {
-        return TryAcquire (path.string());
-    }
-
-  private:
-    LockFile lock;
-};
+using LockFileShared = LockFileGuard<F_RDLCK>;
+using LockFileUnique = LockFileGuard<F_WRLCK>;
 
 #endif

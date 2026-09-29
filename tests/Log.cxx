@@ -248,12 +248,10 @@ TEST_CASE ("ManagedLogCtrl parses max_file and max_age from control file syntax"
     ConfValue val;
     auto res = ctrl.Get (LogCtrlKey::MaxFiles, val);
     REQUIRE (res);
-    CHECK (res.Value());
     CHECK (std::get<int> (val) == 12);
 
     res = ctrl.Get (LogCtrlKey::MaxAge, val);
     REQUIRE (res);
-    CHECK (res.Value());
     CHECK (std::get<int> (val) == 7);
 }
 

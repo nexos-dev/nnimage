@@ -41,7 +41,8 @@ struct DispatchOptions
     std::string defaultBackend = "";
     std::string operation = "";
 
-    std::vector<std::string> selectedImages;
+    std::unordered_set<std::string> selectedImages;
+    std::vector<std::string> fileNames{};
 
     std::vector<std::string> logFiles{};
 };
@@ -56,11 +57,13 @@ class Dispatch
     bool Execute (OptionsParser& parser);
 
   private:
-    ResNone setupLogs();
-    ResNone setupError();
+    void setupLogs();
+    void setupError();
     Result<std::filesystem::path> getLogDir();
 
     ResNone selectImages (ImageSet& images);
+    ResNone createFileNames (ImageSet& images);
+    ResNone setDefaultFile (Image& image);
 
     std::filesystem::path getConfigDir()
     {
@@ -80,6 +83,12 @@ class Dispatch
     Error makeOptionError (std::string_view msg)
     {
         return Error ({ErrorDomain::Option, ErrorCode::InvalidOption}, {{"message", std::string (msg)}});
+    }
+
+    void dispatchWarn (ErrorCode code, std::initializer_list<ErrorProp> props)
+    {
+        ErrorOutput::The()->Report (
+            Error ({ErrorDomain::Operation, code, ErrorLog::Normal, ErrorSeverity::Warning}, props));
     }
 
     std::filesystem::path logDir;

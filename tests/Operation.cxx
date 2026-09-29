@@ -42,9 +42,11 @@ TEST_CASE ("PrepareTargets produces one target per image for a plain action oper
     auto res = Operation::MakeOperation ("init", opOptions);
     REQUIRE (res);
 
-    Image first ("first");
-    Image second ("second");
-    std::vector<std::reference_wrapper<Image>> images{first, second};
+    std::unique_ptr<Image> first = std::make_unique<Image> ("first");
+    std::unique_ptr<Image> second = std::make_unique<Image> ("second");
+    ImageSet images;
+    REQUIRE (images.AddImage (std::move (first)));
+    REQUIRE (images.AddImage (std::move (second)));
 
     auto resTargets = res.Value()->PrepareTargets (images);
     REQUIRE (resTargets);
@@ -57,8 +59,9 @@ TEST_CASE ("PrepareTargets uses the meta-operation's custom action selection")
     auto res = Operation::MakeOperation ("create", opOptions);
     REQUIRE (res);
 
-    Image disk ("disk");
-    std::vector<std::reference_wrapper<Image>> images{disk};
+    std::unique_ptr<Image> disk = std::make_unique<Image> ("disk");
+    ImageSet images;
+    REQUIRE (images.AddImage (std::move (disk)));
 
     auto resTargets = res.Value()->PrepareTargets (images);
     REQUIRE (resTargets);

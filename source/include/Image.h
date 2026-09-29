@@ -26,11 +26,13 @@
 #include "include/image/ImgComponent.h"
 #include "BackendTypes.h"
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <filesystem>
 #include <vector>
 
 class Image;
@@ -63,7 +65,7 @@ struct PartSpec
 class Partition : public RegElement<Partition, PartProp, PartConfRegistry>
 {
   public:
-    Partition (std::string name) : RegElement{ErrorCode::InvalidPartProp, ErrorCode::PartMissingProp}
+    Partition (std::string name) : RegElement{ErrorCode::PartMissingProp}
     {
         spec.name = std::move (name);
     }
@@ -81,7 +83,7 @@ class Partition : public RegElement<Partition, PartProp, PartConfRegistry>
     Result<std::optional<T>> Get (std::string_view name) const;
 
     template <typename T>
-    Result<std::optional<T>> Get (PartProp prop) const;
+    std::optional<T> Get (PartProp prop) const;
 
     Result<bool> IsSet (std::string_view name) const;
 
@@ -104,16 +106,10 @@ class Partition : public RegElement<Partition, PartProp, PartConfRegistry>
     }
 
   private:
-    // Resolves name to a PartProp and dispatches func(prop)
-    template <typename Func>
-    auto dispatchByName (std::string_view name, std::string_view partName, Func&& func) const
-        -> decltype (func (PartProp::Max))
+    Error invalidPartProp (std::string_view propName) const
     {
-        PartProp prop = ResolveName (name);
-        if (prop == PartProp::Max)
-            return ImageError::Make (ErrorCode::InvalidPartProp,
-                {{"prop", std::string (name)}, {"name_suffix", ImageError::NameSuffix (partName)}});
-        return func (prop);
+        return ImageError::Make (ErrorCode::InvalidPartProp,
+            {{"prop", std::string (propName)}, {"name_suffix", ImageError::NameSuffix (GetName())}});
     }
 
     const PartConfRegistry& getRegistry() const override
@@ -150,9 +146,9 @@ enum class BootMode
 struct ImgSpec
 {
     std::string name{};
-    std::string fileExt{};
     uint64_t size = -1;
     BootMode bootMode = BootMode::Max;
+    std::filesystem::path file{};
 
     static constexpr uint64_t EmptySize = -1;
 
@@ -169,12 +165,15 @@ struct ImageRef
 };
 
 template <typename T, typename Self>
-using ComponentPtr = std::conditional_t<std::is_const_v<std::remove_reference_t<Self>>, const T*, T*>;
+using ComponentRef = std::conditional_t<std::is_const_v<std::remove_reference_t<Self>>, const T&, T&>;
+
+template <typename T, typename Self>
+using ComponentRefWrapper = std::reference_wrapper<std::remove_reference_t<ComponentRef<T, Self>>>;
 
 class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
 {
   public:
-    Image (std::string name) : RegElement{ErrorCode::InvalidImgProp, ErrorCode::ImgMissingProp}
+    Image (std::string name) : RegElement{ErrorCode::ImgMissingProp}
     {
         spec.name = std::move (name);
     }
@@ -183,9 +182,13 @@ class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
         return spec.name;
     }
 
-    void SetName (std::string name)
+    void SetFilePath (std::filesystem::path file)
     {
-        spec.name = std::move (name);
+        spec.file = std::move (file);
+    }
+    const std::filesystem::path& GetFilePath() const
+    {
+        return spec.file;
     }
 
     bool SetBackend (BackendType backend)
@@ -204,7 +207,7 @@ class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
 
     ResNone AddComponent (std::unique_ptr<Component> comp);
     template <typename T>
-    auto GetComponent (this auto& self, CompType type) -> Result<ComponentPtr<T, decltype (self)>>;
+    auto GetComponent (this auto& self, CompType type) -> ComponentRefWrapper<T, decltype (self)>;
     bool CheckComponent (CompType type) const;
 
     // Set accepts parser-shaped values, Get returns the property's translated value.
@@ -214,10 +217,10 @@ class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
     template <typename T>
     Result<std::optional<T>> Get (std::string_view name) const;
     template <typename T>
-    Result<std::optional<T>> Get (ImgProp prop) const;
+    std::optional<T> Get (ImgProp prop) const;
 
     Result<bool> IsSet (std::string_view name) const;
-    Result<bool> IsSet (ImgProp prop) const override;
+    bool IsSet (ImgProp prop) const override;
 
     // Adds a name-based reference to an image that will be resolved later
     void AddImageRef (std::string imageName, std::function<void (Image*)> setCb);
@@ -284,38 +287,36 @@ class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
     // References to other images
     std::vector<ImageRef> imageRefs;
 
-    // Resolves name to an ImgProp and dispatches func(prop)
-    template <typename Func>
-    static auto dispatchByName (std::string_view name, std::string_view imgName, Func&& func)
-        -> decltype (func (ImgProp::Max))
-    {
-        ImgProp prop = ResolveProp (name);
-        if (prop == ImgProp::Max)
-            return ImageError::Make (ErrorCode::InvalidImgProp,
-                {{"prop", std::string (name)}, {"name_suffix", ImageError::NameSuffix (imgName)}});
-        return func (prop);
-    }
-
     // Resolves prop to its owning component, or nullopt if it's owned by the base image itself.
     auto resolveComponent (this auto& self, ImgProp prop)
-        -> std::optional<decltype (self.getComponent (CompType::Max))>;
+        -> std::optional<ComponentRefWrapper<Component, decltype (self)>>;
 
-    auto getComponent (this auto&& self, CompType type)
+    auto getComponent (this auto& self, CompType type) -> ComponentRefWrapper<Component, decltype (self)>
     {
-        using ComponentPtr = decltype (std::forward<decltype (self)> (self).comps[type].get());
         if (type == CompType::Max)
-            return ComponentPtr{nullptr};
-        return std::forward<decltype (self)> (self).comps[type].get();
+            throw ErrorException (ImageError::Make (ErrorCode::UnexpectedComponentType, {}));
+        if (!self.comps[type])
+        {
+            throw ErrorException (ImageError::Make (ErrorCode::CompNotLoaded,
+                {{"name_suffix", ImageError::NameSuffix (self.spec.name)}}));
+        }
+        return ComponentRefWrapper<Component, decltype (self)> (*self.comps[type]);
     }
 
-    Result<std::optional<std::any>> getInternal (ImgProp prop) const;
+    std::optional<std::any> getInternal (ImgProp prop) const;
 
     // Getter/setter for setting a property that adds a component
     template <typename CompT>
     ResNone setCompProp (ImgProp prop, const ImageVal& val);
 
     template <typename CompT>
-    const CompT* getCompProp (CompType type) const;
+    std::optional<std::reference_wrapper<const CompT>> getCompProp (CompType type) const;
+
+    Error invalidImgProp (std::string_view propName) const
+    {
+        return ImageError::Make (ErrorCode::InvalidImgProp,
+            {{"prop", std::string (propName)}, {{"name_suffix"}, ImageError::NameSuffix (GetName())}});
+    }
 
     const ImgConfRegistry& getRegistry() const override
     {
@@ -337,6 +338,6 @@ class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
     const static NameRegistry<BootMode> bootModes;
 };
 
-#include "include/image/ImageGet.txx"
+#include "include/image/ImageTmpl.txx"
 
 #endif

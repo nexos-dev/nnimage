@@ -157,7 +157,8 @@ ResNone ConfParser<Derived, ConfKey>::Parse()
     for (const ConfProp& prop : props)
     {
         ConfKey key = getPropKey (prop.name);
-        assert (key != ConfKey::None);
+        if (key == ConfKey::None)
+            return Error ({ErrorDomain::Conf, ErrorCode::ParseError}, "Invalid property \"{}\" specified", prop.name);
         // We have the key, now set it. Use the lock-free variant since Parse() already holds
         // parseLock for the entire operation
         auto res = setLocked (key, prop.val, true);
@@ -204,7 +205,7 @@ ResNone ConfParser<Derived, ConfKey>::setLocked (ConfKey key, const ConfValue& v
 }
 
 template <typename Derived, typename ConfKey>
-Result<bool> ConfParser<Derived, ConfKey>::Get (ConfKey key, ConfValue& val) const
+bool ConfParser<Derived, ConfKey>::Get (ConfKey key, ConfValue& val) const
 {
     std::shared_lock<std::shared_mutex> lock (parseLock);    // Grab the lock for reading
     val = getKeyRegistry()[key].getter (derived());
@@ -214,7 +215,7 @@ Result<bool> ConfParser<Derived, ConfKey>::Get (ConfKey key, ConfValue& val) con
 }
 
 template <typename Derived, typename ConfKey>
-ResNone ConfParser<Derived, ConfKey>::Serialize (std::string& out) const
+void ConfParser<Derived, ConfKey>::Serialize (std::string& out) const
 {
     std::stringstream data;
     // Go through every key
@@ -261,7 +262,6 @@ ResNone ConfParser<Derived, ConfKey>::Serialize (std::string& out) const
     }
     // Return the data
     out = data.str();
-    return Success();
 }
 
 #include "include/ConfTemplates.h"

@@ -22,6 +22,8 @@
 #include <bitset>
 #include <cstddef>
 #include <initializer_list>
+#include <stdexcept>
+#include <type_traits>
 
 template <typename T>
 concept EnumBitType = std::is_enum_v<T>;
@@ -61,6 +63,8 @@ class EnumBitSet
   private:
     constexpr size_t getIdx (Enum val) const
     {
+        if (static_cast<size_t> (val) >= static_cast<size_t> (Size))
+            throw std::out_of_range ("EnumBitSet index is out of range");
         return static_cast<size_t> (val);
     }
 

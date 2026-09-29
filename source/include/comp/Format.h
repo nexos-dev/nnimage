@@ -26,6 +26,11 @@ class RawFormatComp : public FormatComp
     RawFormatComp (Image& owner) : FormatComp{FormatType::Raw, owner}
     {}
 
+    std::string GetFileExt() override
+    {
+        return ".img";
+    }
+
   protected:
     const CompConfRegistry& getSubRegistry() const override
     {
@@ -42,6 +47,11 @@ class Qcow2FormatComp : public FormatComp
     Qcow2FormatComp (Image& owner) : FormatComp{FormatType::Qcow2, owner}
     {}
 
+    std::string GetFileExt() override
+    {
+        return ".qcow2";
+    }
+
   protected:
     const CompConfRegistry& getSubRegistry() const override
     {
@@ -57,6 +67,11 @@ class IsoFormatComp : public FormatComp
   public:
     IsoFormatComp (Image& owner) : FormatComp{FormatType::Iso9660, owner}
     {}
+
+    std::string GetFileExt() override
+    {
+        return ".iso";
+    }
 
   protected:
     const CompConfRegistry& getSubRegistry() const override

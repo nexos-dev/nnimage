@@ -21,6 +21,7 @@
 #include "include/Image.h"
 #include "include/Task.h"
 #include "include/Action.h"
+#include "include/Frontend.h"
 #include "include/EnumBitSet.h"
 #include "include/OptionParser.h"
 #include "include/NameRegistry.h"
@@ -81,7 +82,7 @@ class Operation
     virtual ~Operation() = default;
 
     // Main operation function. Takes a list of images, gives back a list of targets to execute
-    Result<std::vector<Target>> PrepareTargets (const std::vector<std::reference_wrapper<Image>>& images);
+    Result<std::vector<Target>> PrepareTargets (const ImageSet& images);
 
     static Result<std::unique_ptr<Operation>> MakeOperation (std::string_view opName, OperationOptions& opOptions);
 

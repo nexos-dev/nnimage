@@ -20,6 +20,8 @@
 #include "include/Error.h"
 #include "include/Log.h"
 #include "include/OpTable.h"
+#include "include/Image.h"
+#include "include/KeyValue.h"
 
 #include <memory>
 
@@ -35,28 +37,30 @@ Result<std::filesystem::path> Dispatch::getLogDir()
     return dir;
 }
 
-ResNone Dispatch::setupLogs()
+void Dispatch::setupLogs()
 {
     auto resPath = getLogDir();
     if (!resPath)
-        return resPath.Error();
+    {
+        dispatchWarn (ErrorCode::LogInitFailed, {});
+        return;
+    }
 
     LogSinkInfo managedSink = {LogLevel::Debug};
     auto resLog = Log::The().AddManagedSink (managedSink, resPath.Value());
     if (!resLog)
-        return resLog.Error();
+        dispatchWarn (ErrorCode::LogInitFailed, {});
 
     LogSinkInfo fileSink = {LogLevel::Debug};
     for (const auto& file : options.logFiles)
     {
         resLog = Log::The().AddFileSink (fileSink, file);
         if (!resLog)
-            return resLog.Error();
+            dispatchWarn (ErrorCode::LogFileFailed, {{"file", file}});
     }
-    return Success();
 }
 
-ResNone Dispatch::setupError()
+void Dispatch::setupError()
 {
     std::unique_ptr<ErrorFormatter> fmt = nullptr;
     if (options.traceErrors)
@@ -71,8 +75,6 @@ ResNone Dispatch::setupError()
         Log::The().SetSinkLogLevel (SinkType::Console, LogLevel::Max);
     else if (options.verbose)
         Log::The().SetSinkLogLevel (SinkType::Console, LogLevel::Debug);
-
-    return Success();
 }
 
 ResNone Dispatch::selectImages (ImageSet& images)
@@ -81,7 +83,70 @@ ResNone Dispatch::selectImages (ImageSet& images)
     if (options.selectedImages.empty())
         return Success();
 
-    return images.Filter (options.selectedImages);
+    auto& selected = options.selectedImages;
+    images.Filter ([&selected] (const auto& img) {
+        auto it = selected.find (img.GetName());
+        bool isFound = (it != selected.end());
+        // If the image was selected, go ahead and remove it from the option. This simplifies the below logic
+        if (isFound)
+            selected.erase (it);
+        return isFound;
+    });
+
+    // Any selections left were not found in the image set
+    if (!selected.empty())
+        return Error ({ErrorDomain::Operation, ErrorCode::ImgFilterFailed}, {{"name", *selected.begin()}});
+    return Success();
+}
+
+ResNone Dispatch::createFileNames (ImageSet& images)
+{
+    if (!options.fileNames.empty())
+    {
+        // First, parse the command line specifications
+        auto parsedSpec = KeyVal::Parse (options.fileNames);
+        if (!parsedSpec && options.fileNames.size() == 1)
+        {
+            // The value was not a valid key=val format, but there's only was image name specified
+            // If the image set only has one image, then we can just use what is there as the name
+            if (images.size() != 1)
+                return Error ({ErrorDomain::Operation, ErrorCode::ImgFileAmbiguous}, {{"text", options.fileNames[0]}});
+            images.GetImages()[0].get().SetFilePath (options.fileNames[0]);
+        }
+        else
+        {
+            // Else go through each one and set it
+            const auto& keyVals = *parsedSpec;
+            for (const auto& curVal : keyVals)
+            {
+                auto name = curVal.first;
+                auto image = images.FindImage (name);
+                if (!image)
+                    return Error ({ErrorDomain::Operation, ErrorCode::ImgNonExistant}, {{"name", std::string (name)}});
+                image->get().SetFilePath (curVal.second);
+            }
+        }
+    }
+
+    // Now set default file names for all images that didn't have a specification
+    for (auto& img : images)
+    {
+        if (img.second->GetFilePath().empty())
+        {
+            auto resDef = setDefaultFile (*img.second);
+            if (!resDef)
+                return resDef.Error();
+        }
+    }
+    return Success();
+}
+
+ResNone Dispatch::setDefaultFile (Image& image)
+{
+    // Get the file extension
+    if (!image.CheckComponent (CompType::Format))
+        return ImageError::Make (ErrorCode::CompNotLoaded, {{"name_suffix", ImageError::NameSuffix (image.GetName())}});
+    return Success();
 }
 
 // TODO for when we add in a configuration file for options
@@ -92,22 +157,8 @@ ResNone Dispatch::SetupConf()
 
 bool Dispatch::Execute (OptionsParser& parser)
 {
-    // This is the main driver for the dispatcher. All the main business logic is controlled through here
-    // This routine is a little annoying cause it's mostly error checking, but it is what it is
-    auto resErr = setupError();
-    if (!resErr)
-    {
-        // We can't do too much as we don't know if we have errOut avaiable, so just do our best
-        Log::The().Fatal (resErr.Error().RootFrame().msg);
-        return false;
-    }
-
-    auto resLog = setupLogs();
-    if (!resLog)
-    {
-        dispatchFail (resLog.Error());
-        return false;
-    }
+    setupError();
+    setupLogs();
 
     // Invoke the frontend
     auto frontend = frontOpts.CreateFrontend (parser);
@@ -135,7 +186,15 @@ bool Dispatch::Execute (OptionsParser& parser)
         return false;
     }
 
-    auto resTargets = resOp.Value()->PrepareTargets (imageSet.GetImages());
+    // Now get the file names for each image
+    auto resFile = createFileNames (imageSet);
+    if (!resFile)
+    {
+        dispatchFail (resFile.Error());
+        return false;
+    }
+
+    auto resTargets = resOp.Value()->PrepareTargets (imageSet);
     if (!resTargets)
     {
         dispatchFail (resTargets.Error());
@@ -171,7 +230,8 @@ void Dispatch::CollectOptions (OptionsParser& opts)
             "Can be specified multiple times\n"
             "or as a comma-seperated list",
             options.logFiles)
-        ("i,images", "Specifies images to operate on", options.selectedImages);
+        ("i,images", "Specifies images to operate on", options.selectedImages)
+        ("o,out-image", "Specifies output image files", options.fileNames);
     // clang-format on
 
     // Add operation argument

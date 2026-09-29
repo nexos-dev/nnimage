@@ -106,7 +106,7 @@ class Error
     }
 
     template <typename... Args>
-        requires (sizeof...(Args) > 0)
+    requires (sizeof...(Args) > 0)
     Error (const ErrorInfo& info, std::string_view fmt, const Args&... args)
         : Error (info, formatMessage (fmt, args...))
     {}
@@ -133,7 +133,7 @@ class Error
     }
 
     template <typename... Args>
-        requires (sizeof...(Args) > 0)
+    requires (sizeof...(Args) > 0)
     Error (const ErrorInfo& info, std::string_view fmt, std::initializer_list<ErrorProp> props, const Args&... args)
         : Error (info, formatMessage (fmt, args...), props)
     {}
@@ -163,7 +163,7 @@ class Error
     }
 
     template <typename... Args>
-        requires (sizeof...(Args) > 0)
+    requires (sizeof...(Args) > 0)
     Error& Add (const ErrorInfo& info, std::string_view fmt, const Args&... args)
     {
         return Add (info, formatMessage (fmt, args...));
@@ -179,7 +179,7 @@ class Error
     }
 
     template <typename... Args>
-        requires (sizeof...(Args) > 0)
+    requires (sizeof...(Args) > 0)
     Error& Add (const ErrorInfo& info,
         std::string_view fmt,
         std::initializer_list<ErrorProp> props,
@@ -234,7 +234,7 @@ class Error
     }
 
     template <typename... Args>
-        requires (sizeof...(Args) > 0)
+    requires (sizeof...(Args) > 0)
     Error Chain (const ErrorInfo& info, std::string_view fmt, const Args&... args)
     {
         return Chain (info, formatMessage (fmt, args...));
@@ -249,7 +249,7 @@ class Error
     }
 
     template <typename... Args>
-        requires (sizeof...(Args) > 0)
+    requires (sizeof...(Args) > 0)
     Error Chain (const ErrorInfo& info,
         std::string_view fmt,
         std::initializer_list<ErrorProp> props,
@@ -326,7 +326,8 @@ class Error
     }
     const Error& Cause() const
     {
-        assert (cause != nullptr);
+        if (cause == nullptr)
+            throw std::invalid_argument ("Cause not valid in Error");
         return *cause;
     }
 
@@ -434,19 +435,14 @@ class ErrorException : public std::exception
 
 // Rudimentary Result class
 template <typename T, class E>
+requires (std::derived_from<E, Error> && !std::is_same_v<T, E>)
 class ResCustom
 {
   public:
     ResCustom (T val) : error (std::nullopt), ok (true), value (std::move (val))
-    {
-        static_assert (std::is_base_of_v<::Error, E>, "ResCustom<E> type must inherit from Error");
-        static_assert (!std::is_same_v<T, E>, "ResCustom<T,E> can't have same type");
-    }
+    {}
     ResCustom (E error) : error (std::move (error)), ok (false), value (std::nullopt)
-    {
-        static_assert (std::is_base_of_v<::Error, E>, "ResCustom<E> type must inherit from Error");
-        static_assert (!std::is_same_v<T, E>, "ResCustom<T,E> can't have same type");
-    }
+    {}
     bool Ok() const
     {
         return ok;
@@ -457,22 +453,26 @@ class ResCustom
     }
     T& Value()
     {
-        assert (value.has_value());
+        if (!value.has_value())
+            throw std::runtime_error ("Access to uninitialized result value");
         return *value;
     }
     const T& Value() const
     {
-        assert (value.has_value());
+        if (!value.has_value())
+            throw std::runtime_error ("Access to uninitialized result value");
         return *value;
     }
     E& Error()
     {
-        assert (error.has_value());
+        if (!error.has_value())
+            throw std::runtime_error ("Access to uninitialized result value");
         return *error;
     }
     const E& Error() const
     {
-        assert (error.has_value());
+        if (!error.has_value())
+            throw std::runtime_error ("Access to uninitialized result value");
         return *error;
     }
 

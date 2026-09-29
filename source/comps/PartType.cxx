@@ -33,18 +33,19 @@ ResNone IsoPartComp::Validate()
             return ImageError::Invalid ("ISO9660 image missing boot image");
 
         // Ensure boot image type is valid
-        auto res = bootImage->GetComponent<PartTypeComp> (CompType::PartType);
-        if (!res)
+        if (!bootImage->CheckComponent (CompType::PartType))
         {
+            auto error = ImageError::Make (ErrorCode::CompNotLoaded,
+                {{"name_suffix", ImageError::NameSuffix (bootImage->GetName())}});
             if (!owner.GetName().empty())
             {
-                res.Error().Add (
+                error.Add (
                     ImageError::Invalid (std::format ("Failed to query boot image for image \"{}\"", owner.GetName())));
             }
-            return res.Error();
+            return error;
         }
-        PartTypeComp* bootImgPart = res.Value();
-        PartType type = bootImgPart->GetPartType();
+        auto component = bootImage->GetComponent<PartTypeComp> (CompType::PartType);
+        PartType type = component.get().GetPartType();
 
         auto& validTypes = validBootImage[bootEmu];
         auto it = std::find (validTypes.begin(), validTypes.end(), type);

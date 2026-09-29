@@ -222,13 +222,11 @@ class RegElement
     virtual ~RegElement() = default;
 
     virtual ResNone Set (Property prop, const ImageVal& val);
-    virtual Result<std::optional<std::any>> Get (Property prop) const;
-    virtual Result<bool> IsSet (Property prop) const;
+    virtual bool IsSet (Property prop) const;
     virtual ResNone SetDefaults();
 
   protected:
-    RegElement (ErrorCode invalidPropertyCode, ErrorCode missingPropertyCode)
-        : invalidPropertyCode{invalidPropertyCode}, missingPropertyCode{missingPropertyCode}
+    RegElement (ErrorCode missingPropertyCode) : missingPropertyCode{missingPropertyCode}
     {}
 
     Element& element()
@@ -253,12 +251,13 @@ class RegElement
         return registry.find (prop) != registry.end();
     }
 
+    virtual std::optional<std::any> Get (Property prop) const;
+
   private:
     virtual const Registry& getRegistry() const = 0;
     virtual std::string_view getRegElementName() const = 0;
     virtual std::string_view getPropName (Property prop) const = 0;
 
-    ErrorCode invalidPropertyCode;
     ErrorCode missingPropertyCode;
 };
 

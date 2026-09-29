@@ -79,11 +79,11 @@ class ConfParser
     {}
     virtual ~ConfParser() = default;
 
-    Result<bool> Get (ConfKey key, ConfValue& val) const;
+    bool Get (ConfKey key, ConfValue& val) const;
     ResNone Set (ConfKey key, const ConfValue& val, bool overwrite = true);
 
     ResNone Parse();
-    ResNone Serialize (std::string& out) const;
+    void Serialize (std::string& out) const;
 
   protected:
     // CRTP function

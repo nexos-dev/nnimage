@@ -89,7 +89,11 @@
     X (UnresolvedDeferredProp, "Unable to resolve property \"{}\" on image{}", "prop", "name_suffix")        \
     X (ImgFilterFailed, "Selected image \"{}\" does not exist", "name")                                      \
     X (UnknownOperation, "Unknown operation \"{}\" specified", "name")                                       \
-    X (NoActionsSelected, "Operation{} produced no actions to run", "name_suffix")
+    X (NoActionsSelected, "Operation{} produced no actions to run", "name_suffix")                           \
+    X (ImgFileAmbiguous, "Image output file \"{}\" must have a valid image name attached to it", "text")     \
+    X (ImgNonExistant, "Image \"{}\" does not exist")                                                        \
+    X (LogInitFailed, "Failed to initialize log")                                                            \
+    X (LogFileFailed, "Failed to add log file \"{}\"", "file")
 
 struct ErrorEntry
 {

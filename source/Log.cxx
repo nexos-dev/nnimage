@@ -294,11 +294,11 @@ ResNone ManagedLogSink::openLogCtrl (ManagedLogSink& inst, int& maxAge, int& max
 
     // Get our values
     ConfValue val;
-    auto res = logCtrl.Get (LogCtrlKey::MaxFiles, val);
-    if (res.Value())
+    bool hasKey = logCtrl.Get (LogCtrlKey::MaxFiles, val);
+    if (hasKey)
         maxLogs = std::get<int> (val);
-    res = logCtrl.Get (LogCtrlKey::MaxAge, val);
-    if (res.Value())
+    hasKey = logCtrl.Get (LogCtrlKey::MaxAge, val);
+    if (hasKey)
         maxAge = std::get<int> (val);
     assert (maxAge >= 0 && maxLogs >= 0);
     return Success();

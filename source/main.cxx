@@ -29,6 +29,8 @@
 static bool createLog (const char* progName)
 {
     // Add cout and cerr to it at their defaults
+
+    // TODO: maybe all should go to cerr?
     LogSinkInfo coutSink = {LogLevel::Info, LogLevel::Status};
     auto res = Log::The().AddConsoleSink (coutSink, progName, std::cout);
     if (!res)
@@ -44,7 +46,7 @@ static bool createLog (const char* progName)
 int main (int argc, char** argv)
 {
     // First task we have is to create the initial log
-    if (!createLog (argv[0]))
+    if (!createLog (basename (argv[0])))
     {
         std::cerr << argv[0] << ": error: Failed to create log" << std::endl;
         return 1;

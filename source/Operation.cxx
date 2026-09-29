@@ -16,6 +16,7 @@
 */
 
 #include "include/Operation.h"
+#include "include/Frontend.h"
 #include "include/OpTypes.h"
 
 Result<std::unique_ptr<Operation>> Operation::MakeOperation (std::string_view opName, OperationOptions& opOptions)
@@ -47,23 +48,26 @@ Result<Target> Operation::buildTarget (const Image& image, const std::vector<Act
     for (ActionType type : actionSeq)
     {
         std::unique_ptr<Action> action = opOptions.MakeAction (type);
+        auto result = action->FillTarget (target, image);
+        if (!result)
+            return result.Error();
     }
     return target;
 }
 
-Result<std::vector<Target>> Operation::PrepareTargets (const std::vector<std::reference_wrapper<Image>>& images)
+Result<std::vector<Target>> Operation::PrepareTargets (const ImageSet& images)
 {
     std::vector<Target> targets;
     targets.reserve (images.size());
 
     for (const auto& image : images)
     {
-        Image& imageRef = image.get();
-        auto resActions = SelectActions (imageRef);
+        const Image& img = *image.second;
+        auto resActions = SelectActions (img);
         if (!resActions)
             return resActions.Error();
 
-        auto resTarget = buildTarget (imageRef, resActions.Value());
+        auto resTarget = buildTarget (img, resActions.Value());
         if (!resTarget)
             return resTarget.Error();
 

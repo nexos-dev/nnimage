@@ -43,7 +43,8 @@ class OptionTracker
   public:
     void MapOption (std::string opt, std::string set)
     {
-        assert (map.find (opt) == map.end());
+        if (map.find (opt) != map.end())
+            throw std::runtime_error ("Option not valid");
         map[std::move (opt)] = std::move (set);
     }
     void UseSet (std::string set)
@@ -53,7 +54,8 @@ class OptionTracker
     bool IsOptionUsed (std::string_view option)
     {
         auto it = map.find (option);
-        assert (it != map.end());
+        if (it == map.end())
+            throw std::runtime_error ("Option not valid");
 
         const std::string& set = it->second;
         return usedSets.contains (set);
@@ -130,8 +132,9 @@ class OptionsParser
 
 // Concept of allowed argument values
 template <typename T>
-concept AllowedArgVal = std::same_as<T, std::string> || std::same_as<T, int> || std::same_as<T, bool> ||
-                        std::same_as<T, CommaString> || std::same_as<T, std::vector<std::string>>;
+concept AllowedArgVal =
+    std::same_as<T, std::string> || std::same_as<T, int> || std::same_as<T, bool> || std::same_as<T, CommaString> ||
+    std::same_as<T, std::vector<std::string>> || std::same_as<T, std::unordered_set<std::string>>;
 
 class OptionAdder
 {

@@ -20,6 +20,9 @@
 #include "include/sys/Iconv.h"
 #include "include/sys/Chardet.h"
 #include "include/KeyValue.h"
+#include "include/EnumArray.h"
+#include "include/EnumBitSet.h"
+#include "include/NameRegistry.h"
 #include "config.h"
 
 #include <sys/wait.h>
@@ -27,6 +30,29 @@
 
 #include <filesystem>
 #include <string>
+
+enum class UtilityEnum : int
+{
+    First,
+    Second,
+    Max
+};
+
+using UtilityArray = EnumArray<UtilityEnum, int, UtilityEnum::Max>;
+
+TEST_CASE ("EnumArray rejects iterators that do not identify an element")
+{
+    UtilityArray values{10, 20};
+    CHECK (values.index (values.begin() + 1) == UtilityEnum::Second);
+    CHECK_THROWS_AS (values.index (values.end()), std::out_of_range);
+}
+
+TEST_CASE ("NameRegistry throws for values without a registered name")
+{
+    NameRegistry<UtilityEnum> names{{"first", UtilityEnum::First}};
+    CHECK (names.GetName (UtilityEnum::First) == "first");
+    CHECK_THROWS_AS (names.GetName (UtilityEnum::Max), std::out_of_range);
+}
 
 static std::filesystem::path MakeScratchDir (const std::string& tag)
 {

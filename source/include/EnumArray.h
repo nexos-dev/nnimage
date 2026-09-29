@@ -22,6 +22,7 @@
 #include <array>
 #include <cstddef>
 #include <initializer_list>
+#include <stdexcept>
 #include <type_traits>
 #include <utility>
 
@@ -38,7 +39,8 @@ class EnumArray
     }
     constexpr EnumArray (std::initializer_list<ValueType> vals)
     {
-        static_assert (static_cast<size_t> (Size) > 0, "Size must be greater than 0");
+        if (vals.size() > data.size())
+            throw std::length_error ("Too many values for EnumArray");
         std::copy (vals.begin(), vals.end(), data.begin());
     }
     constexpr EnumArray (std::initializer_list<std::pair<Enum, ValueType>> vals)
@@ -46,18 +48,18 @@ class EnumArray
         static_assert (static_cast<size_t> (Size) > 0, "Size must be greater than 0");
         for (const auto& val : vals)
         {
-            data[static_cast<size_t> (val.first)] = val.second;
+            data.at (checkedIndex (val.first)) = val.second;
         }
     }
 
     constexpr ValueType& operator[] (Enum index)
     {
-        return data[static_cast<size_t> (index)];
+        return data.at (checkedIndex (index));
     }
 
     constexpr const ValueType& operator[] (Enum index) const
     {
-        return data[static_cast<size_t> (index)];
+        return data.at (checkedIndex (index));
     }
     constexpr size_t size() const noexcept
     {
@@ -73,12 +75,25 @@ class EnumArray
     }
 
     using EnumArrayIter = std::array<ValueType, static_cast<size_t> (Size)>::iterator;
-    constexpr Enum index (EnumArrayIter it) noexcept
+    constexpr Enum index (EnumArrayIter it) const
     {
-        return static_cast<Enum> (it - data.begin());
+        size_t position = 0;
+        for (auto current = data.begin(); current != data.end(); ++current, ++position)
+        {
+            if (current == it)
+                return static_cast<Enum> (position);
+        }
+        throw std::out_of_range ("EnumArray iterator is out of range");
     }
 
   private:
+    static constexpr size_t checkedIndex (Enum index)
+    {
+        if (static_cast<size_t> (index) >= static_cast<size_t> (Size))
+            throw std::out_of_range ("EnumArray index is out of range");
+        return static_cast<size_t> (index);
+    }
+
     std::array<ValueType, static_cast<size_t> (Size)> data{};
 };
 

@@ -63,13 +63,37 @@ class FrontendOptions : public Options
 class ImageSet
 {
   public:
-    std::vector<std::reference_wrapper<Image>> GetImages();
-    std::optional<std::reference_wrapper<Image>> FindImage (std::string_view name);
-    std::optional<std::reference_wrapper<Partition>> FindPartition (std::string_view name);
-    std::shared_ptr<Partition> FindPartitionShared (std::string_view name);
+    std::vector<std::reference_wrapper<Image>> GetImages() const;
+    std::optional<std::reference_wrapper<Image>> FindImage (std::string_view name) const;
+    std::optional<std::reference_wrapper<Partition>> FindPartition (std::string_view name) const;
+    std::shared_ptr<Partition> FindPartitionShared (std::string_view name) const;
     ResNone AddImage (std::unique_ptr<Image> image);
     ResNone AddPartition (std::shared_ptr<Partition> part);
-    ResNone Filter (const std::vector<std::string>& keys);
+
+    template <typename Func>
+    void Filter (Func&& filter)
+    {
+        for (auto it = images.begin(); it != images.end();)
+        {
+            if (!filter (*it->second))
+                it = images.erase (it);
+            else
+                it++;
+        }
+    }
+
+    auto begin() const
+    {
+        return images.begin();
+    }
+    auto end() const
+    {
+        return images.end();
+    }
+    auto size() const
+    {
+        return images.size();
+    }
 
   private:
     // These contain all the images/partitions that have been parsed

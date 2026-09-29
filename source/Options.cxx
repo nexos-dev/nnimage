@@ -16,10 +16,17 @@
 */
 
 #include "include/OptionParser.h"
-#include "cxxopts.hpp"
 
 #include <iostream>
 #include <istream>
+#include <unordered_set>
+#include <ranges>
+
+// Declared before including cxxopts.hpp
+std::istream& operator>> (std::istream& is, CommaString& val);
+std::istream& operator>> (std::istream& is, std::unordered_set<std::string>& val);
+
+#include "cxxopts.hpp"
 
 // To make CommaString parsable by cxxopts
 std::istream& operator>> (std::istream& is, CommaString& val)
@@ -27,6 +34,21 @@ std::istream& operator>> (std::istream& is, CommaString& val)
     std::string spec;
     is >> spec;
     val.values.push_back (spec);
+    return is;
+}
+
+// To make std::unordered_set parsable by cxxopts
+std::istream& operator>> (std::istream& is, std::unordered_set<std::string>& val)
+{
+    std::string spec;
+    is >> spec;
+    // Split up by comma
+    std::string_view split = spec;
+    for (const auto& str : split | std::views::split (','))
+    {
+        val.emplace (std::ranges::begin (str), std::ranges::end (str));
+    }
+
     return is;
 }
 
@@ -203,5 +225,6 @@ MAKE_ADDER (int);
 MAKE_ADDER (bool);
 MAKE_ADDER (std::vector<std::string>);
 MAKE_ADDER (CommaString);
+MAKE_ADDER (std::unordered_set<std::string>);
 
 #undef MAKE_ADDER

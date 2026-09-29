@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <cassert>
 #include <initializer_list>
+#include <stdexcept>
 #include <string_view>
 #include <string>
 #include <unordered_map>
@@ -64,7 +65,8 @@ class NameRegistry
     {
         auto it =
             std::find_if (values.begin(), values.end(), [value] (const auto& pair) { return pair.second == value; });
-        assert (it != values.end());
+        if (it == values.end())
+            throw std::out_of_range ("NameRegistry value is out of range");
         return it->first;
     }
 

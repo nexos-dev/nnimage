@@ -30,7 +30,7 @@ ResNone RegElement<Element, Property, Registry>::Set (Property prop, const Image
     const auto& registry = getRegistry();
     auto it = registry.find (prop);
     if (it == registry.end())
-        return makeRegElementError (invalidPropertyCode, getRegElementName(), getPropName (prop));
+        throw std::out_of_range ("Property enum is not registered for this element");
 
     const auto& conf = it->second;
 
@@ -48,23 +48,20 @@ ResNone RegElement<Element, Property, Registry>::Set (Property prop, const Image
 }
 
 template <typename Element, typename Property, typename Registry>
-Result<std::optional<std::any>> RegElement<Element, Property, Registry>::Get (Property prop) const
+std::optional<std::any> RegElement<Element, Property, Registry>::Get (Property prop) const
 {
     const auto& registry = getRegistry();
     auto it = registry.find (prop);
     if (it == registry.end())
-        return makeRegElementError (invalidPropertyCode, getRegElementName(), getPropName (prop));
+        throw std::out_of_range ("Property enum is not registered for this element");
 
     return it->second.getter (element());
 }
 
 template <typename Element, typename Property, typename Registry>
-Result<bool> RegElement<Element, Property, Registry>::IsSet (Property prop) const
+bool RegElement<Element, Property, Registry>::IsSet (Property prop) const
 {
-    auto value = Get (prop);
-    if (!value)
-        return value.Error();
-    return value.Value().has_value();
+    return Get (prop).has_value();
 }
 
 template <typename Element, typename Property, typename Registry>
@@ -76,10 +73,9 @@ ResNone RegElement<Element, Property, Registry>::SetDefaults()
         if (conf.getter (element()).has_value())
             continue;
 
-        // Error out, monostate means there is no default and it is required
-        // TODO: should we do this?
+        // Monostate means there is no default
         if (std::holds_alternative<std::monostate> (conf.defaultVal))
-            return makeRegElementError (missingPropertyCode, getRegElementName(), getPropName (prop));
+            continue;
 
         auto result = conf.setter (element(), ImageVal (conf.defaultVal));
         if (!result)
@@ -97,7 +93,8 @@ BackendType Image::GetBackendType (BackendType suggestion) const
 
 ResNone Image::AddComponent (std::unique_ptr<Component> comp)
 {
-    assert (comp);
+    if (!comp)
+        throw std::invalid_argument ("Component can't be null");
 
     CompType type = comp->GetType();
     assert (type != CompType::Max);
@@ -116,7 +113,11 @@ bool Image::CheckComponent (CompType type) const
 
 ResNone Image::Set (std::string_view name, const ImageVal& val)
 {
-    return dispatchByName (name, spec.name, [&] (ImgProp prop) { return Set (prop, val); });
+    ImgProp prop = ResolveProp (name);
+    if (prop == ImgProp::Max)
+        return invalidImgProp (name);
+
+    return Set (prop, val);
 }
 
 ResNone Image::Set (ImgProp prop, const ImageVal& val)
@@ -124,7 +125,7 @@ ResNone Image::Set (ImgProp prop, const ImageVal& val)
     // First try component
     auto comp = resolveComponent (prop);
     if (comp.has_value())
-        return (*comp)->Set (prop, val);
+        return comp->get().Set (prop, val);
 
     // CHeck if it's on the base
     if (hasProperty (prop))
@@ -138,19 +139,18 @@ ResNone Image::Set (ImgProp prop, const ImageVal& val)
 
 Result<bool> Image::IsSet (std::string_view name) const
 {
-    return dispatchByName (name, spec.name, [&] (ImgProp prop) { return IsSet (prop); });
+    ImgProp prop = ResolveProp (name);
+    if (prop == ImgProp::Max)
+        return invalidImgProp (name);
+
+    return IsSet (prop);
 }
 
-Result<bool> Image::IsSet (ImgProp prop) const
+bool Image::IsSet (ImgProp prop) const
 {
     auto comp = resolveComponent (prop);
     if (comp.has_value())
-    {
-        auto getRes = (*comp)->Get (prop);
-        if (!getRes)
-            return getRes.Error();
-        return getRes.Value().has_value();
-    }
+        return comp->get().Get (prop).has_value();
 
     return RegElement::IsSet (prop);
 }
@@ -163,9 +163,8 @@ ResNone Image::SetDefaults()
         return res.Error();
 
     // Now apply for each component
-    for (auto it = comps.begin(); it != comps.end(); it++)
+    for (auto& comp : comps)
     {
-        auto* comp = it->get();
         if (comp)
         {
             res = comp->SetDefaults();
@@ -193,9 +192,8 @@ ResNone Image::Finalize()
     }
 
     // Now validate each component
-    for (auto it = comps.begin(); it != comps.end(); it++)
+    for (auto& comp : comps)
     {
-        auto* comp = it->get();
         if (comp)
         {
             auto res = comp->Validate();
@@ -212,34 +210,13 @@ void Image::AddImageRef (std::string imageName, std::function<void (Image*)> set
     imageRefs.push_back ({GenericRef<Image> (std::move (imageName), *this), std::move (setCb)});
 }
 
-Result<std::optional<std::any>> Image::getInternal (ImgProp prop) const
+std::optional<std::any> Image::getInternal (ImgProp prop) const
 {
-    std::optional<std::any> val{};
     auto comp = resolveComponent (prop);
-
     if (comp.has_value())
-    {
-        assert (*comp);
-        auto getRes = (*comp)->Get (prop);
+        return comp->get().Get (prop);
 
-        if (!getRes)
-            return getRes.Error();
-
-        val = std::move (getRes.Value());
-    }
-    else
-    {
-        auto getRes = RegElement::Get (prop);
-        if (!getRes)
-            return getRes.Error();
-
-        val = std::move (getRes.Value());
-    }
-
-    if (!val.has_value())
-        return std::optional<std::any>{};
-
-    return val;
+    return RegElement::Get (prop);
 }
 
 template <typename CompT>
@@ -254,16 +231,13 @@ ResNone Image::setCompProp (ImgProp prop, const ImageVal& val)
 }
 
 template <typename CompT>
-const CompT* Image::getCompProp (CompType type) const
+std::optional<std::reference_wrapper<const CompT>> Image::getCompProp (CompType type) const
 {
     if (!CheckComponent (type))
-        return nullptr;
+        return std::nullopt;
 
-    auto res = GetComponent<CompT> (type);
-    if (!res)
-        return nullptr;
-
-    return res.Value();
+    auto component = GetComponent<CompT> (type);
+    return std::cref (component.get());
 }
 
 ResNone Image::ResolveDeferred()
@@ -274,7 +248,7 @@ ResNone Image::ResolveDeferred()
     {
         auto comp = resolveComponent (prop.first);
         auto res =
-            comp.has_value() ? (*comp)->Set (prop.first, prop.second) : RegElement::Set (prop.first, prop.second);
+            comp.has_value() ? comp->get().Set (prop.first, prop.second) : RegElement::Set (prop.first, prop.second);
         if (!res)
             unresolved.push_back (std::move (prop));
     }
@@ -286,12 +260,18 @@ ResNone Image::ResolveDeferred()
 // Partition functions
 ResNone Partition::Set (std::string_view name, const ImageVal& val)
 {
-    return dispatchByName (name, spec.name, [&] (PartProp prop) { return Set (prop, val); });
+    PartProp prop = ResolveName (name);
+    if (prop == PartProp::Max)
+        return invalidPartProp (name);
+    return Set (prop, val);
 }
 
 Result<bool> Partition::IsSet (std::string_view name) const
 {
-    return dispatchByName (name, spec.name, [&] (PartProp prop) { return IsSet (prop); });
+    PartProp prop = ResolveName (name);
+    if (prop == PartProp::Max)
+        return invalidPartProp (name);
+    return IsSet (prop);
 }
 
 // Component functions
@@ -462,7 +442,7 @@ const ImgConfRegistry Image::baseRegistry = {
                 if (!comp)
                     return std::nullopt;
 
-                return comp->GetPartType();
+                return comp->get().GetPartType();
             }
         }
     },
@@ -479,7 +459,7 @@ const ImgConfRegistry Image::baseRegistry = {
                 if (!comp)
                     return std::nullopt;
 
-                return comp->GetFormatType();
+                return comp->get().GetFormatType();
             }
         }
     },
@@ -496,7 +476,7 @@ const ImgConfRegistry Image::baseRegistry = {
                 if (!comp)
                     return std::nullopt;
 
-                return comp->GetBootType();
+                return comp->get().GetBootType();
             }
         }
     }
