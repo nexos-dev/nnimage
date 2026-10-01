@@ -70,6 +70,9 @@ class ImageSet
     std::shared_ptr<Partition> FindPartitionShared (std::string_view name) const;
     ResNone AddImage (std::unique_ptr<Image> image);
     ResNone AddPartition (std::shared_ptr<Partition> part);
+    void AddPartRef (std::string name, Image& owner, SourceLoc loc = {});
+    ResNone ResolvePartRefs();
+    ResNone ResolveImgRefs();
     void Dump();
 
     template <typename Func>
@@ -101,6 +104,8 @@ class ImageSet
     // These contain all the images/partitions that have been parsed
     std::unordered_map<std::string, std::unique_ptr<Image>, StringHash, std::equal_to<>> images{};
     std::unordered_map<std::string, std::shared_ptr<Partition>, StringHash, std::equal_to<>> partitions{};
+    // References to partitions
+    std::vector<GenericRef<Image>> partRefs{};
 };
 
 class Frontend
@@ -120,8 +125,6 @@ class Frontend
   protected:
     FrontendOptions opts;
     ImageSet images;
-    // References to partitions
-    std::vector<GenericRef<Image>> partRefs{};
 };
 
 class SimpleLexer;
@@ -172,9 +175,6 @@ class ImageConf : public Frontend
     Result<std::shared_ptr<Partition>> createPartition (ImgParseBlock block);
 
     ResNone addPartitionNames (Image& img, const ImageVal& val);
-
-    ResNone resolvePartRefs();
-    ResNone resolveImgRefs();
 
     Error parseFailed (Error& e, ErrorLog verbosity = ErrorLog::Normal)
     {

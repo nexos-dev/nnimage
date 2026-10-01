@@ -66,8 +66,8 @@ struct LexNumId
 struct LexToken
 {
     TokenType type;
-    int line;
     std::variant<std::string, uint64_t, LexNumId, bool> val;
+    SourceLoc loc;
 };
 
 class SimpleLexer
@@ -79,11 +79,6 @@ class SimpleLexer
     static const char* NameFromToken (TokenType type);
     static const char* NameFromToken (const LexToken& tok);
 
-    std::string_view GetFileName() const
-    {
-        return file;
-    }
-
   private:
     char readChar();
     char peekChar();
@@ -93,9 +88,9 @@ class SimpleLexer
     bool isCharNum (char c, int base);
     bool isCharSpace (char c);
     void prepareEof (LexToken& tok);
-    Error lexError (LexError errCode, std::string_view extra);
-    void lexWarn (LexWarning errCode, std::string_view extra);
-    std::string file;
+    Error lexError (LexError errCode, SourceLoc loc, std::string_view extra);
+    void lexWarn (LexWarning errCode, SourceLoc loc, std::string_view extra);
+    std::string_view fileName;
     std::string fileData;    // File data (in UTF-8)
     std::size_t idx;         // Index in file data
     int curLine;

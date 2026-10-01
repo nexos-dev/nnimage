@@ -41,13 +41,11 @@ class ImageError
 
     static Error MakeWithContext (ErrorCode code,
         std::initializer_list<ErrorProp> props,
-        std::string_view file,
-        int line,
+        SourceLoc loc,
         ErrorLog log = ErrorLog::Normal,
         ErrorSeverity severity = ErrorSeverity::Error)
     {
-        return Error ({ErrorDomain::Image, code, log, severity}, props)
-            .AddContext ({{"file", std::string (file)}, {"line", std::to_string (line)}});
+        return Error ({ErrorDomain::Image, code, log, severity}, props).AddContext (std::move (loc));
     }
 
     static std::string NameSuffix (std::string_view name)

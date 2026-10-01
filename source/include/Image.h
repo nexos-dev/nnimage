@@ -65,7 +65,7 @@ struct PartSpec
 class Partition : public RegElement<Partition, PartProp, PartConfRegistry>
 {
   public:
-    explicit Partition (std::string name) : RegElement{ErrorCode::PartMissingProp}
+    explicit Partition (std::string name) : RegElement{ErrorCode::InvalidPartProp}
     {
         spec.name = std::move (name);
     }
@@ -170,7 +170,7 @@ using ComponentPtr = std::conditional_t<std::is_const_v<std::remove_reference_t<
 class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
 {
   public:
-    explicit Image (std::string name) : RegElement{ErrorCode::ImgMissingProp}
+    explicit Image (std::string name) : RegElement{ErrorCode::InvalidImgProp}
     {
         spec.name = std::move (name);
     }
@@ -223,14 +223,14 @@ class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
     bool IsSet (ImgProp prop) const override;
 
     // Adds a name-based reference to an image that will be resolved later
-    void AddImageRef (std::string imageName, std::function<void (Image*)> setCb);
+    void AddImageRef (std::string imageName, std::function<void (Image*)> setCb, SourceLoc loc = {});
     // Gets all references
     const std::vector<ImageRef>& GetRefs() const
     {
         return imageRefs;
     }
 
-    ResNone SetDefaults() override;
+    void SetDefaults() override;
 
     void AddPartition (std::shared_ptr<Partition> part)
     {
@@ -247,7 +247,13 @@ class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
     }
 
     // Replays any properties that were deferred because their owning component didn't exist yet
-    ResNone ResolveDeferred();
+    void ResolveAllDeferred();
+
+    // Checks for deferred properties on the specified component. If CompType::Max,
+    // checks for ant deferred properties
+    bool CheckDeferred (CompType type) const;
+    // Resolves deferred properties on the specified component. If CompType::Max, resolves all of them
+    void ResolveDeferred (CompType type);
 
     ResNone Finalize();
 
@@ -275,14 +281,14 @@ class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
     // Basic image data
     ImgSpec spec;
     std::vector<std::shared_ptr<Partition>> parts;
-    BackendType backend;
+    BackendType backend = BackendType::None;
     std::string backendTag{};
 
     // Component containers
-    EnumArray<CompType, std::unique_ptr<Component>, CompType::Max> comps;
+    EnumArray<CompType, std::unique_ptr<Component>, CompType::Max> comps{};
 
     // Deferred properties
-    std::vector<std::pair<ImgProp, ImageVal>> deferredProps;
+    std::unordered_multimap<CompType, std::pair<ImgProp, ImageVal>> deferredProps;
 
     // References to other images
     std::vector<ImageRef> imageRefs;
@@ -290,14 +296,15 @@ class Image : public RegElement<Image, ImgProp, ImgConfRegistry>
     // Resolves prop to its loaded owning component, or nullptr when none is loaded.
     auto resolveComponent (this auto& self, ImgProp prop) -> ComponentPtr<Component, decltype (self)>;
 
-    auto getComponent (this auto& self, CompType type) -> ComponentPtr<Component, decltype (self)>
-    {
-        if (type == CompType::Max)
-            throw ErrorException (ImageError::Make (ErrorCode::UnexpectedComponentType, {}));
-        return self.comps[type].get();
-    }
+    auto getComponent (this auto& self, CompType type) -> ComponentPtr<Component, decltype (self)>;
 
     std::optional<std::any> getInternal (ImgProp prop) const;
+
+    CompType getPropOwner (ImgProp prop) const;
+    void deferProp (ImgProp prop, const ImageVal& val);
+
+    template <typename Iter>
+    Iter resolveDeferredPropIter (Iter iter);
 
     // Getter/setter for setting a property that adds a component
     template <typename CompT>

@@ -112,6 +112,8 @@ TEST_CASE ("ImageNumId parses every supported multiplier")
     CHECK (MakeNumId (1, "MB").Get() == 1000 * 1000);
     CHECK (MakeNumId (1, "GiB").Get() == 1024LL * 1024 * 1024);
     CHECK (MakeNumId (1, "GB").Get() == 1000LL * 1000 * 1000);
+    CHECK (MakeNumId (1, "TiB").Get() == 1024LL * 1024 * 1024 * 1024);
+    CHECK (MakeNumId (1, "TB").Get() == 1000LL * 1000 * 1000 * 1000);
     CHECK (MakeNumId (128, "MiB").Get() == 128LL * 1024 * 1024);
 }
 
@@ -167,13 +169,67 @@ TEST_CASE ("ImageVal::Get returns nullopt when requesting the wrong alternative"
     CHECK (*val.Get<std::string>() == "hi");
 }
 
-TEST_CASE ("ImageVal stores and reports its source line")
+TEST_CASE ("ImageVal stores and reports its source location")
 {
-    ImageVal val (std::string ("x"), 42);
-    CHECK (val.GetLine() == 42);
+    ImageVal val (std::string ("x"), SourceLoc ("test2", 24));
+    CHECK (val.GetLoc().line == 24);
+    CHECK (val.GetLoc().file == "test2");
 
     ImageVal noLine (std::string ("y"));
-    CHECK (noLine.GetLine() == -1);
+    CHECK (noLine.GetLoc().line == -1);
+    CHECK (noLine.GetLoc().file.empty());
+}
+
+TEST_CASE ("ImageVal::FromToken converts every token value and preserves its location")
+{
+    const SourceLoc loc ("tokens.conf", 7);
+
+    auto identifier = ImageVal::FromToken ({TokenType::Identifier, std::string ("value"), loc});
+    REQUIRE (identifier);
+    REQUIRE (identifier.Value().Get<ImageId>().has_value());
+    CHECK (identifier.Value().Get<ImageId>()->Str() == "value");
+    CHECK (identifier.Value().GetLoc().line == 7);
+
+    auto string = ImageVal::FromToken ({TokenType::String, std::string ("quoted"), loc});
+    REQUIRE (string);
+    CHECK (*string.Value().Get<std::string>() == "quoted");
+    CHECK (string.Value().GetLoc().file == "tokens.conf");
+
+    auto number = ImageVal::FromToken ({TokenType::Number, uint64_t{42}, loc});
+    REQUIRE (number);
+    CHECK (*number.Value().Get<uint64_t>() == 42);
+
+    auto boolean = ImageVal::FromToken ({TokenType::True, true, loc});
+    REQUIRE (boolean);
+    CHECK (*boolean.Value().Get<bool>() == true);
+
+    auto numId = ImageVal::FromToken ({TokenType::NumId, LexNumId{2, "MiB"}, loc});
+    REQUIRE (numId);
+    REQUIRE (numId.Value().Get<ImageNumId>().has_value());
+    CHECK (numId.Value().Get<ImageNumId>()->Get() == 2LL * 1024 * 1024);
+    CHECK (numId.Value().GetLoc().line == 7);
+
+    auto invalidNumId = ImageVal::FromToken ({TokenType::NumId, LexNumId{2, "bad"}, loc});
+    CHECK_FALSE (invalidNumId);
+}
+
+TEST_CASE ("ImageVal::Cast supports ID conversions and rejects unsupported conversions")
+{
+    ImageVal id (ImageId ("value"), SourceLoc ("cast.conf", 3));
+
+    auto string = id.Cast (ImageVal::GetTypeIndex<std::string>());
+    REQUIRE (string.Get<std::string>().has_value());
+    CHECK (*string.Get<std::string>() == "value");
+    CHECK (string.GetLoc().line == 3);
+
+    auto list = id.Cast (ImageVal::GetTypeIndex<ImageList>());
+    REQUIRE (list.Get<ImageList>().has_value());
+    REQUIRE (list.Get<ImageList>()->size() == 1);
+    CHECK ((*list.Get<ImageList>())[0].Str() == "value");
+    CHECK (list.GetLoc().file == "cast.conf");
+
+    CHECK (id.Cast (ImageVal::GetTypeIndex<bool>()).IsInvalid());
+    CHECK (ImageVal (std::string ("quoted")).Cast (ImageVal::GetTypeIndex<ImageList>()).IsInvalid());
 }
 
 /********************
@@ -199,6 +255,25 @@ TEST_CASE ("NameRegistry resolves partition property names")
     CHECK (Partition::ResolveName ("bogus") == PartProp::Max);
 }
 
+TEST_CASE ("Image and partition property iterators advance and remain at Max")
+{
+    ImgProp imgProp = ImgProp::Size;
+    CHECK (imgProp++ == ImgProp::Size);
+    CHECK (imgProp == ImgProp::BootMode);
+    CHECK (++imgProp == ImgProp::PartType);
+    imgProp = ImgProp::Max;
+    CHECK (++imgProp == ImgProp::Max);
+    CHECK (imgProp++ == ImgProp::Max);
+
+    PartProp partProp = PartProp::Start;
+    CHECK (partProp++ == PartProp::Start);
+    CHECK (partProp == PartProp::Size);
+    CHECK (++partProp == PartProp::Format);
+    partProp = PartProp::Max;
+    CHECK (++partProp == PartProp::Max);
+    CHECK (partProp++ == PartProp::Max);
+}
+
 /********************
  *
  * Image property test cases
@@ -209,6 +284,21 @@ TEST_CASE ("Image name accessors work as expected")
 {
     Image img ("disk1");
     CHECK (img.GetName() == "disk1");
+}
+
+TEST_CASE ("Image file path and backend accessors preserve assigned values")
+{
+    Image img ("disk1");
+    CHECK (img.GetFilePath().empty());
+
+    img.SetFilePath ("images/disk1.img");
+    CHECK (img.GetFilePath() == std::filesystem::path ("images/disk1.img"));
+
+    CHECK (img.GetBackendType() == BackendType::None);
+    CHECK (img.SetBackend (BackendType::Krun));
+    CHECK (img.GetBackendType() == BackendType::Krun);
+    CHECK_FALSE (img.SetBackend (BackendType::Xorriso));
+    CHECK (img.GetBackendType() == BackendType::Krun);
 }
 
 TEST_CASE ("Image component setter/getter works")
@@ -298,6 +388,43 @@ TEST_CASE ("Image::Set boot_mode resolves each supported keyword and rejects unk
     auto res = img.Set (ImgProp::BootMode, ImageId ("not_a_mode"));
     CHECK_FALSE (res);
     CHECK (res.Error().RootFrame().code == ErrorCode::InvalidId);
+
+    Image isoImage ("iso-image");
+    REQUIRE (isoImage.Set (ImgProp::PartType, ImageId ("iso9660")));
+    auto invalidEmulation = isoImage.Set (ImgProp::BootEmu, ImageId ("invalid"));
+    CHECK_FALSE (invalidEmulation);
+    CHECK (invalidEmulation.Error().RootFrame().code == ErrorCode::InvalidId);
+}
+
+TEST_CASE ("Image::Set rejects unknown component IDs and repeated component assignment")
+{
+    Image partTypeImage ("part-type-image");
+    auto partType = partTypeImage.Set (ImgProp::PartType, ImageId ("unknown"));
+    CHECK_FALSE (partType);
+    CHECK (partType.Error().RootFrame().code == ErrorCode::InvalidId);
+
+    Image formatImage ("format-image");
+    auto format = formatImage.Set (ImgProp::Format, ImageId ("unknown"));
+    CHECK_FALSE (format);
+    CHECK (format.Error().RootFrame().code == ErrorCode::InvalidId);
+
+    Image bootImage ("boot-image");
+    auto boot = bootImage.Set (ImgProp::BootLoad, ImageId ("unknown"));
+    CHECK_FALSE (boot);
+    CHECK (boot.Error().RootFrame().code == ErrorCode::InvalidId);
+
+    REQUIRE (bootImage.Set (ImgProp::BootLoad, ImageId ("grub")));
+    auto duplicate = bootImage.Set (ImgProp::BootLoad, ImageId ("none"));
+    CHECK_FALSE (duplicate);
+    CHECK (duplicate.Error().RootFrame().code == ErrorCode::ComponentOverwrite);
+}
+
+TEST_CASE ("Image::IsSet by name reports an unrecognized property")
+{
+    Image img ("disk1");
+    auto res = img.IsSet ("not_a_real_prop");
+    CHECK_FALSE (res);
+    CHECK (res.Error().RootFrame().code == ErrorCode::InvalidImgProp);
 }
 
 TEST_CASE ("Image::IsSet reflects whether a property currently has a value")
@@ -313,7 +440,7 @@ TEST_CASE ("Image::SetDefaults fills in defaulted properties without touching on
 {
     Image img ("disk1");
     REQUIRE (img.Set (ImgProp::Size, MakeNumId (1, "MiB")));
-    REQUIRE (img.SetDefaults());
+    img.SetDefaults();
 
     auto bootMode = img.Get<BootMode> (ImgProp::BootMode);
     REQUIRE (bootMode.has_value());
@@ -329,11 +456,37 @@ TEST_CASE ("Image::SetDefaults does not overwrite an explicitly-set boot_mode")
     Image img ("disk1");
     REQUIRE (img.Set (ImgProp::Size, MakeNumId (1, "MiB")));
     REQUIRE (img.Set (ImgProp::BootMode, ImageId ("efi")));
-    REQUIRE (img.SetDefaults());
+    img.SetDefaults();
 
     auto bootMode = img.Get<BootMode> (ImgProp::BootMode);
     REQUIRE (bootMode.has_value());
     CHECK (*bootMode == BootMode::Efi);
+}
+
+TEST_CASE ("Image::SetDefaults initializes the format and its default partition type")
+{
+    Image rawImage ("raw-image");
+    rawImage.SetDefaults();
+    auto format = rawImage.Get<FormatType> (ImgProp::Format);
+    REQUIRE (format.has_value());
+    CHECK (*format == FormatType::Raw);
+    auto partType = rawImage.Get<PartType> (ImgProp::PartType);
+    REQUIRE (partType.has_value());
+    CHECK (*partType == PartType::Gpt);
+
+    Image isoImage ("iso-image");
+    REQUIRE (isoImage.Set (ImgProp::Format, ImageId ("iso9660")));
+    isoImage.SetDefaults();
+    auto isoPartType = isoImage.Get<PartType> (ImgProp::PartType);
+    REQUIRE (isoPartType.has_value());
+    CHECK (*isoPartType == PartType::Iso9660);
+
+    Image explicitPartTypeImage ("explicit-part-type-image");
+    REQUIRE (explicitPartTypeImage.Set (ImgProp::PartType, ImageId ("mbr")));
+    explicitPartTypeImage.SetDefaults();
+    auto explicitPartType = explicitPartTypeImage.Get<PartType> (ImgProp::PartType);
+    REQUIRE (explicitPartType.has_value());
+    CHECK (*explicitPartType == PartType::Mbr);
 }
 
 /********************
@@ -425,7 +578,7 @@ TEST_CASE ("Partition::SetDefaults fills defaulted properties once the required 
     Partition part ("part0");
     REQUIRE (part.Set ("start", MakeNumId (1, "MiB")));
     REQUIRE (part.Set ("size", MakeNumId (1, "MiB")));
-    REQUIRE (part.SetDefaults());
+    part.SetDefaults();
 
     // "format"'s default is an empty string, and the getter treats an empty string as "not set", so
     // it correctly still reports as unset even after SetDefaults runs
@@ -497,15 +650,128 @@ TEST_CASE ("Image replays deferred component properties during validation")
 
     REQUIRE (img.Set (ImgProp::BootEmu, ImageId ("noemu")));
     CHECK_FALSE (img.CheckComponent (CompType::PartType));
-
     REQUIRE (img.Set (ImgProp::PartType, ImageId ("iso9660")));
-    REQUIRE (img.SetDefaults());
+    img.SetDefaults();
     img.AddPartition (std::make_unique<Partition> ("part0"));
     REQUIRE (img.Finalize());
 
     auto bootEmu = img.Get<IsoBootEmu> (ImgProp::BootEmu);
     REQUIRE (bootEmu.has_value());
     CHECK (*bootEmu == IsoBootEmu::NoEmu);
+}
+
+TEST_CASE ("Image::Finalize reports and retains unresolved deferred properties")
+{
+    Image img ("unresolved-image");
+    REQUIRE (img.Set (ImgProp::BootEmu, ImageId ("noemu")));
+    CHECK (img.CheckDeferred (CompType::PartType));
+
+    auto res = img.Finalize();
+    CHECK_FALSE (res);
+    CHECK (res.Error().RootFrame().code == ErrorCode::UnresolvedDeferredProp);
+    CHECK (img.CheckDeferred (CompType::PartType));
+}
+
+TEST_CASE ("Image retries failed deferred component properties when resolving all")
+{
+    Image img ("deferred-image");
+    REQUIRE (img.Set (ImgProp::BootEmu, ImageId ("invalid")));
+    CHECK (img.CheckDeferred (CompType::Max));
+    REQUIRE (img.Set (ImgProp::PartType, ImageId ("iso9660")));
+    CHECK (img.CheckDeferred (CompType::PartType));
+
+    img.ResolveDeferred (CompType::Max);
+    CHECK (img.CheckDeferred (CompType::Max));
+    CHECK_FALSE (img.Finalize());
+}
+
+TEST_CASE ("ISO image finalization enforces boot emulation image requirements")
+{
+    Image missingBootImage ("missing-boot-image");
+    REQUIRE (missingBootImage.Set (ImgProp::PartType, ImageId ("iso9660")));
+    REQUIRE (missingBootImage.Set (ImgProp::BootEmu, ImageId ("hdd")));
+    auto missingResult = missingBootImage.Finalize();
+    CHECK_FALSE (missingResult);
+    CHECK (missingResult.Error().RootFrame().msg.find ("missing boot image") != std::string::npos);
+
+    Image bootImage ("boot-image");
+    REQUIRE (bootImage.Set (ImgProp::PartType, ImageId ("gpt")));
+
+    Image unexpectedBootImage ("unexpected-boot-image");
+    REQUIRE (unexpectedBootImage.Set (ImgProp::PartType, ImageId ("iso9660")));
+    REQUIRE (unexpectedBootImage.Set (ImgProp::BootEmu, ImageId ("noemu")));
+    REQUIRE (unexpectedBootImage.Set (ImgProp::BootImage, ImageId ("boot-image")));
+    const auto& unexpectedRefs = unexpectedBootImage.GetRefs();
+    REQUIRE (unexpectedRefs.size() == 1);
+    unexpectedRefs[0].setter (&bootImage);
+    auto unexpectedResult = unexpectedBootImage.Finalize();
+    CHECK_FALSE (unexpectedResult);
+    CHECK (unexpectedResult.Error().RootFrame().msg.find ("not valid for emulation") != std::string::npos);
+
+    Image validBootImage ("valid-boot-image");
+    REQUIRE (validBootImage.Set (ImgProp::PartType, ImageId ("iso9660")));
+    REQUIRE (validBootImage.Set (ImgProp::BootEmu, ImageId ("hdd")));
+    REQUIRE (validBootImage.Set (ImgProp::BootImage, ImageId ("boot-image")));
+    const auto& validRefs = validBootImage.GetRefs();
+    REQUIRE (validRefs.size() == 1);
+    validRefs[0].setter (&bootImage);
+    CHECK (validBootImage.Finalize());
+
+    Image incompatibleBootImage ("incompatible-boot-image");
+    REQUIRE (incompatibleBootImage.Set (ImgProp::PartType, ImageId ("floppy")));
+    Image incompatibleIso ("incompatible-iso");
+    REQUIRE (incompatibleIso.Set (ImgProp::PartType, ImageId ("iso9660")));
+    REQUIRE (incompatibleIso.Set (ImgProp::BootEmu, ImageId ("hdd")));
+    REQUIRE (incompatibleIso.Set (ImgProp::BootImage, ImageId ("incompatible-boot-image")));
+    const auto& incompatibleRefs = incompatibleIso.GetRefs();
+    REQUIRE (incompatibleRefs.size() == 1);
+    incompatibleRefs[0].setter (&incompatibleBootImage);
+    auto incompatibleResult = incompatibleIso.Finalize();
+    CHECK_FALSE (incompatibleResult);
+    CHECK (incompatibleResult.Error().RootFrame().msg.find ("invalid for ISO9660") != std::string::npos);
+
+    Image untypedBootImage ("untyped-boot-image");
+    Image untypedIso ("untyped-iso");
+    REQUIRE (untypedIso.Set (ImgProp::PartType, ImageId ("iso9660")));
+    REQUIRE (untypedIso.Set (ImgProp::BootEmu, ImageId ("hdd")));
+    REQUIRE (untypedIso.Set (ImgProp::BootImage, ImageId ("untyped-boot-image")));
+    const auto& untypedRefs = untypedIso.GetRefs();
+    REQUIRE (untypedRefs.size() == 1);
+    untypedRefs[0].setter (&untypedBootImage);
+    CHECK_FALSE (untypedIso.Finalize());
+
+    Image floppyBootImage ("floppy-boot-image");
+    REQUIRE (floppyBootImage.Set (ImgProp::PartType, ImageId ("floppy")));
+    Image fddIso ("fdd-iso");
+    REQUIRE (fddIso.Set (ImgProp::PartType, ImageId ("iso9660")));
+    REQUIRE (fddIso.Set (ImgProp::BootEmu, ImageId ("fdd")));
+    REQUIRE (fddIso.Set (ImgProp::BootImage, ImageId ("floppy-boot-image")));
+    const auto& floppyRefs = fddIso.GetRefs();
+    REQUIRE (floppyRefs.size() == 1);
+    floppyRefs[0].setter (&floppyBootImage);
+    CHECK (fddIso.Finalize());
+}
+
+TEST_CASE ("Image component lookup handles invalid slots and null additions")
+{
+    Image img ("disk1");
+    CHECK_FALSE (img.CheckComponent (CompType::Max));
+    CHECK_THROWS_AS (img.GetComponent<TestComponent> (CompType::Max), ErrorException);
+    CHECK_THROWS_AS (img.AddComponent (nullptr), std::invalid_argument);
+}
+
+TEST_CASE ("Partition name-based Get and IsSet report unknown properties")
+{
+    Partition part ("part0");
+    auto get = part.Get<std::string> ("bogus");
+    CHECK_FALSE (get);
+    CHECK (get.Error().RootFrame().code == ErrorCode::InvalidPartProp);
+
+    auto isSet = part.IsSet ("bogus");
+    CHECK_FALSE (isSet);
+    CHECK (isSet.Error().RootFrame().code == ErrorCode::InvalidPartProp);
+
+    CHECK_THROWS (part.Set (PartProp::Max, ImageVal (std::string ("x"))));
 }
 
 TEST_CASE ("Image partitions can be added and enumerated")
@@ -551,7 +817,7 @@ TEST_CASE ("Error context enriches formatted messages after construction")
     CHECK (err.RootFrame().msg.find ("boot_mode") != std::string::npos);
     CHECK (err.MakeContextStr().empty());
 
-    err.AddContext ({{"file", "myfile.conf"}, {"line", "12"}});
+    err.AddContext (SourceLoc ("myfile.conf", 12));
     CHECK (err.MakeContextStr() == "myfile.conf:12: ");
     CHECK (err.RootFrame().msg.find ("boot_mode") != std::string::npos);
 }

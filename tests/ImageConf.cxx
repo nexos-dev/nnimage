@@ -222,6 +222,7 @@ TEST_CASE ("ImageConf parses a valid image config and resolves partition referen
 
     ImageConf frontend (opts);
     REQUIRE (frontend.Parse());
+    REQUIRE (frontend.GetSet().ResolvePartRefs());
 
     auto images = frontend.GetSet().GetImages();
     REQUIRE (images.size() == 1);
@@ -240,7 +241,7 @@ TEST_CASE ("ImageConf parses a valid image config and resolves partition referen
     std::filesystem::remove_all (path.parent_path());
 }
 
-TEST_CASE ("ImageConf resolves a boot_image reference between images")
+TEST_CASE ("ImageSet resolves a boot_image reference between images")
 {
     const auto path = MakeConfigFile ("boot_image",
         "image boot {\n"
@@ -258,6 +259,7 @@ TEST_CASE ("ImageConf resolves a boot_image reference between images")
     ImageConf frontend (opts);
     REQUIRE (frontend.Parse());
 
+    REQUIRE (frontend.GetSet().ResolveImgRefs());
     auto images = frontend.GetSet().GetImages();
     REQUIRE (images.size() == 2);
 
@@ -287,7 +289,7 @@ TEST_CASE ("ImageConf resolves a boot_image reference between images")
     std::filesystem::remove_all (path.parent_path());
 }
 
-TEST_CASE ("ImageConf rejects an image that references an undefined partition")
+TEST_CASE ("ImageSet rejects an image that references an undefined partition")
 {
     const auto path = MakeConfigFile ("missing_partition",
         "image test {\n"
@@ -299,7 +301,9 @@ TEST_CASE ("ImageConf rejects an image that references an undefined partition")
     opts.confFile = path.string();
 
     ImageConf frontend (opts);
-    CHECK_FALSE (frontend.Parse());
+    REQUIRE (frontend.Parse());
+
+    CHECK_FALSE (frontend.GetSet().ResolvePartRefs());
 
     std::filesystem::remove_all (path.parent_path());
 }
@@ -367,6 +371,7 @@ TEST_CASE ("ImageConf stress test with many partitions and repeated image parsin
 
     ImageConf frontend (opts);
     REQUIRE (frontend.Parse());
+    REQUIRE (frontend.GetSet().ResolvePartRefs());
 
     auto images = frontend.GetSet().GetImages();
     REQUIRE (images.size() == 1);

@@ -179,7 +179,7 @@ ResNone ConfParser<Derived, ConfKey>::Set (ConfKey key, const ConfValue& val, bo
 template <typename Derived, typename ConfKey>
 ResNone ConfParser<Derived, ConfKey>::setLocked (ConfKey key, const ConfValue& val, bool overwrite)
 {
-    auto& ctrl = this->getKeyRegistry()[key];
+    auto& ctrl = getKeyRegistry()[key];
     // Check if key already exists and is overwritable
     if (!overwrite && (ctrl.getter (derived()).index() < static_cast<size_t> (ConfType::Max)))
     {

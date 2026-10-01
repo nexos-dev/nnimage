@@ -150,6 +150,9 @@ ResNone Dispatch::validateImages (ImageSet& images)
 {
     for (auto& [name, image] : images)
     {
+        // If the operation is creating the image, then we need to set defaults
+        if (op->CheckFlag (OpFlags::CreatesImage))
+            image->SetDefaults();
         // Ensure we could get a file name
         if (image->GetFilePath().empty())
         {
@@ -206,14 +209,14 @@ bool Dispatch::Execute (OptionsParser& parser)
     auto resOp = Operation::MakeOperation (options.operation, opOptions);
     if (!resOp)
         return dispatchFail (resOp.Error());
-    Operation& op = *resOp.Value();
+    op = std::move (resOp.Value());
 
     // Validate all the images
     auto resValidate = validateImages (imageSet);
     if (!resValidate)
         return dispatchFail (resValidate.Error());
 
-    auto resTargets = op.PrepareTargets (imageSet);
+    auto resTargets = op->PrepareTargets (imageSet);
     if (!resTargets)
         return dispatchFail (resTargets.Error());
 

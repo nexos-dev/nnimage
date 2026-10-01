@@ -18,6 +18,14 @@
 #include "include/Image.h"
 #include "include/comp/Format.h"
 
+void FormatComp::SetDefaults()
+{
+    // If no type was specified explicitly on image, set it now
+    if (!owner.CheckComponent (CompType::PartType))
+        owner.AddComponent (PartTypeComp::Factory (getDefaultType(), owner));
+    Component::SetDefaults();
+}
+
 ResNone FormatComp::Validate()
 {
     return Success();

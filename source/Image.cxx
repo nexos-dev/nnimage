@@ -30,7 +30,7 @@ ResNone RegElement<Element, Property, Registry>::Set (Property prop, const Image
     const auto& registry = getRegistry();
     auto it = registry.find (prop);
     if (it == registry.end())
-        throw std::out_of_range ("Property enum is not registered for this element");
+        return makeRegElementError (invalidPropCode, getRegElementName(), getPropName (prop));
 
     const auto& conf = it->second;
 
@@ -65,7 +65,7 @@ bool RegElement<Element, Property, Registry>::IsSet (Property prop) const
 }
 
 template <typename Element, typename Property, typename Registry>
-ResNone RegElement<Element, Property, Registry>::SetDefaults()
+void RegElement<Element, Property, Registry>::SetDefaults()
 {
     for (const auto& [prop, conf] : getRegistry())
     {
@@ -78,10 +78,9 @@ ResNone RegElement<Element, Property, Registry>::SetDefaults()
             continue;
 
         auto result = conf.setter (element(), ImageVal (conf.defaultVal));
-        if (!result)
-            return result.Error();
+        assert (result);    // NOTE: we assert here as if setter can only fail if the default itself is invalid,
+                            // which is a major internal error
     }
-    return Success();
 }
 
 // Begin Image class
@@ -94,10 +93,16 @@ ResNone Image::AddComponent (std::unique_ptr<Component> comp)
     CompType type = comp->GetType();
     assert (type != CompType::Max);
 
+    // TODO: component overwrite. Shouldn't be necessary until later on down
+    // the road
     if (comps[type])
         return ImageError::Make (ErrorCode::ComponentOverwrite, {});
 
     comps[type] = std::move (comp);
+
+    // Resolve deferred properties for this component, if any
+    if (CheckDeferred (type))
+        ResolveDeferred (type);
     return Success();
 }
 
@@ -127,7 +132,7 @@ ResNone Image::Set (ImgProp prop, const ImageVal& val)
         return RegElement::Set (prop, val);
 
     // Otherwise defer it
-    deferredProps.push_back ({prop, val});
+    deferProp (prop, val);
 
     return Success();
 }
@@ -150,40 +155,39 @@ bool Image::IsSet (ImgProp prop) const
     return RegElement::IsSet (prop);
 }
 
-ResNone Image::SetDefaults()
+void Image::SetDefaults()
 {
     // Apply base level defaults
-    auto res = RegElement::SetDefaults();
-    if (!res)
-        return res.Error();
+    RegElement::SetDefaults();
 
     // Now apply for each component
-    for (auto& comp : comps)
+    for (int i = 0; i < comps.size(); i++)
     {
+        // HACK ALERT: we should create a better way to iterate over an EnumArray
+        auto& comp = comps[static_cast<CompType> (i)];
         if (comp)
-        {
-            res = comp->SetDefaults();
-            if (!res)
-                return res;
-        }
+            comp->SetDefaults();
     }
-
-    return Success();
 }
 
 ResNone Image::Finalize()
 {
     // Handle all deferred properties now
-    auto defRes = ResolveDeferred();
-    if (!defRes)
-        return defRes;
+    ResolveAllDeferred();
 
     // Any property that still couldn't be resolved (e.g. it references a component that never got
     // created) is a hard error
     if (!deferredProps.empty())
     {
-        return ImageError::Make (ErrorCode::UnresolvedDeferredProp,
-            {{"prop", GetPropName (deferredProps.front().first)}, {"name_suffix", ImageError::NameSuffix (*this)}});
+        Error err;
+        for (const auto& prop : deferredProps)
+        {
+            const auto& [comp, val] = prop;
+            const auto& [propVal, value] = val;
+            err = err.Chain ({ErrorDomain::Image, ErrorCode::UnresolvedDeferredProp},
+                {{"prop", GetPropName (propVal)}, {"name_suffix", ImageError::NameSuffix (*this)}});
+        }
+        return err;
     }
 
     // Now validate each component
@@ -200,9 +204,9 @@ ResNone Image::Finalize()
     return Success();
 }
 
-void Image::AddImageRef (std::string imageName, std::function<void (Image*)> setCb)
+void Image::AddImageRef (std::string imageName, std::function<void (Image*)> setCb, SourceLoc loc)
 {
-    imageRefs.push_back ({GenericRef<Image> (std::move (imageName), *this), std::move (setCb)});
+    imageRefs.push_back ({GenericRef<Image> (std::move (imageName), *this, loc), std::move (setCb)});
 }
 
 std::optional<std::any> Image::getInternal (ImgProp prop) const
@@ -212,6 +216,22 @@ std::optional<std::any> Image::getInternal (ImgProp prop) const
         return comp->Get (prop);
 
     return RegElement::Get (prop);
+}
+
+CompType Image::getPropOwner (ImgProp prop) const
+{
+    auto it = keyMap.find (prop);
+    if (it == keyMap.end())
+        return CompType::Max;
+    return it->second;
+}
+
+void Image::deferProp (ImgProp prop, const ImageVal& val)
+{
+    CompType owner = getPropOwner (prop);
+    assert (owner != CompType::Max);
+
+    deferredProps.emplace (owner, std::make_pair (prop, val));
 }
 
 template <typename CompT>
@@ -234,20 +254,59 @@ const CompT* Image::getCompProp (CompType type) const
     return GetComponent<CompT> (type);
 }
 
-ResNone Image::ResolveDeferred()
+template <typename Iter>
+Iter Image::resolveDeferredPropIter (Iter iter)
 {
-    std::vector<std::pair<ImgProp, ImageVal>> unresolved;
-
-    for (auto& prop : deferredProps)
+    auto& [compType, pair] = *iter;
+    auto& [prop, val] = pair;
+    // First check component, then base
+    // TODO: do we need to check the base?
+    auto* comp = resolveComponent (prop);
+    if (comp)
     {
-        auto* comp = resolveComponent (prop.first);
-        auto res = comp ? comp->Set (prop.first, prop.second) : RegElement::Set (prop.first, prop.second);
+        assert (comp->GetType() == compType);
+        auto res = comp->Set (prop, val);
         if (!res)
-            unresolved.push_back (std::move (prop));
+            return ++iter;
+    }
+    else if (hasProperty (prop))
+    {
+        auto res = RegElement::Set (prop, val);
+        if (!res)
+            return ++iter;
+    }
+    else
+        return ++iter;
+    // Remove the property from the deferral list
+    return deferredProps.erase (iter);
+}
+
+void Image::ResolveAllDeferred()
+{
+    for (auto it = deferredProps.begin(); it != deferredProps.end();)
+        it = resolveDeferredPropIter (it);
+}
+
+bool Image::CheckDeferred (CompType type) const
+{
+    if (type == CompType::Max)
+        return !deferredProps.empty();
+    else
+        return deferredProps.contains (type);
+}
+
+void Image::ResolveDeferred (CompType type)
+{
+    if (type == CompType::Max)
+    {
+        // Call the real function
+        ResolveAllDeferred();
+        return;
     }
 
-    deferredProps = std::move (unresolved);
-    return Success();
+    auto [start, end] = deferredProps.equal_range (type);
+    for (auto it = start; it != end;)
+        it = resolveDeferredPropIter (it);
 }
 
 // Partition functions
@@ -283,6 +342,7 @@ const CompConfRegistry& Component::getRegistry() const
     // Check if merging is need
     if (mergedRegistry.empty())
     {
+        std::unique_lock<std::mutex> regGuard (regLock);
         // Get the two registries
         const auto& mainReg = getMainRegistry();
         const auto& subReg = getSubRegistry();
@@ -315,18 +375,18 @@ Result<ImageVal> ImageVal::FromToken (LexToken tok)
 {
     return std::visit (overloaded{[&] (const std::string& x) -> Result<ImageVal> {
                                       if (tok.type == TokenType::Identifier)
-                                          return ImageVal (ImageId (std::move (x)), tok.line);
+                                          return ImageVal (ImageId (std::move (x)), tok.loc);
                                       else
-                                          return ImageVal (std::move (x), tok.line);
+                                          return ImageVal (std::move (x), tok.loc);
                                   },
-                           [&] (uint64_t x) -> Result<ImageVal> { return ImageVal (x, tok.line); },
-                           [&] (bool x) -> Result<ImageVal> { return ImageVal (x, tok.line); },
+                           [&] (uint64_t x) -> Result<ImageVal> { return ImageVal (x, tok.loc); },
+                           [&] (bool x) -> Result<ImageVal> { return ImageVal (x, tok.loc); },
                            [&] (const LexNumId& x) -> Result<ImageVal> {
                                ImageNumId numId = ImageNumId (x.num, x.id);
                                auto res = numId.Parse();
                                if (!res)
                                    return res.Error();
-                               return ImageVal (numId);
+                               return ImageVal (numId, tok.loc);
                            }},
         tok.val);
 }
@@ -336,9 +396,9 @@ ImageVal ImageVal::Cast (ImageValIdx wantedType) const
     // Currently, the only valid cast is from ID->std::string and ID->ImageList
     return std::visit (overloaded{[&] (const ImageId& x) -> ImageVal {
                                       if (wantedType == ImageVal::GetTypeIndex<std::string>())
-                                          return ImageVal (std::string (x), line);
+                                          return ImageVal (std::string (x), loc);
                                       else if (wantedType == ImageVal::GetTypeIndex<ImageList>())
-                                          return ImageVal (ImageList{x}, line);
+                                          return ImageVal (ImageList{x}, loc);
                                       return ImageVal::Invalid;
                                   },
                            [&] (auto&&) -> ImageVal { return ImageVal::Invalid; }},
@@ -463,7 +523,7 @@ const ImgConfRegistry Image::baseRegistry = {
     },
     {ImgProp::PartType,
         {ImageVal::GetTypeIndex<ImageId>(),
-            ImageId ("gpt"),
+            std::monostate{},
             [] (Image& img, const ImageVal& val) -> ResNone
             {
                 return img.setCompProp<PartTypeComp> (ImgProp::PartType, val);
@@ -553,7 +613,7 @@ const PartConfRegistry Partition::registry = {
     },
     {PartProp::Format,
         {ImageVal::GetTypeIndex<ImageId>(),
-            ImageId (""),
+            std::monostate{},
             [] (Partition& part, const ImageVal& val) -> ResNone
             {
                 part.spec.format = std::move((*val.Get<ImageId>()).Str());
@@ -569,7 +629,7 @@ const PartConfRegistry Partition::registry = {
     },
     {PartProp::Prefix,
         {ImageVal::GetTypeIndex<std::string>(),
-            "",
+            std::monostate{},
             [] (Partition& part, const ImageVal& val) -> ResNone
             {
                 part.spec.prefix = *val.Get<std::string>();

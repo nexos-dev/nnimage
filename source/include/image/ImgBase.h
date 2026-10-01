@@ -41,15 +41,15 @@ template <typename T>
 class GenericRef
 {
   public:
-    GenericRef (std::string name, T& comp, int line = -1) : name{std::move (name)}, line{line}, comp{comp}
+    GenericRef (std::string name, T& comp, SourceLoc loc) : name{std::move (name)}, loc{loc}, comp{comp}
     {}
     std::string_view GetName() const
     {
         return name;
     }
-    int GetLine() const
+    SourceLoc GetLoc() const
     {
-        return line;
+        return loc;
     }
     T& GetComp()
     {
@@ -59,7 +59,7 @@ class GenericRef
   private:
     T& comp;
     std::string name;
-    int line;
+    SourceLoc loc;
 };
 
 // Type wrapper for, e.g., "128MiB" -> (128*1024*1024)
@@ -140,19 +140,19 @@ class ImageVal
 {
   public:
     ImageVal() = default;
-    ImageVal (ImageValType val, int line = -1) : val{std::move (val)}, line{line}
+    ImageVal (ImageValType val, SourceLoc loc = {}) : val{std::move (val)}, loc{loc}
     {}
     template <typename T, typename = std::enable_if_t<std::is_constructible_v<ImageValType, T>>>
-    ImageVal (T&& val, int line = -1) : val{std::forward<T> (val)}, line{line}
+    ImageVal (T&& val, SourceLoc loc = {}) : val{std::forward<T> (val)}, loc{loc}
     {}
 
     bool IsEmpty() const
     {
         return std::holds_alternative<std::monostate> (val);
     }
-    int GetLine() const
+    SourceLoc GetLoc() const
     {
-        return line;
+        return loc;
     }
     template <typename T>
     std::optional<T> Get() const
@@ -193,7 +193,7 @@ class ImageVal
   private:
     static constexpr std::monostate Invalid = std::monostate{};
     ImageValType val = std::monostate{};
-    int line = -1;
+    SourceLoc loc;
 };
 
 // Generic property setters/getters
@@ -223,10 +223,10 @@ class RegElement
 
     virtual ResNone Set (Property prop, const ImageVal& val);
     virtual bool IsSet (Property prop) const;
-    virtual ResNone SetDefaults();
+    virtual void SetDefaults();
 
   protected:
-    RegElement (ErrorCode missingPropertyCode) : missingPropertyCode{missingPropertyCode}
+    RegElement (ErrorCode invalidPropCode) : invalidPropCode{invalidPropCode}
     {}
 
     Element& element()
@@ -258,7 +258,7 @@ class RegElement
     virtual std::string_view getRegElementName() const = 0;
     virtual std::string_view getPropName (Property prop) const = 0;
 
-    ErrorCode missingPropertyCode;
+    ErrorCode invalidPropCode;
 };
 
 #endif

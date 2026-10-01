@@ -257,15 +257,15 @@ TEST_CASE ("SimpleLexer tracks line numbers across newlines, comments and string
 
     auto res = lexer.NextToken();
     REQUIRE (res);
-    CHECK (res.Value().line == 1);
+    CHECK (res.Value().loc.line == 1);
 
     res = lexer.NextToken();
     REQUIRE (res);
-    CHECK (res.Value().line == 2);
+    CHECK (res.Value().loc.line == 2);
 
     res = lexer.NextToken();
     REQUIRE (res);
-    CHECK (res.Value().line == 4);
+    CHECK (res.Value().loc.line == 4);
 }
 
 TEST_CASE ("SimpleLexer handles CRLF line endings as a single newline")
@@ -275,19 +275,18 @@ TEST_CASE ("SimpleLexer handles CRLF line endings as a single newline")
 
     auto res = lexer.NextToken();
     REQUIRE (res);
-    CHECK (res.Value().line == 1);
+    CHECK (res.Value().loc.line == 1);
 
     res = lexer.NextToken();
     REQUIRE (res);
-    CHECK (res.Value().line == 2);
+    CHECK (res.Value().loc.line == 2);
 }
 
 TEST_CASE ("SimpleLexer::NameFromToken returns the expected display name for every token type")
 {
     const SimpleLexer lexer ("test.conf", "");
-    CHECK (lexer.GetFileName() == "test.conf");
 
-    const LexToken token{TokenType::Identifier, 1, std::string{"name"}};
+    const LexToken token{TokenType::Identifier, std::string{"name"}, SourceLoc ("test.conf", 12)};
     CHECK (std::string (lexer.NameFromToken (token)) == "identifier");
     CHECK (std::string (lexer.NameFromToken (TokenType::Colon)) == ":");
     CHECK (std::string (lexer.NameFromToken (TokenType::Ebrace)) == "}");

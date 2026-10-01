@@ -79,6 +79,11 @@ class IsoFormatComp : public FormatComp
         return registry;
     }
 
+    PartType getDefaultType() const override
+    {
+        return PartType::Iso9660;
+    }
+
   private:
     static const CompConfRegistry registry;
 };

@@ -129,6 +129,55 @@ ResNone ImageSet::AddPartition (std::shared_ptr<Partition> part)
     return Success();
 }
 
+void ImageSet::AddPartRef (std::string name, Image& owner, SourceLoc loc)
+{
+    partRefs.push_back (GenericRef<Image> (name, owner, loc));
+}
+
+ResNone ImageSet::ResolveImgRefs()
+{
+    // Go through each image
+    for (const auto& [name, image] : images)
+    {
+        const auto& refs = image->GetRefs();
+
+        for (const auto& ref : refs)
+        {
+            std::string_view name = ref.ref.GetName();
+
+            // Find image with that name
+            auto imageIt = FindImage (name);
+            if (!imageIt)
+            {
+                return ImageError::MakeWithContext (ErrorCode::UnresolvedImage,
+                    {{"image_name", std::string (name)}},
+                    ref.ref.GetLoc());
+            }
+
+            ref.setter (&imageIt->get());
+        }
+    }
+    return Success();
+}
+
+ResNone ImageSet::ResolvePartRefs()
+{
+    for (auto& ref : partRefs)
+    {
+        std::string_view partName = ref.GetName();
+
+        auto part = FindPartitionShared (partName);
+        if (!part)
+        {
+            return ImageError::MakeWithContext (ErrorCode::UnresolvedPartition,
+                {{"part_name", std::string (partName)}},
+                ref.GetLoc());
+        }
+        ref.GetComp().AddPartition (std::move (part));
+    }
+    return Success();
+}
+
 void ImageSet::Dump()
 {
     std::print ("Defined images:\n");

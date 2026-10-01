@@ -28,14 +28,14 @@ struct ImgParseProp
 {
     std::string propName;
     ImageVal val;
-    int line;
+    SourceLoc loc;
 };
 
 struct ImgParseBlock
 {
     std::string type;
     std::string name;
-    int line;
+    SourceLoc loc;
     std::unordered_map<std::string, ImgParseProp, StringHash, std::equal_to<>> props;
 };
 
@@ -56,14 +56,9 @@ class ImageParser
 
     Result<std::optional<ImgParseBlock>> ParseBlock();
 
-    std::string_view GetFileName()
-    {
-        return lexer.GetFileName();
-    }
-
   private:
-    Error parseError (ImgParseError error, std::string_view extra, std::string_view extra2, int line);
-    void parseWarning (ImgParseError error, std::string_view extra, std::string_view extra2, int line);
+    Error parseError (ImgParseError error, std::string_view extra, std::string_view extra2, SourceLoc loc);
+    void parseWarning (ImgParseError error, std::string_view extra, std::string_view extra2, SourceLoc loc);
     Result<ImgParseBlock> processBlock (LexToken& startTok);
     Result<ImgParseProp> processProp (LexToken& startTok);
     Result<ImageList> processList (LexToken first);
@@ -106,7 +101,7 @@ class ImageParser
             return parseError (ImgParseError::UnexpectedToken,
                 lexer.NameFromToken (tok),
                 lexer.NameFromToken (type),
-                tok.line);
+                tok.loc);
         }
         return tok;
     }
@@ -129,10 +124,10 @@ class ImageParser
         return std::get<T> (tok.val);
     }
 
-    Error makeError (ErrorCode code, std::string msg, int line, ErrorSeverity severity = ErrorSeverity::Error)
+    Error makeError (ErrorCode code, std::string msg, SourceLoc loc, ErrorSeverity severity = ErrorSeverity::Error)
     {
         return Error ({ErrorDomain::Image, code, ErrorLog::Normal, severity}, {{"message", std::move (msg)}})
-            .AddContext ({{"file", std::string (lexer.GetFileName())}, {"line", std::to_string (line)}});
+            .AddContext (std::move (loc));
     }
 
     SimpleLexer lexer;

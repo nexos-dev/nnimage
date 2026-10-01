@@ -22,7 +22,7 @@
 
 // Image parser
 
-Error ImageParser::parseError (ImgParseError error, std::string_view extra, std::string_view extra2, int line)
+Error ImageParser::parseError (ImgParseError error, std::string_view extra, std::string_view extra2, SourceLoc loc)
 {
     std::string msg;
     switch (error)
@@ -39,10 +39,10 @@ Error ImageParser::parseError (ImgParseError error, std::string_view extra, std:
             assert (false);
     }
 
-    return makeError (ErrorCode::ImgParseError, std::move (msg), line);
+    return makeError (ErrorCode::ImgParseError, std::move (msg), std::move (loc));
 }
 
-void ImageParser::parseWarning (ImgParseError error, std::string_view extra, std::string_view extra2, int line)
+void ImageParser::parseWarning (ImgParseError error, std::string_view extra, std::string_view extra2, SourceLoc loc)
 {
     std::string msg;
     switch (error)
@@ -54,7 +54,7 @@ void ImageParser::parseWarning (ImgParseError error, std::string_view extra, std
             assert (false);
     }
 
-    ErrorOutput::The()->Report (makeError (ErrorCode::ImgParseWarning, std::move (msg), line, ErrorSeverity::Warning));
+    ErrorOutput::The()->Report (makeError (ErrorCode::ImgParseWarning, std::move (msg), loc, ErrorSeverity::Warning));
 }
 
 Result<ImageList> ImageParser::processList (LexToken first)
@@ -66,10 +66,10 @@ Result<ImageList> ImageParser::processList (LexToken first)
         // Only identifier lists are supported. Give a more descriptive error instead of just "unexpected token"
         // in that case
         if (isValType (cur.type) && cur.type != TokenType::Identifier)
-            return parseError (ImgParseError::InvalidList, lexer.NameFromToken (cur), {}, cur.line);
+            return parseError (ImgParseError::InvalidList, lexer.NameFromToken (cur), {}, cur.loc);
 
         else if (cur.type != TokenType::Identifier)
-            return parseError (ImgParseError::UnexpectedToken, lexer.NameFromToken (cur), {}, cur.line);
+            return parseError (ImgParseError::UnexpectedToken, lexer.NameFromToken (cur), {}, cur.loc);
 
         list.push_back (std::move (getTokValue<std::string> (cur)));
 
@@ -82,7 +82,7 @@ Result<ImageList> ImageParser::processList (LexToken first)
         if (cur.type == TokenType::Semicolon)
             break;    // Break out if a semicolon
         else if (cur.type != TokenType::Comma)
-            return parseError (ImgParseError::UnexpectedToken, lexer.NameFromToken (cur), "\";\" or \",\"", cur.line);
+            return parseError (ImgParseError::UnexpectedToken, lexer.NameFromToken (cur), "\";\" or \",\"", cur.loc);
 
         // Get the next list entry
         resTok = nextToken();
@@ -97,7 +97,7 @@ Result<ImgParseProp> ImageParser::processProp (LexToken& startTok)
 {
     ImgParseProp prop;
     prop.propName = getTokValue<std::string> (startTok);
-    prop.line = startTok.line;
+    prop.loc = startTok.loc;
 
     // Next we need a colon
     auto resTok = expectToken (TokenType::Colon);
@@ -119,11 +119,11 @@ Result<ImgParseProp> ImageParser::processProp (LexToken& startTok)
 
     if (resPeek.Value() == TokenType::Comma)
     {
-        int listLine = tok.line;
+        SourceLoc listLoc = tok.loc;
         auto resList = processList (std::move (tok));
         if (!resList)
             return resList.Error();
-        val = ImageVal (resList.Value(), listLine);
+        val = ImageVal (resList.Value(), listLoc);
     }
     else
     {
@@ -131,35 +131,32 @@ Result<ImgParseProp> ImageParser::processProp (LexToken& startTok)
         switch (tok.type)
         {
             case TokenType::Identifier:
-                val = ImageVal (ImageId (getTokValue<std::string> (tok)), tok.line);
+                val = ImageVal (ImageId (getTokValue<std::string> (tok)), tok.loc);
                 break;
             case TokenType::String:
-                val = ImageVal (getTokValue<std::string> (tok), tok.line);
+                val = ImageVal (getTokValue<std::string> (tok), tok.loc);
                 break;
             case TokenType::Number:
-                val = ImageVal (getTokValue<uint64_t> (tok), tok.line);
+                val = ImageVal (getTokValue<uint64_t> (tok), tok.loc);
                 break;
             case TokenType::NumId: {
                 LexNumId id = getTokValue<LexNumId> (tok);
                 ImageNumId numId = ImageNumId (id.num, std::move (id.id));
                 auto resNumId = numId.Parse();
-                // TODO: hide this away
+
                 if (!resNumId)
-                {
-                    return resNumId.Error().AddContext (
-                        {{"file", std::string (lexer.GetFileName())}, {"line", std::to_string (tok.line)}});
-                }
-                val = ImageVal (numId);
+                    return resNumId.Error().AddContext (tok.loc);
+                val = ImageVal (numId, tok.loc);
                 break;
             }
             case TokenType::True:
-                val = ImageVal (true);
+                val = ImageVal (true, tok.loc);
                 break;
             case TokenType::False:
-                val = ImageVal (false);
+                val = ImageVal (false, tok.loc);
                 break;
             default:
-                return parseError (ImgParseError::UnexpectedToken, lexer.NameFromToken (tok), {}, tok.line);
+                return parseError (ImgParseError::UnexpectedToken, lexer.NameFromToken (tok), {}, tok.loc);
         }
         // Require a semicolon now
         resTok = expectToken (TokenType::Semicolon);
@@ -174,7 +171,7 @@ Result<ImgParseProp> ImageParser::processProp (LexToken& startTok)
 Result<ImgParseBlock> ImageParser::processBlock (LexToken& startTok)
 {
     ImgParseBlock block;
-    block.line = startTok.line;
+    block.loc = startTok.loc;
     block.type = getTokValue<std::string> (startTok);
 
     // Next we require a name
@@ -200,7 +197,7 @@ Result<ImgParseBlock> ImageParser::processBlock (LexToken& startTok)
         if (tok.type == TokenType::Ebrace)
             break;
         else if (tok.type != TokenType::Identifier)
-            return parseError (ImgParseError::UnexpectedToken, lexer.NameFromToken (tok), {}, tok.line);
+            return parseError (ImgParseError::UnexpectedToken, lexer.NameFromToken (tok), {}, tok.loc);
 
         auto resProp = processProp (tok);
         if (!resProp)
@@ -212,7 +209,7 @@ Result<ImgParseBlock> ImageParser::processBlock (LexToken& startTok)
         // Property overwrite is allowed, but it's worth flagging
         auto it = props.find (prop.propName);
         if (it != props.end())
-            parseWarning (ImgParseError::PropOverwrite, prop.propName, block.name, prop.line);
+            parseWarning (ImgParseError::PropOverwrite, prop.propName, block.name, prop.loc);
 
         props.insert_or_assign (prop.propName, std::move (prop));
     }
@@ -237,7 +234,7 @@ Result<std::optional<ImgParseBlock>> ImageParser::ParseBlock()
     else if (tok.type == TokenType::Eof)
         return std::optional<ImgParseBlock>{};
     else
-        return parseError (ImgParseError::UnexpectedToken, lexer.NameFromToken (tok), {}, tok.line);
+        return parseError (ImgParseError::UnexpectedToken, lexer.NameFromToken (tok), {}, tok.loc);
 }
 
 Result<std::string> ImageConf::readConfFile()
@@ -271,18 +268,13 @@ ResNone ImageConf::addPartitionNames (Image& img, const ImageVal& val)
         // Try to cast it
         ImageVal newVal = val.Cast (ImageVal::GetTypeIndex<ImageList>());
         if (newVal.IsInvalid())
-        {
-            return ImageError::MakeWithContext (ErrorCode::PropTypeMismatch,
-                {{"prop", "partitions"}},
-                parser.GetFileName(),
-                val.GetLine());
-        }
+            return ImageError::MakeWithContext (ErrorCode::PropTypeMismatch, {{"prop", "partitions"}}, val.GetLoc());
         list = *newVal.Get<ImageList>();
     }
     else
         list = *val.Get<ImageList>();
     for (auto& part : list)
-        partRefs.push_back (GenericRef<Image> (std::move (part.Str()), img, val.GetLine()));
+        images.AddPartRef (std::move (part.Str()), img, val.GetLoc());
 
     return Success();
 }
@@ -305,16 +297,13 @@ Result<std::unique_ptr<Image>> ImageConf::createImage (ImgParseBlock block)
         {
             auto resSet = image->Set (name, prop.val);
             if (!resSet)
-            {
-                return resSet.Error().AddContext (
-                    {{"file", std::string (parser.GetFileName())}, {"line", std::to_string (prop.line)}});
-            }
+                return resSet.Error().AddContext (prop.loc);
         }
     }
 
     // Go ahead and resolve deferred properties as much as we can now. There may be some left that don't get filled out
     // till later, but we need to resolve as much as we can now
-    image->ResolveDeferred();
+    image->ResolveAllDeferred();
 
     return image;
 }
@@ -327,59 +316,9 @@ Result<std::shared_ptr<Partition>> ImageConf::createPartition (ImgParseBlock blo
     {
         auto resSet = part->Set (name, prop.val);
         if (!resSet)
-        {
-            return resSet.Error().AddContext (
-                {{"file", std::string (parser.GetFileName())}, {"line", std::to_string (prop.line)}});
-        }
+            return resSet.Error().AddContext (prop.loc);
     }
     return part;
-}
-
-ResNone ImageConf::resolveImgRefs()
-{
-    // Go through each image
-    for (auto imageRef : images.GetImages())
-    {
-        Image& image = imageRef.get();
-        const auto& refs = image.GetRefs();
-
-        for (const auto& ref : refs)
-        {
-            std::string_view name = ref.ref.GetName();
-
-            // Find image with that name
-            auto imageIt = images.FindImage (name);
-            if (!imageIt)
-            {
-                return ImageError::MakeWithContext (ErrorCode::UnresolvedImage,
-                    {{"image_name", std::string (name)}},
-                    parser.GetFileName(),
-                    ref.ref.GetLine());
-            }
-
-            ref.setter (&imageIt->get());
-        }
-    }
-    return Success();
-}
-
-ResNone ImageConf::resolvePartRefs()
-{
-    for (auto& ref : partRefs)
-    {
-        std::string_view partName = ref.GetName();
-
-        auto part = images.FindPartitionShared (partName);
-        if (!part)
-        {
-            return ImageError::MakeWithContext (ErrorCode::UnresolvedPartition,
-                {{"part_name", std::string (partName)}},
-                parser.GetFileName(),
-                ref.GetLine());
-        }
-        ref.GetComp().AddPartition (std::move (part));
-    }
-    return Success();
 }
 
 ResNone ImageConf::Parse()
@@ -421,22 +360,8 @@ ResNone ImageConf::Parse()
                 return resAdd.Error();
         }
         else
-        {
-            return ImageError::MakeWithContext (ErrorCode::ImgInvalidBlock,
-                {{"block", block.type}},
-                parser.GetFileName(),
-                block.line);
-        }
+            return ImageError::MakeWithContext (ErrorCode::ImgInvalidBlock, {{"block", block.type}}, block.loc);
     }
-
-    // Now resolve all image and partition references
-    auto resPartRef = resolvePartRefs();
-    if (!resPartRef)
-        return resPartRef.Error();
-
-    auto resImgRef = resolveImgRefs();
-    if (!resPartRef)
-        return resPartRef.Error();
 
     return Success();
 }

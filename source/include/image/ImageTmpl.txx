@@ -56,6 +56,13 @@ auto Image::GetComponent (this auto& self, CompType type) -> ComponentPtr<T, dec
     return component;
 }
 
+auto Image::getComponent (this auto& self, CompType type) -> ComponentPtr<Component, decltype (self)>
+{
+    if (type == CompType::Max)
+        throw ErrorException (ImageError::Make (ErrorCode::UnexpectedComponentType, {}));
+    return self.comps[type].get();
+}
+
 auto Image::resolveComponent (this auto& self, ImgProp prop) -> ComponentPtr<Component, decltype (self)>
 {
     auto it = self.keyMap.find (prop);

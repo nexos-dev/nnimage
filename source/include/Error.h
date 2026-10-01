@@ -73,6 +73,31 @@ enum class ErrorLog
 using ErrorProp = std::pair<std::string, std::string>;
 using ErrorKeyMap = std::unordered_map<std::string, std::string, StringHash, std::equal_to<>>;
 
+// Bundles a source file name and line number together for diagnostic context (e.g. parse errors)
+struct SourceLoc
+{
+    std::string_view file{};
+    int line = -1;
+
+    SourceLoc() = default;
+    SourceLoc (std::string_view file, int line) : file (file), line (line)
+    {}
+
+    std::string Format() const
+    {
+        std::string result{};
+        result.reserve (file.size() + 3);
+        if (!file.empty())
+            result += std::format ("{}:", file);
+        if (line != -1)
+            result += std::format ("{}:", line);
+
+        if (!result.empty())
+            result += " ";
+        return result;
+    }
+};
+
 struct ErrorFrame
 {
     ErrorFrame (ErrorDomain domain, ErrorCode code, std::string_view msg, ErrorLog log, ErrorKeyMap props = {})
@@ -153,13 +178,26 @@ class Error
     Error& operator= (Error&&) = default;
     virtual ~Error() = default;
 
-    virtual Error& Add (const ErrorInfo& info, std::string_view msg)
+    // Property-based interface with a caller-supplied message, skipping the default lookup-table formatting
+    // unless msg is empty
+    Error& Add (const ErrorInfo& info, std::string_view msg, std::initializer_list<ErrorProp> props)
     {
-        // Never downgrade from fatal, but we can downgrade from error to warning
         if (this->severity != ErrorSeverity::Fatal)
             this->severity = info.severity;
-        frames.emplace_back (info.domain, info.code, msg, info.log);
+        ErrorKeyMap map{props.begin(), props.end()};
+        if (!msg.empty())
+            frames.emplace_back (info.domain, info.code, msg, info.log, std::move (map));
+        else
+        {
+            std::string msg = makeMessage (info.code, map);
+            frames.emplace_back (info.domain, info.code, msg, info.log, std::move (map));
+        }
         return *this;
+    }
+
+    Error& Add (const ErrorInfo& info, std::string_view msg)
+    {
+        return Add (info, msg, {});
     }
 
     template <typename... Args>
@@ -167,15 +205,6 @@ class Error
     Error& Add (const ErrorInfo& info, std::string_view fmt, const Args&... args)
     {
         return Add (info, formatMessage (fmt, args...));
-    }
-    // Property-based interface with a caller-supplied message, skipping the default lookup-table formatting
-    virtual Error& Add (const ErrorInfo& info, std::string_view msg, std::initializer_list<ErrorProp> props)
-    {
-        if (this->severity != ErrorSeverity::Fatal)
-            this->severity = info.severity;
-        ErrorKeyMap map{props.begin(), props.end()};
-        frames.emplace_back (info.domain, info.code, msg, info.log, std::move (map));
-        return *this;
     }
 
     template <typename... Args>
@@ -190,25 +219,17 @@ class Error
 
     Error& Add (const ErrorInfo& info, std::initializer_list<ErrorProp> props)
     {
-        if (this->severity != ErrorSeverity::Fatal)
-            this->severity = info.severity;
-
-        ErrorKeyMap map{props.begin(), props.end()};
-        std::string msg = makeMessage (info.code, map);
-        frames.emplace_back (info.domain, info.code, msg, info.log, std::move (map));
-        return *this;
+        return Add (info, "", props);
     }
 
-    Error& AddContext (std::initializer_list<ErrorProp> props)
+    Error& AddContext (SourceLoc loc)
     {
-        for (const auto& [key, value] : props)
-            context[key] = value;
+        context = std::move (loc);
         return *this;
     }
 
-    // Used mostly so we can pass on overrided class to Add. Parameter must be rvalue
-    // TODO: maybe we should allow lvalues?
-    Error& Add (const Error&& err)
+    // Used mostly so we can pass on overrided class to Add
+    Error& Add (const Error& err)
     {
         // Never downgrade from fatal, matching the semantics of the other Add() overloads
         if (this->severity != ErrorSeverity::Fatal)
@@ -225,12 +246,9 @@ class Error
 
     // These functions are for error chaining. This is where one error creates a whole new error that is
     // seperate from the original
-    virtual Error Chain (const ErrorInfo& info, std::string_view msg)
+    Error Chain (const ErrorInfo& info, std::string_view msg)
     {
-        Error err = Error (info, msg);
-        err.context = context;
-        err.cause = std::make_unique<Error> (std::move (*this));
-        return err;
+        return Chain (info, msg, {});
     }
 
     template <typename... Args>
@@ -241,9 +259,17 @@ class Error
     }
 
     // Property-based interface with a caller-supplied message, skipping the default lookup-table formatting
-    virtual Error Chain (const ErrorInfo& info, std::string_view msg, std::initializer_list<ErrorProp> props)
+    // unless msg is empty
+    Error Chain (const ErrorInfo& info, std::string_view msg, std::initializer_list<ErrorProp> props)
     {
-        Error err = Error (info, msg, props);
+        // If we have no frames, add it to tihs object instead of creating a new one
+        if (frames.empty())
+            return Add (info, msg, props);
+        Error err;
+        if (!msg.empty())
+            err = Error (info, msg, props);
+        else
+            err = Error (info, props);
         err.cause = std::make_unique<Error> (std::move (*this));
         return err;
     }
@@ -261,9 +287,7 @@ class Error
     // Table-driven chaining
     Error Chain (const ErrorInfo& info, std::initializer_list<ErrorProp> props)
     {
-        Error err = Error (info, props);
-        err.cause = std::make_unique<Error> (std::move (*this));
-        return err;
+        return Chain (info, "", props);
     }
 
     ErrorSeverity GetSeverity() const
@@ -290,39 +314,14 @@ class Error
     {
         return frames.size();
     }
-    const ErrorKeyMap& GetContext() const
+    SourceLoc GetContext() const
     {
         return context;
     }
 
-    // TODO: this function needs to be re-thought out
     std::string MakeContextStr() const
     {
-        std::string result;
-        auto file = context.find ("file");
-        auto line = context.find ("line");
-        if (file != context.end())
-        {
-            result = file->second;
-            if (line != context.end())
-                result += ":" + line->second;
-        }
-        else if (line != context.end() && line->second != "-1")
-        {
-            result = line->second;
-        }
-
-        for (const auto& [key, value] : context)
-        {
-            if (key == "file" || key == "line")
-                continue;
-            if (!result.empty())
-                result += " ";
-            result += std::format ("{}:{}", key, value);
-        }
-        if (!result.empty())
-            result += ": ";
-        return result;
+        return context.Format();
     }
     const Error& Cause() const
     {
@@ -350,9 +349,9 @@ class Error
     // single severity. For example, if say one image fails to write, but there are still other
     // images, its not fatal. If it's the only one then from the user's perspective, it is fatal
     ErrorSeverity severity;
-    std::vector<ErrorFrame> frames;
-    ErrorKeyMap context;
+    std::vector<ErrorFrame> frames{};
     std::unique_ptr<Error> cause = nullptr;    // For casual chaining, so one error has multiple messages
+    SourceLoc context{};
 
   private:
     template <typename... Args>

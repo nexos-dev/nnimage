@@ -1,2 +1,3 @@
 Make setter/getter interface symmetric via type erasure
 Support ImageVal->spec value translation via per-property howto table
+Audit how image references form dependency graphs, and prevent that from occuring

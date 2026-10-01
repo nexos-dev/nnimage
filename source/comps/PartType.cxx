@@ -121,7 +121,8 @@ const CompConfRegistry IsoPartComp::registry = {
             {
                 IsoPartComp* isoComp = &derived<IsoPartComp&> (comp);
                 auto bootImageName = (*val.Get<ImageId>()).Str();
-                isoComp->owner.AddImageRef (bootImageName, [isoComp] (Image* image) { isoComp->bootImage = image; });
+                isoComp->owner.AddImageRef (bootImageName, [isoComp] 
+                                            (Image* image) { isoComp->bootImage = image; }, val.GetLoc());
                 return Success();
             },
             [] (const Component& comp) -> std::optional<std::any>

@@ -92,6 +92,9 @@ class Component : public RegElement<Component, ImgProp, CompConfRegistry>
 
     // The union of the main and sub registries
     mutable CompConfRegistry mergedRegistry;
+    // NOTE: this field is locked as getting must be thread safe, but for
+    // right now, setting doesn't have to be
+    mutable std::mutex regLock;
 
     CompType type;
 };
@@ -184,6 +187,8 @@ class FormatComp : public Component
   public:
     virtual ~FormatComp() = default;
 
+    void SetDefaults() override;
+
     FormatType GetFormatType() const
     {
         return type;
@@ -208,6 +213,11 @@ class FormatComp : public Component
     std::string getTypeName (FormatType type) const
     {
         return nameRegistry.GetName (type);
+    }
+
+    virtual PartType getDefaultType() const
+    {
+        return PartType::Gpt;
     }
 
     FormatType type;

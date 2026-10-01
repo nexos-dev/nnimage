@@ -94,6 +94,8 @@ class Dispatch
             Error ({ErrorDomain::Operation, code, ErrorLog::Normal, ErrorSeverity::Warning}, props));
     }
 
+    std::unique_ptr<Operation> op{};
+
     std::filesystem::path logDir;
     std::filesystem::path confFile;
 

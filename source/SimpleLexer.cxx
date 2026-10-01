@@ -16,6 +16,7 @@
 */
 
 #include "include/SimpleLexer.h"
+#include "include/Log.h"
 
 #include <cassert>
 #include <charconv>
@@ -23,8 +24,11 @@
 #include <limits>
 #include <utility>
 
-SimpleLexer::SimpleLexer (std::string file, std::string fileData)
-    : file{std::move (file)}, fileData{std::move (fileData)}
+// Global list of file names
+// A simple kludge until we add a proper source manager
+static std::deque<std::string> openedFiles{};
+
+SimpleLexer::SimpleLexer (std::string file, std::string fileData) : fileData{std::move (fileData)}
 {
     curLine = 1;
     idx = 0;
@@ -32,9 +36,11 @@ SimpleLexer::SimpleLexer (std::string file, std::string fileData)
     nextChar = 0;
     isEof = false;
     isError = false;
+    openedFiles.push_back (std::move (file));
+    fileName = openedFiles.back();
 }
 
-Error SimpleLexer::lexError (LexError errCode, std::string_view extra)
+Error SimpleLexer::lexError (LexError errCode, SourceLoc loc, std::string_view extra)
 {
     std::string msg;
     switch (errCode)
@@ -53,15 +59,15 @@ Error SimpleLexer::lexError (LexError errCode, std::string_view extra)
             break;
     }
     Error err ({ErrorDomain::Conf, ErrorCode::LexError}, {{"message", std::move (msg)}});
-    if (!file.empty())
-        err.AddContext ({{"file", file}, {"line", std::to_string (curLine)}});
+    loc.line = curLine;    // Give the token a more accurate line
+    err.AddContext (loc);
     // Unconditionally accept and also make sure any further lexer access gets caught
     isAccepted = true;
     isError = true;
     return err;
 }
 
-void SimpleLexer::lexWarn (LexWarning errCode, std::string_view extra)
+void SimpleLexer::lexWarn (LexWarning errCode, SourceLoc loc, std::string_view extra)
 {
     std::string msg;
     switch (errCode)
@@ -72,8 +78,7 @@ void SimpleLexer::lexWarn (LexWarning errCode, std::string_view extra)
     }
     Error warning ({ErrorDomain::Conf, ErrorCode::LexError, ErrorLog::Normal, ErrorSeverity::Warning},
         {{"message", std::move (msg)}});
-    if (!file.empty())
-        warning.AddContext ({{"file", file}, {"line", std::to_string (curLine)}});
+    warning.AddContext (loc);
     ErrorOutput::The()->Report (warning);
 }
 
@@ -208,7 +213,7 @@ Result<LexToken> SimpleLexer::NextToken()
     // Make a new token
     LexToken tok;
     int base = 0;
-    tok.line = curLine;
+    tok.loc = SourceLoc (fileName, curLine);
     tok.type = TokenType::None;
 
     // Check for EOF
@@ -296,7 +301,7 @@ Result<LexToken> SimpleLexer::NextToken()
                 goto scharCommon;
             scharCommon:
                 isAccepted = true;
-                tok.line = curLine;
+                tok.loc.line = curLine;
                 break;
             // ID
             case 'a':
@@ -354,7 +359,7 @@ Result<LexToken> SimpleLexer::NextToken()
             case '_': {
                 // This is an identifier
                 tok.type = TokenType::Identifier;
-                tok.line = curLine;
+                tok.loc.line = curLine;
                 std::string id;    // Prepare a string
                 while (isCharId (c))
                 {
@@ -389,7 +394,7 @@ Result<LexToken> SimpleLexer::NextToken()
             case '8':
             case '9': {
                 tok.type = TokenType::Number;
-                tok.line = curLine;
+                tok.loc.line = curLine;
                 std::string numStr;
                 base = 10;
                 // Check if a base was specified
@@ -426,7 +431,7 @@ Result<LexToken> SimpleLexer::NextToken()
                 const auto parseRes = std::from_chars (begin, end, val, base);
                 if (parseRes.ec != std::errc{} || parseRes.ptr != end)
                 {
-                    return lexError (LexError::InvalidNum, numStr);
+                    return lexError (LexError::InvalidNum, tok.loc, numStr);
                 }
 
                 // Now handle a numid. A numid is a number with an ID attached to the end, e.g., "128MiB"
@@ -456,7 +461,7 @@ Result<LexToken> SimpleLexer::NextToken()
                 // This is a string
                 char oc = c;        // Needed later
                 std::string str;    // String we are holding
-                tok.line = curLine;
+                tok.loc.line = curLine;
                 tok.type = TokenType::String;
                 // Now loop through the characters until we find matching quote
                 c = readChar();
@@ -466,7 +471,7 @@ Result<LexToken> SimpleLexer::NextToken()
                     if (c == '\0')
                     {
                         // That's an error
-                        return lexError (LexError::UnexpectedEof, "");
+                        return lexError (LexError::UnexpectedEof, tok.loc, "");
                     }
                     // Check for escape
                     else if (c == '\\')
@@ -512,14 +517,14 @@ Result<LexToken> SimpleLexer::NextToken()
                         }
                         else if (next == '\0')
                         {
-                            return lexError (LexError::UnexpectedEof, "");
+                            return lexError (LexError::UnexpectedEof, tok.loc, "");
                         }
                         else
                         {
                             // Invalid escape
                             std::string esc;
                             esc += next;
-                            lexWarn (LexWarning::InvalidEsc, esc);
+                            lexWarn (LexWarning::InvalidEsc, tok.loc, esc);
                             skipChar();
                         }
                     }
@@ -535,7 +540,7 @@ Result<LexToken> SimpleLexer::NextToken()
                 // Unrecognized character
                 std::string cStr;
                 cStr += c;
-                return lexError (LexError::InvalidChar, cStr);
+                return lexError (LexError::InvalidChar, tok.loc, cStr);
             }
         }
     }

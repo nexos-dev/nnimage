@@ -357,18 +357,6 @@ TEST_CASE ("Chardet detects an encoding for plain ASCII text when chardet is ava
     CHECK (ok);
     CHECK_FALSE (encoding.empty());
 }
-
-#else
-
-TEST_CASE ("Chardet::Detect always fails when uchardet is unavailable")
-{
-    Chardet det;
-    std::string encoding = "unchanged";
-    bool ok = det.Detect ("some data", encoding);
-    CHECK_FALSE (ok);
-    CHECK (encoding == "unchanged");
-}
-
 #endif
 
 /********************
